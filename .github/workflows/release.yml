@@ -1,0 +1,211 @@
+name: EmuStation Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag de release (ex: v0.5.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Marcar como Pre-release'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Validate Tag & Version Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and validate SemVer tag
+        id: meta
+        run: |
+          RAW_TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          if [[ ! "$RAW_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Erro: Tag inválida '$RAW_TAG'. Use o padrão SemVer (ex: v0.5.0 ou v1.0.0-beta.1)."
+            exit 1
+          fi
+          VERSION="${RAW_TAG#v}"
+          IS_PRE="${{ inputs.prerelease }}"
+          if [[ "$RAW_TAG" == *-* ]]; then
+            IS_PRE="true"
+          fi
+          echo "tag=$RAW_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=${IS_PRE:-false}" >> "$GITHUB_OUTPUT"
+
+  build-web:
+    name: Build Web Bundle
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install, Lint & Build
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: Package Web Release Archive
+        run: |
+          mkdir -p release-artifacts
+          tar -czf "release-artifacts/EmuStation-Web-${{ needs.prepare.outputs.tag }}.tar.gz" -C dist .
+
+      - name: Upload Web release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-release-files
+          path: release-artifacts/*
+
+  build-android:
+    name: Build Universal ARM64 Android Release (4KB + 16KB Pages)
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Check Gradle wrapper availability
+        id: check_gradle
+        run: |
+          if [ -f "emucorex_repo/gradlew" ]; then
+            echo "has_gradlew=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_gradlew=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup JDK 17
+        if: steps.check_gradle.outputs.has_gradlew == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Android SDK, NDK r29 & CMake
+        if: steps.check_gradle.outputs.has_gradlew == 'true'
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0 ndk;29.0.14206865 cmake;3.22.1'
+
+      - name: Configure Keystore Signing (if secrets provided)
+        if: steps.check_gradle.outputs.has_gradlew == 'true' && env.ANDROID_KEYSTORE_BASE64 != ''
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > emucorex_repo/release.keystore
+          {
+            echo "emucorex.release.storeFile=release.keystore"
+            echo "emucorex.release.storePassword=$ANDROID_STORE_PASSWORD"
+            echo "emucorex.release.keyAlias=$ANDROID_KEY_ALIAS"
+            echo "emucorex.release.keyPassword=$ANDROID_KEY_PASSWORD"
+          } >> emucorex_repo/local.properties
+
+      - name: Assemble Universal ARM64 APK & AAB
+        if: steps.check_gradle.outputs.has_gradlew == 'true'
+        working-directory: emucorex_repo
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon
+
+      - name: Collect & Rename Android Release Artifacts
+        id: collect_android
+        run: |
+          mkdir -p release-artifacts
+          VERSION="${{ needs.prepare.outputs.version }}"
+          FOUND=0
+          for apk in emucorex_repo/app/build/outputs/apk/release/*.apk; do
+            if [ -f "$apk" ]; then
+              cp "$apk" "release-artifacts/EmuStation-v${VERSION}-universal-arm64.apk"
+              FOUND=1
+            fi
+          done
+          for aab in emucorex_repo/app/build/outputs/bundle/release/*.aab; do
+            if [ -f "$aab" ]; then
+              cp "$aab" "release-artifacts/EmuStation-v${VERSION}-universal-arm64.aab"
+              FOUND=1
+            fi
+          done
+          echo "found=$FOUND" >> "$GITHUB_OUTPUT"
+
+      - name: Clean temporary keystore
+        if: always()
+        run: rm -f emucorex_repo/release.keystore
+
+      - name: Upload Android release artifacts
+        if: steps.collect_android.outputs.found == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-files
+          path: release-artifacts/*
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [prepare, build-web, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+
+      - name: Stage release assets & SHA-256 checksums
+        run: |
+          mkdir -p final-release
+          find all-artifacts -type f -exec mv {} final-release/ \;
+          cd final-release
+          if ls * >/dev/null 2>&1; then
+            sha256sum * > SHA256SUMS.txt
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: EmuStation ${{ needs.prepare.outputs.tag }}
+          prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
+          body: |
+            ## EmuStation ${{ needs.prepare.outputs.tag }}
+
+            **Pacote Android:** `com.dimm.emustation`
+            **Arquitetura:** ARM64-v8a Universal (Páginas 4KB e 16KB para Android 15+)
+
+            ### Destaques desta versão
+            - Suporte multi-dispositivo para GPUs **Qualcomm Adreno** e **ARM Mali / Immortalis** (incluindo Motorola Edge 60 Pro, Samsung Galaxy e flagships).
+            - Pipeline gráfico **Vulkan 1.3** e **OpenGL ES 3.2** com alocação adaptativa de CPU (`2+6 big.LITTLE` e `1+3+4 DynamIQ`).
+            - Controles DualShock 2 responsivos sem sobreposição em retrato, paisagem e desktop.
+            - Verificação de integridade via `SHA256SUMS.txt` anexa aos pacotes.
+          files: final-release/*

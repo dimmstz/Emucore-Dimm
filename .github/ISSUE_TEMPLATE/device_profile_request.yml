@@ -1,0 +1,24 @@
+name: Solicitação de Perfil de Dispositivo
+description: Solicitar calibração de fábrica para um novo chipset Adreno ou Mali
+title: "[Device Profile]: "
+labels: ["enhancement", "hardware-profile"]
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Nome Comercial do Aparelho
+      placeholder: "Ex: POCO F6 / Galaxy S24 / Edge 60 Ultra"
+    validations:
+      required: true
+  - type: input
+    id: soc_gpu
+    attributes:
+      label: Processador (SoC) e GPU
+      placeholder: "Ex: Snapdragon 8s Gen 3 · Adreno 735 / Dimensity 9300 · Immortalis-G720"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Topologia de Núcleos e Observações
+      placeholder: Informe memória RAM, taxa da tela (Hz) e comportamento atual em Vulkan/OpenGL.

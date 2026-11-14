@@ -1,0 +1,125 @@
+# Android Studio / IntelliJ
+*.iml
+.idea/
+.gradle/
+.kotlin/
+.android/
+
+# Local machine config
+local.properties
+app/google-services.json
+/.env
+/.env.*
+*.secret
+*.secrets
+
+# Local Cloudflare Workers and deployment secrets
+/workers/
+
+# Local Firebase deployment and maintenance files
+/firebase.json
+/firestore.indexes.json
+/firestore.rules
+/.firebase/
+/.firebaserc
+/firebase-tests/
+/firestore-debug.log
+/migrate-player-profiles.mjs
+/backfill-game-stats.mjs
+/functions/
+
+# Build outputs
+build/
+app/build/
+.cxx/
+app/.cxx/
+.externalNativeBuild/
+.angle-build/
+scripts/
+captures/
+out/
+dist/
+app/release/
+**/target/
+
+# Release artifacts
+/release/
+/key/
+key/
+*.apk
+*.aab
+*.ap_
+*.aar
+*.keystore
+*.jks
+*.idsig
+*.hprof
+*.prof
+
+# Logs / diagnostics
+Logs/
+*.log
+build_output.txt
+hs_err_pid*
+autotests/
+# Local test suites, gameplay runs, and benchmark artifacts
+/test/
+/tests/
+**/tests/
+!app/src/main/cpp/pcsx2/tests/
+!app/src/main/cpp/pcsx2/tests/ctest/
+!app/src/main/cpp/pcsx2/tests/ctest/core/
+!app/src/main/cpp/pcsx2/tests/ctest/core/GS/
+!app/src/main/cpp/pcsx2/tests/ctest/core/GS/gpu_profile_tests.cpp
+
+# Nested repositories and local vendor metadata
+**/.git/
+app/src/main/native-tools/
+/app/src/main/jniLibs/arm64-v8a/
+
+# Private / generated local data
+/source/
+IGDB/
+pcsx2_official/
+public/
+tools/
+y/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Local-only shader bake notes
+/app/src/main/cpp/ARM_ANDROID/shader_bake/README.md
+
+# Node / web tooling
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+*.orig
+emulog.txt
+# Local-only desktop project, its submodule configuration, and documentation.
+/Windows-MacOS-Linux/
+/.gitmodules
+docs/
+# Local investigation notes and profiling captures
+profiling-runs/
+profiler/
+/local-traces/
+
+# Local on-device VU differential conformance harness
+app/src/main/cpp/ARM_ANDROID/src/testing/vu_conformance.cpp
+app/src/main/cpp/ARM_ANDROID/include/emucorex/vu_conformance.h
+
+# Third-party and upstream docs (not needed in repo)
+**/third_party/**/docs/
+app/src/main/cpp/PCSX2/**/docs/
+app/src/main/cpp/PCSX2/**/Docs/
+app/src/main/cpp/PCSX2/bin/docs/
+
+# Temporary / backup directories
+/tmp/
+oldcore/

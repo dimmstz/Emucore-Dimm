@@ -1,0 +1,203 @@
+diff --git a/app/src/main/cpp/pcsx2/pcsx2/VMManager.cpp b/app/src/main/cpp/pcsx2/pcsx2/VMManager.cpp
+index 19a7214..38993c4 100644
+--- a/app/src/main/cpp/pcsx2/pcsx2/VMManager.cpp
++++ b/app/src/main/cpp/pcsx2/pcsx2/VMManager.cpp
+@@ -4044,6 +4044,10 @@ void VMManager::SetTimerResolutionIncreased(bool enabled)
+ static std::vector<u32> s_processor_list;
+ static std::vector<u32> s_software_renderer_processor_list;
+ static std::once_flag s_processor_list_initialized;
++#if defined(__ANDROID__)
++static u32 s_big_cores_android = 0;
++static u32 s_small_cores_android = 0;
++#endif
+ 
+ #if defined(__linux__) || defined(_WIN32)
+ 
+@@ -4137,6 +4141,40 @@ static void InitializeProcessorList()
+ 		s_processor_list.push_back(proc_id);
+ 	}
+ 	Console.WriteLn(str.view());
++
++#if defined(__ANDROID__)
++	s_big_cores_android = 0;
++	s_small_cores_android = 0;
++	if (have_complete_capacity_data && !capacities.empty())
++	{
++		const u64 max_cap = *std::max_element(capacities.begin(), capacities.end());
++		const u64 big_threshold = (max_cap * 7) / 10;
++		for (const cpuinfo_processor* proc : processors)
++		{
++			if (GetAndroidProcessorCapacity(proc) >= big_threshold)
++				s_big_cores_android++;
++			else
++				s_small_cores_android++;
++		}
++	}
++	else if (!processors.empty())
++	{
++		const uint32_t max_freq = processors.front()->core->frequency;
++		for (const cpuinfo_processor* proc : processors)
++		{
++			if (proc->core->frequency >= (max_freq * 8) / 10)
++				s_big_cores_android++;
++			else
++				s_small_cores_android++;
++		}
++	}
++	else
++	{
++		s_big_cores_android = cpuinfo_get_cores_count();
++	}
++	INFO_LOG("Android CPU topology telemetry: {} big cores (A7x/Kryo Gold), {} small cores (A5x/Kryo Silver)",
++		s_big_cores_android, s_small_cores_android);
++#endif
+ }
+ 
+ void VMManager::SetHardwareDependentDefaultSettings(SettingsInterface& si)
+@@ -4152,6 +4190,19 @@ void VMManager::SetHardwareDependentDefaultSettings(SettingsInterface& si)
+ 
+ 	Console.WriteLn(fmt::format("CPU cores count: {}", core_count));
+ 
++#if defined(__ANDROID__)
++	Console.WriteLn(fmt::format("Android detected {} big cores (Kryo Gold)", s_big_cores_android));
++	if (s_big_cores_android >= 3)
++	{
++		Console.WriteLn("  3+ Big cores available -> Enabling MTVU.");
++		si.SetBoolValue("EmuCore/Speedhacks", "vuThread", true);
++	}
++	else
++	{
++		Console.WriteLn("  Only 2 Big cores available (2+6 topology like Snapdragon 750G) -> Disabling MTVU by default to protect GS thread.");
++		si.SetBoolValue("EmuCore/Speedhacks", "vuThread", false);
++	}
++#else
+ 	if (core_count >= 3)
+ 	{
+ 		Console.WriteLn("  Enabling MTVU.");
+@@ -4162,6 +4213,7 @@ void VMManager::SetHardwareDependentDefaultSettings(SettingsInterface& si)
+ 		Console.WriteLn("  Disabling MTVU.");
+ 		si.SetBoolValue("EmuCore/Speedhacks", "vuThread", false);
+ 	}
++#endif
+ 
+ 	const int extra_threads = (core_count > 3) ? 3 : 2;
+ 	Console.WriteLn(fmt::format("  Setting Extra Software Rendering Threads to {}.", extra_threads));
+@@ -4254,11 +4306,34 @@ void VMManager::SetEmuThreadAffinities()
+ 		return;
+ 	}
+ 
++#if defined(__ANDROID__)
++	u32 ee_index = 0;
++	u32 vu_index = 0;
++	u32 gs_index = 0;
++
++	if (s_big_cores_android == 2 && s_processor_list.size() >= 3)
++	{
++		// 2-Big-Core Topology (Snapdragon 750G / Kryo 570):
++		// Guarantee EE and GS occupy the two Big cores (Cortex-A77), VU1 on helper core.
++		ee_index = s_processor_list[0];
++		gs_index = s_processor_list[1];
++		vu_index = s_processor_list[2];
++		INFO_LOG("2-Big-Core Adaptive Pinning: EE={}, GS={}, VU={}", ee_index, gs_index, vu_index);
++	}
++	else
++	{
++		ee_index = s_processor_list[0];
++		vu_index = s_processor_list[1];
++		gs_index = s_processor_list[mtvu ? 2 : 1];
++		INFO_LOG("Processor order assignment: EE={}, VU={}, GS={}", ee_index, vu_index, gs_index);
++	}
++#else
+ 	// steal vu's thread if mtvu is off
+ 	const u32 ee_index = s_processor_list[0];
+ 	const u32 vu_index = s_processor_list[1];
+ 	const u32 gs_index = s_processor_list[mtvu ? 2 : 1];
+ 	INFO_LOG("Processor order assignment: EE={}, VU={}, GS={}", ee_index, vu_index, gs_index);
++#endif
+ 
+ 	const u64 ee_affinity = static_cast<u64>(1) << ee_index;
+ 	INFO_LOG("  EE thread is on processor {} (0x{:x})", ee_index, ee_affinity);
+diff --git a/app/src/main/java/com/sbro/emucorex/core/PerformanceProfile.kt b/app/src/main/java/com/sbro/emucorex/core/PerformanceProfile.kt
+index 27ae4c9..c2ead90 100644
+--- a/app/src/main/java/com/sbro/emucorex/core/PerformanceProfile.kt
++++ b/app/src/main/java/com/sbro/emucorex/core/PerformanceProfile.kt
+@@ -6,19 +6,24 @@ data class PerformanceProfileConfig(
+     val eeCycleRate: Int,
+     val eeCycleSkip: Int,
+     val hwDownloadMode: Int,
+-    val fpuCorrectAddSub: Boolean
++    val fpuCorrectAddSub: Boolean,
++    val vsyncQueueSize: Int = 2,
++    val upscaleMultiplier: Float = 1.0f
+ )
+ 
+ object PerformanceProfiles {
+     const val SAFE = 0
+     const val FAST = 1
++    const val GALAXY_M23 = 2
+ 
+     val safeConfig = PerformanceProfileConfig(
+         id = SAFE,
+         eeCycleRate = 0,
+         eeCycleSkip = 0,
+         hwDownloadMode = GsHackDefaults.HW_DOWNLOAD_MODE_DEFAULT,
+-        fpuCorrectAddSub = true
++        fpuCorrectAddSub = true,
++        vsyncQueueSize = 2,
++        upscaleMultiplier = 1.0f
+     )
+ 
+     val fastConfig = PerformanceProfileConfig(
+@@ -26,14 +31,36 @@ object PerformanceProfiles {
+         eeCycleRate = -1,
+         eeCycleSkip = 2,
+         hwDownloadMode = GsHackDefaults.HW_DOWNLOAD_MODE_DEFAULT,
+-        fpuCorrectAddSub = false
++        fpuCorrectAddSub = false,
++        vsyncQueueSize = 2,
++        upscaleMultiplier = 1.0f
++    )
++
++    // Perfil calibrado especificamente para Samsung Galaxy M23 5G / Snapdragon 750G / Adreno 619
++    val galaxyM23Config = PerformanceProfileConfig(
++        id = GALAXY_M23,
++        renderer = RendererDefaults.VULKAN,
++        eeCycleRate = 0, // Sem underclock de ciclo para preservar áudio/cutscenes
++        eeCycleSkip = 0,
++        hwDownloadMode = 1, // Disable Readbacks: elimina stalls síncronos na GPU Adreno 619
++        fpuCorrectAddSub = false, // Ganho de ciclos em instruções de ponto flutuante
++        vsyncQueueSize = 0, // Baixa latência para display 120Hz
++        upscaleMultiplier = 1.0f // 1.0x Nativo para estabilidade térmica sem throttling
+     )
+ 
+     fun normalize(profileId: Int): Int {
+-        return if (profileId == FAST) FAST else SAFE
++        return when (profileId) {
++            FAST -> FAST
++            GALAXY_M23 -> GALAXY_M23
++            else -> SAFE
++        }
+     }
+ 
+     fun configFor(profileId: Int): PerformanceProfileConfig {
+-        return if (normalize(profileId) == FAST) fastConfig else safeConfig
++        return when (normalize(profileId)) {
++            FAST -> fastConfig
++            GALAXY_M23 -> galaxyM23Config
++            else -> safeConfig
++        }
+     }
+ }
+diff --git a/app/src/main/java/com/sbro/emucorex/core/SocGpuCatalog.kt b/app/src/main/java/com/sbro/emucorex/core/SocGpuCatalog.kt
+index 9f0614b..4a2eb66 100644
+--- a/app/src/main/java/com/sbro/emucorex/core/SocGpuCatalog.kt
++++ b/app/src/main/java/com/sbro/emucorex/core/SocGpuCatalog.kt
+@@ -52,7 +52,7 @@ object SocGpuCatalog {
+         entry(adreno(642), "snapdragon 780g"),
+         entry(adreno(642, "L"), "snapdragon 778g"),
+         entry(adreno(620), "snapdragon 765"),
+-        entry(adreno(619), "snapdragon 750g"),
++        entry(adreno(619), "snapdragon 750g", "sm7225", "m236", "m23 5g"),
+         entry(adreno(618), "snapdragon 730"),
+         entry(adreno(618), "snapdragon 720g"),
+         entry(adreno(810), "snapdragon 6 gen 4"),

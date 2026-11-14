@@ -1,0 +1,6 @@
+{
+  "name": "EmuCoreX Android Optimizer & Multi-Device PS2",
+  "description": "Emulador e suíte de engenharia PS2 para Android multi-dispositivo (ARM Mali, Immortalis & Qualcomm Adreno): suporte a Motorola Edge 60 Pro, Samsung Galaxy, pipeline Vulkan/GLES e controles vetoriais.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

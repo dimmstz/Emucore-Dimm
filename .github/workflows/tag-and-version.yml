@@ -1,0 +1,93 @@
+name: Bump Version & Create Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Tipo de atualização de versão'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - custom
+      custom_version:
+        description: 'Versão manual (somente se bump = custom, ex: 0.5.1)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  bump-and-tag:
+    name: Update Version & Push Git Tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next SemVer & versionCode
+        id: ver
+        run: |
+          CURRENT_VER=$(grep -oE 'versionName = "[^"]+"' emucorex_repo/app/build.gradle.kts | head -n1 | cut -d'"' -f2)
+          CURRENT_CODE=$(grep -oE 'versionCode = [0-9]+' emucorex_repo/app/build.gradle.kts | head -n1 | awk '{print $3}')
+          if [ -z "$CURRENT_VER" ]; then CURRENT_VER="0.5.0"; fi
+          if [ -z "$CURRENT_CODE" ]; then CURRENT_CODE="204"; fi
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${CURRENT_VER%%-*}"
+          case "${{ inputs.bump }}" in
+            major)
+              NEXT_VER="$((MAJOR + 1)).0.0"
+              ;;
+            minor)
+              NEXT_VER="${MAJOR}.$((MINOR + 1)).0"
+              ;;
+            patch)
+              NEXT_VER="${MAJOR}.${MINOR}.$((PATCH + 1))"
+              ;;
+            custom)
+              NEXT_VER="${{ inputs.custom_version }}"
+              if [[ ! "$NEXT_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+                echo "Erro: custom_version inválida '$NEXT_VER'. Use X.Y.Z."
+                exit 1
+              fi
+              ;;
+          esac
+
+          NEXT_CODE=$((CURRENT_CODE + 1))
+          TAG="v${NEXT_VER}"
+          echo "next_version=$NEXT_VER" >> "$GITHUB_OUTPUT"
+          echo "next_code=$NEXT_CODE" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Update package.json & Android build.gradle.kts
+        run: |
+          NEXT_VER="${{ steps.ver.outputs.next_version }}"
+          NEXT_CODE="${{ steps.ver.outputs.next_code }}"
+
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '$NEXT_VER';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          sed -i -E "s/versionCode = [0-9]+/versionCode = $NEXT_CODE/" emucorex_repo/app/build.gradle.kts
+          sed -i -E "s/versionName = \"[^\"]+\"/versionName = \"$NEXT_VER\"/" emucorex_repo/app/build.gradle.kts
+
+      - name: Commit version bump, create annotated tag and push
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json emucorex_repo/app/build.gradle.kts
+          git commit -m "chore(release): $TAG"
+          git tag -a "$TAG" -m "EmuStation $TAG"
+          git push origin HEAD
+          git push origin "$TAG"
