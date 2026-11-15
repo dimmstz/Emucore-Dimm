@@ -36,8 +36,15 @@ jobs:
       - name: Compute next SemVer & versionCode
         id: ver
         run: |
-          CURRENT_VER=$(grep -oE 'versionName = "[^"]+"' emucorex_repo/app/build.gradle.kts | head -n1 | cut -d'"' -f2)
-          CURRENT_CODE=$(grep -oE 'versionCode = [0-9]+' emucorex_repo/app/build.gradle.kts | head -n1 | awk '{print $3}')
+          CURRENT_VER=""
+          CURRENT_CODE=""
+          if [ -f "emucorex_repo/app/build.gradle.kts" ]; then
+            CURRENT_VER=$(grep -oE 'versionName = "[^"]+"' emucorex_repo/app/build.gradle.kts | head -n1 | cut -d'"' -f2 || true)
+            CURRENT_CODE=$(grep -oE 'versionCode = [0-9]+' emucorex_repo/app/build.gradle.kts | head -n1 | awk '{print $3}' || true)
+          fi
+          if [ -z "$CURRENT_VER" ] && [ -f "package.json" ]; then
+            CURRENT_VER=$(node -e "console.log(require('./package.json').version || '0.5.0')")
+          fi
           if [ -z "$CURRENT_VER" ]; then CURRENT_VER="0.5.0"; fi
           if [ -z "$CURRENT_CODE" ]; then CURRENT_CODE="204"; fi
 
@@ -79,8 +86,10 @@ jobs:
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
 
-          sed -i -E "s/versionCode = [0-9]+/versionCode = $NEXT_CODE/" emucorex_repo/app/build.gradle.kts
-          sed -i -E "s/versionName = \"[^\"]+\"/versionName = \"$NEXT_VER\"/" emucorex_repo/app/build.gradle.kts
+          if [ -f "emucorex_repo/app/build.gradle.kts" ]; then
+            sed -i -E "s/versionCode = [0-9]+/versionCode = $NEXT_CODE/" emucorex_repo/app/build.gradle.kts
+            sed -i -E "s/versionName = \"[^\"]+\"/versionName = \"$NEXT_VER\"/" emucorex_repo/app/build.gradle.kts
+          fi
 
       - name: Commit version bump, create annotated tag and push
         env:
@@ -93,9 +102,14 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json emucorex_repo/app/build.gradle.kts
-          git commit -m "chore(release): $TAG"
+          git add package.json
+          if [ -f "emucorex_repo/app/build.gradle.kts" ]; then
+            git add emucorex_repo/app/build.gradle.kts
+          fi
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): $TAG"
+            git push origin HEAD
+          fi
           git tag -a "$TAG" -m "EmuStation $TAG"
-          git push origin HEAD
           git push origin "$TAG"
           gh workflow run release.yml -f tag="$TAG"

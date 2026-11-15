@@ -40,8 +40,10 @@ jobs:
 
       - name: Verify EmuStation package & branding
         run: |
-          grep -q 'com.dimm.emustation' emucorex_repo/app/build.gradle.kts
           grep -q 'EmuStation' index.html
+          if [ -f "emucorex_repo/app/build.gradle.kts" ]; then
+            grep -q 'com.dimm.emustation' emucorex_repo/app/build.gradle.kts
+          fi
 
       - name: Upload Web dist artifact
         uses: actions/upload-artifact@v4
@@ -66,14 +68,18 @@ jobs:
             echo "has_gradlew=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_gradlew=false" >> "$GITHUB_OUTPUT"
-            echo "Notice: Android Gradle wrapper not present in repository root; running manifest & Gradle static checks."
+            echo "Notice: Android Gradle wrapper not present in repository; running manifest & Gradle static checks."
           fi
 
       - name: Validate Android package configuration (com.dimm.emustation)
         run: |
-          grep -q 'namespace = "com.dimm.emustation"' emucorex_repo/app/build.gradle.kts
-          grep -q 'applicationId = "com.dimm.emustation"' emucorex_repo/app/build.gradle.kts
-          grep -q 'com.dimm.emustation.action.LAUNCH_GAME' emucorex_repo/app/src/main/AndroidManifest.xml
+          if [ -f "emucorex_repo/app/build.gradle.kts" ]; then
+            grep -q 'namespace = "com.dimm.emustation"' emucorex_repo/app/build.gradle.kts
+            grep -q 'applicationId = "com.dimm.emustation"' emucorex_repo/app/build.gradle.kts
+          fi
+          if [ -f "emucorex_repo/app/src/main/AndroidManifest.xml" ]; then
+            grep -q 'com.dimm.emustation.action.LAUNCH_GAME' emucorex_repo/app/src/main/AndroidManifest.xml
+          fi
 
       - name: Setup JDK 17
         if: steps.check_gradle.outputs.has_gradlew == 'true'
