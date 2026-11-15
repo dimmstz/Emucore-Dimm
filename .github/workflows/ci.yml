@@ -46,7 +46,7 @@ jobs:
           fi
 
       - name: Upload Web dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: emustation-web-dist
           path: dist/
@@ -104,7 +104,7 @@ jobs:
 
       - name: Upload Android Debug APK
         if: steps.check_gradle.outputs.has_gradlew == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: emustation-android-debug-apk
           path: emucorex_repo/app/build/outputs/apk/debug/*.apk

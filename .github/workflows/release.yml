@@ -79,7 +79,7 @@ jobs:
           tar -czf "release-artifacts/EmuStation-Web-${{ needs.prepare.outputs.tag }}.tar.gz" -C dist .
 
       - name: Upload Web release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-release-files
           path: release-artifacts/*
@@ -170,7 +170,7 @@ jobs:
 
       - name: Upload Android release artifacts
         if: steps.collect_android.outputs.found == '1'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-release-files
           path: release-artifacts/*
