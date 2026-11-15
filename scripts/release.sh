@@ -14,6 +14,11 @@ if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
   exit 1
 fi
 
+if git rev-parse "$TAG" >/dev/null 2>&1; then
+  echo "Erro: a tag $TAG já existe localmente."
+  exit 1
+fi
+
 VERSION="${TAG#v}"
 
 echo "==> Validando TypeScript e Build Web..."

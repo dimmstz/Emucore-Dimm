@@ -62,11 +62,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
 
       - name: Install, Lint & Build
         run: |
-          npm ci
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
           npm run lint
           npm run build
 
@@ -115,20 +118,24 @@ jobs:
           packages: 'platforms;android-36 build-tools;36.0.0 ndk;29.0.14206865 cmake;3.22.1'
 
       - name: Configure Keystore Signing (if secrets provided)
-        if: steps.check_gradle.outputs.has_gradlew == 'true' && env.ANDROID_KEYSTORE_BASE64 != ''
+        if: steps.check_gradle.outputs.has_gradlew == 'true'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > emucorex_repo/release.keystore
-          {
-            echo "emucorex.release.storeFile=release.keystore"
-            echo "emucorex.release.storePassword=$ANDROID_STORE_PASSWORD"
-            echo "emucorex.release.keyAlias=$ANDROID_KEY_ALIAS"
-            echo "emucorex.release.keyPassword=$ANDROID_KEY_PASSWORD"
-          } >> emucorex_repo/local.properties
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > emucorex_repo/release.keystore
+            {
+              echo "emucorex.release.storeFile=release.keystore"
+              echo "emucorex.release.storePassword=$ANDROID_STORE_PASSWORD"
+              echo "emucorex.release.keyAlias=$ANDROID_KEY_ALIAS"
+              echo "emucorex.release.keyPassword=$ANDROID_KEY_PASSWORD"
+            } >> emucorex_repo/local.properties
+          else
+            echo "Keystore secret não configurada; compilando release sem assinatura customizada."
+          fi
 
       - name: Assemble Universal ARM64 APK & AAB
         if: steps.check_gradle.outputs.has_gradlew == 'true'
