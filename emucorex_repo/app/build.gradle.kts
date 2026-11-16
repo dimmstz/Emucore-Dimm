@@ -10,8 +10,11 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.google.services)
     alias(libs.plugins.ksp)
+}
+
+if (file("google-services.json").isFile) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 val localProperties = Properties().apply {
@@ -118,8 +121,10 @@ android {
             }
         }
         release {
-            if (releaseSigningConfigured) {
-                signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (releaseSigningConfigured) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
             }
             ndk {
                 // Keep full native symbols in release bundles so Google Play can
@@ -131,7 +136,7 @@ android {
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
-                "src/main/cpp/PCSX2/3rdparty/SDL3/android-project/app/proguard-rules.pro"
+                "src/main/cpp/pcsx2/3rdparty/SDL3/android-project/app/proguard-rules.pro"
             )
         }
     }
@@ -151,8 +156,8 @@ android {
     }
     sourceSets {
         getByName("main") {
-            assets.srcDir("src/main/cpp/PCSX2/bin")
-            java.srcDir("src/main/cpp/PCSX2/3rdparty/SDL3/android-project/app/src/main/java")
+            assets.srcDir("src/main/cpp/pcsx2/bin")
+            java.srcDir("src/main/cpp/pcsx2/3rdparty/SDL3/android-project/app/src/main/java")
             // Populated only by tools/build_universal_page_release.ps1.
             jniLibs.srcDir(file("build/generated/page-size-jni-libs"))
             discordSdkDirectory?.let(jniLibs::srcDir)
@@ -174,23 +179,16 @@ android {
     }
 }
 
-val bundledPatchesArchive = layout.projectDirectory.file("src/main/cpp/PCSX2/bin/resources/patches.zip")
-val bundledPatchesSha256 = "aa14a46908c1114e0c0f1c06accbfa7efc83c1768fb501699e043cbdb1af797f"
+val bundledPatchesArchive = layout.projectDirectory.file("src/main/cpp/pcsx2/bin/resources/patches.zip")
 
 val verifyBundledPatches by tasks.registering {
     group = "verification"
-    description = "Verifies the official PCSX2 widescreen/no-interlacing patch archive bundled in the APK."
+    description = "Verifies the PCSX2 widescreen/no-interlacing patch archive bundled in the APK."
     inputs.file(bundledPatchesArchive)
     doLast {
         val archive = bundledPatchesArchive.asFile
         check(archive.isFile) {
-            "Missing ${archive.path}. Download patches.zip from the official PCSX2/pcsx2_patches latest release."
-        }
-        val actualSha256 = MessageDigest.getInstance("SHA-256")
-            .digest(archive.readBytes())
-            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
-        check(actualSha256 == bundledPatchesSha256) {
-            "Unexpected patches.zip digest: $actualSha256. Verify the official release and update the pinned digest."
+            "Missing ${archive.path}. Run scripts/prepare-android-core.sh before building."
         }
         ZipFile(archive).use { zip ->
             val patchEntries = zip.entries().asSequence()

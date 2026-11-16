@@ -10,7 +10,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.sbro.emucorex.R
+import com.dimm.emustation.R
 import com.sbro.emucorex.data.TouchControlPressEffect
 import com.sbro.emucorex.data.TouchControlVisualStyle
 import com.sbro.emucorex.ui.theme.EmuCoreXTheme

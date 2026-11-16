@@ -1,0 +1,2420 @@
+package com.sbro.emucorex.ui.home
+
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.EaseIn
+import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Devices
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Numbers
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SortByAlpha
+import androidx.compose.material.icons.rounded.SportsEsports
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.ViewAgenda
+import androidx.compose.material.icons.rounded.ViewCarousel
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material.icons.rounded.ViewModule
+import androidx.compose.material.icons.rounded.Warning
+import com.sbro.emucorex.ui.common.AppAlertDialog as AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dimm.emustation.R
+import com.sbro.emucorex.core.GamepadManager
+import com.sbro.emucorex.core.LocalTvUiEnvironment
+import com.sbro.emucorex.core.TvUiMetrics
+import com.sbro.emucorex.core.availableProSupportOffers
+import com.sbro.emucorex.data.CustomGameCoverRepository
+import com.sbro.emucorex.data.GameItem
+import com.sbro.emucorex.data.HomeBackgroundRepository
+import com.sbro.emucorex.data.HomeBackgroundType
+import com.sbro.emucorex.data.LibraryPlatform
+import com.sbro.emucorex.ui.common.GameCoverArt
+import com.sbro.emucorex.ui.common.GameCoverAspectRatio
+import com.sbro.emucorex.ui.common.PremiumLoadingAnimation
+import com.sbro.emucorex.ui.common.ProSupportOptionsDialog
+import com.sbro.emucorex.ui.common.TvStoragePickerHost
+import com.sbro.emucorex.ui.common.TvStorageRequest
+import com.sbro.emucorex.ui.common.gamepadFocusableCard
+import com.sbro.emucorex.ui.common.isGenerated3dCover
+import com.sbro.emucorex.ui.common.navigationBarsHorizontalPaddingValues
+import com.sbro.emucorex.ui.common.rememberDebouncedClick
+import com.sbro.emucorex.ui.common.safeLaunch
+import com.sbro.emucorex.ui.common.showNoDocumentPickerMessage
+import com.sbro.emucorex.ui.common.skipGamepadTextFieldFocus
+import com.sbro.emucorex.ui.common.appScreenTopPadding
+import com.sbro.emucorex.ui.customization.HomeBackgroundMedia
+import com.sbro.emucorex.ui.theme.GradientEnd
+import com.sbro.emucorex.ui.theme.GradientStart
+import com.sbro.emucorex.ui.theme.ScreenHorizontalPadding
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.text.NumberFormat
+import java.util.Locale
+import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
+import androidx.compose.foundation.lazy.itemsIndexed as rowItemsIndexed
+import com.sbro.emucorex.ui.theme.neon.LocalNeonTheme
+import com.sbro.emucorex.ui.theme.neon.neonShape
+import com.sbro.emucorex.ui.theme.neon.neonButtonShape
+
+@OptIn(ExperimentalLayoutApi::class)
+@SuppressLint("ConfigurationScreenWidthHeight", "FrequentlyChangingValue")
+@Composable
+fun HomeScreen(
+    onGameClick: (GameItem) -> Unit,
+    onContinueGame: (GameItem) -> Unit,
+    onLoadSaveClick: (GameItem) -> Unit,
+    onManageGameClick: (GameItem) -> Unit,
+    onCreateShortcutClick: (GameItem) -> Unit,
+    onOpenGameDbClick: (GameItem) -> Unit,
+    onMenuClick: (() -> Unit)? = null,
+    onShelfModeChanged: (Boolean) -> Unit = {},
+    viewModel: HomeViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val gameSerialEditingEnabled by viewModel.gameSerialEditingEnabled.collectAsState()
+    var showHiddenGames by rememberSaveable { mutableStateOf(false) }
+    val onShowHiddenGames: (() -> Unit)? = if (uiState.hiddenGames.isNotEmpty()) {
+        { showHiddenGames = true }
+    } else null
+    LaunchedEffect(uiState.hiddenGames.isEmpty()) {
+        if (uiState.hiddenGames.isEmpty()) showHiddenGames = false
+    }
+    var showWelcomeSupportOptions by remember { mutableStateOf(false) }
+    val supportOffers = if (uiState.isProUnlocked && !uiState.isProPurchaseStatusVerified) {
+        emptyList()
+    } else {
+        availableProSupportOffers(
+            offers = uiState.proProducts,
+            ownedProductIds = uiState.ownedProProductIds
+        )
+    }
+    LaunchedEffect(showWelcomeSupportOptions, supportOffers) {
+        if (showWelcomeSupportOptions && supportOffers.isEmpty()) {
+            showWelcomeSupportOptions = false
+        }
+    }
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val windowSize = LocalWindowInfo.current.containerSize
+    val windowMetrics = resolveHomeWindowMetrics(
+        configurationWidthDp = configuration.screenWidthDp,
+        configurationHeightDp = configuration.screenHeightDp,
+        measuredWidthDp = with(density) { windowSize.width.toDp().value.roundToInt() },
+        measuredHeightDp = with(density) { windowSize.height.toDp().value.roundToInt() }
+    )
+    val context = LocalContext.current
+    val tvUiEnabled = LocalTvUiEnvironment.current.enabled
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val customCoverRepository = remember(context) { CustomGameCoverRepository(context) }
+    val homeBackgroundRepository = remember(context) { HomeBackgroundRepository(context) }
+    // Real size of the library area; window/configuration values can be transiently stale during rotation.
+    var libraryAreaSizePx by remember { mutableStateOf(IntSize.Zero) }
+    val libraryAreaWidthDp = with(density) { libraryAreaSizePx.width.toDp().value.roundToInt() }
+    val libraryAreaHeightDp = with(density) { libraryAreaSizePx.height.toDp().value.roundToInt() }
+    val hasMeasuredLibraryArea = libraryAreaWidthDp > 0 && libraryAreaHeightDp > 0
+    val isLandscape = if (hasMeasuredLibraryArea) {
+        libraryAreaWidthDp > libraryAreaHeightDp
+    } else {
+        windowMetrics.widthDp > windowMetrics.heightDp
+    }
+    val isTabletClass = configuration.smallestScreenWidthDp >= 600
+    val isWide = isTabletClass && windowMetrics.widthDp >= 900
+    val isShelfView = uiState.libraryViewMode == HomeLibraryViewMode.SHELF
+    val topInset = if (isShelfView) 0.dp else appScreenTopPadding()
+    val bottomInset = if (isShelfView) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val horizontalSystemBarPadding = if (isShelfView) PaddingValues(0.dp) else navigationBarsHorizontalPaddingValues()
+    val horizontalInset = ScreenHorizontalPadding
+    val sectionTopSpacing = 2.dp
+    val sectionInnerSpacing = 4.dp
+    val baseCellSize = if (isLandscape) 94.dp else 102.dp
+    val minCellSize = baseCellSize * uiState.homeGridScale
+    val tvReservedContentWidthDp = if (tvUiEnabled) {
+        TvUiMetrics.contentReservedWidthDp(windowMetrics.widthDp)
+    } else {
+        null
+    }
+    val columnsCount = if (hasMeasuredLibraryArea) {
+        // The measured area already excludes any reserved side panel, so add it back for the shared formula.
+        val reservedWidthDp = tvReservedContentWidthDp ?: if (isWide) 332 else 0
+        calculateHomeGridColumnCount(
+            screenWidthDp = libraryAreaWidthDp + reservedWidthDp,
+            screenHeightDp = libraryAreaHeightDp,
+            smallestScreenWidthDp = configuration.smallestScreenWidthDp,
+            gridScale = uiState.homeGridScale,
+            contentReservedWidthDp = reservedWidthDp
+        )
+    } else {
+        calculateHomeGridColumnCount(
+            screenWidthDp = windowMetrics.widthDp,
+            screenHeightDp = windowMetrics.heightDp,
+            smallestScreenWidthDp = configuration.smallestScreenWidthDp,
+            gridScale = uiState.homeGridScale,
+            contentReservedWidthDp = tvReservedContentWidthDp
+        )
+    }
+    val isListView = uiState.libraryViewMode == HomeLibraryViewMode.LIST
+    val standardViewMode = if (isShelfView) uiState.lastStandardLibraryViewMode else uiState.libraryViewMode
+    val gridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+    val showScrollToTop by remember(gridState) {
+        derivedStateOf { gridState.firstVisibleItemIndex > 2 || gridState.firstVisibleItemScrollOffset > 900 }
+    }
+    val libraryFocusRegistry = remember { HomeLibraryFocusRegistry() }
+    // Always own focus on entry: key events only reach the cards while one is focused.
+    val shouldRequestGamepadFocus = true
+
+    fun applyShelfSystemBarsHidden() {
+        val activity = context as? Activity ?: return
+        val window = activity.window
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+    }
+
+    fun applyStandardSystemBars() {
+        val activity = context as? Activity ?: return
+        val window = activity.window
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(WindowInsetsCompat.Type.statusBars())
+        controller.show(WindowInsetsCompat.Type.navigationBars())
+        controller.hide(WindowInsetsCompat.Type.statusBars())
+        window.decorView.post {
+            WindowCompat.getInsetsController(window, window.decorView)
+                .hide(WindowInsetsCompat.Type.statusBars())
+        }
+    }
+
+    DisposableEffect(context, isShelfView) {
+        if (isShelfView) {
+            applyShelfSystemBarsHidden()
+        } else {
+            applyStandardSystemBars()
+        }
+
+        onDispose {
+        }
+    }
+    DisposableEffect(lifecycleOwner, isShelfView) {
+        if (!isShelfView) return@DisposableEffect onDispose {}
+
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
+                applyShelfSystemBarsHidden()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    LaunchedEffect(isShelfView, context) {
+        if (isShelfView) {
+            applyShelfSystemBarsHidden()
+        } else {
+            applyStandardSystemBars()
+        }
+        delay(150.milliseconds)
+        if (isShelfView) {
+            applyShelfSystemBarsHidden()
+        } else {
+            applyStandardSystemBars()
+        }
+    }
+    LaunchedEffect(isShelfView) {
+        onShelfModeChanged(isShelfView)
+    }
+
+    val folderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.onFolderSelected(it) }
+    }
+    val biosPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.onBiosFolderSelected(it) }
+    }
+    var tvStorageRequest by remember { mutableStateOf<TvStorageRequest?>(null) }
+    TvStoragePickerHost(
+        request = tvStorageRequest,
+        onDismiss = { tvStorageRequest = null },
+        onBiosSelected = viewModel::onBiosFolderSelected,
+        onGameFolderSelected = viewModel::onFolderSelected
+    )
+    var pendingCustomCoverGame by remember { mutableStateOf<GameItem?>(null) }
+    var gameAwaitingPickerLaunch by remember { mutableStateOf<GameItem?>(null) }
+    var serialDialogGame by remember { mutableStateOf<GameItem?>(null) }
+    val requestSerialChange: ((GameItem) -> Unit)? = if (gameSerialEditingEnabled) {
+        { game -> serialDialogGame = game }
+    } else {
+        null
+    }
+    val customCoverAppliedMessage = stringResource(R.string.home_game_menu_custom_cover_applied)
+    val customCoverFailedMessage = stringResource(R.string.home_game_menu_custom_cover_failed)
+    val defaultCoverRestoredMessage = stringResource(R.string.home_game_menu_restore_cover_success)
+    val defaultCoverFailedMessage = stringResource(R.string.home_game_menu_restore_cover_failed)
+    val restoreCustomCover: (GameItem) -> Unit = { game ->
+        scope.launch {
+            val success = viewModel.resetCustomCover(game)
+            Toast.makeText(context, if (success) defaultCoverRestoredMessage else defaultCoverFailedMessage,
+                Toast.LENGTH_SHORT).show()
+        }
+    }
+    val customCoverPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        val targetGame = pendingCustomCoverGame
+        pendingCustomCoverGame = null
+        if (uri != null && targetGame != null) {
+            scope.launch {
+                val success = viewModel.setCustomCover(targetGame, uri)
+                Toast.makeText(
+                    context,
+                    if (success) customCoverAppliedMessage else customCoverFailedMessage,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+    LaunchedEffect(gameAwaitingPickerLaunch) {
+        val game = gameAwaitingPickerLaunch ?: return@LaunchedEffect
+        pendingCustomCoverGame = game
+        gameAwaitingPickerLaunch = null
+        customCoverPicker.launch("image/*")
+    }
+
+        val proPurchaseMessage = uiState.proPurchaseMessageResId?.let { stringResource(it) }
+    LaunchedEffect(proPurchaseMessage) {
+        val message = proPurchaseMessage ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        viewModel.clearProPurchaseMessage()
+    }
+
+    val visibilityMessage = uiState.visibilityMessageResId?.let { stringResource(it) }
+    LaunchedEffect(visibilityMessage) {
+        visibilityMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearVisibilityMessage()
+        }
+    }
+    val serialMessage = uiState.serialMessageResId?.let { stringResource(it) }
+    LaunchedEffect(serialMessage) {
+        serialMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearSerialMessage()
+        }
+    }
+    HomeLibraryFocusOnEntryAndResume(
+        registry = libraryFocusRegistry,
+        gridState = gridState,
+        enabled = shouldRequestGamepadFocus && !isShelfView && !uiState.isLoading && uiState.games.isNotEmpty(),
+        entryKey = standardViewMode
+    )
+
+    val coverPrefetchWindow = remember(
+        uiState.librarySections, columnsCount, isListView, uiState.isCoverArtDisabled, customCoverRepository
+    ) {
+        HomeCoverPrefetchWindow(buildHomeCoverPrefetchRows(uiState.librarySections, columnsCount, isListView) { game ->
+            game.coverArtPath.takeUnless {
+                uiState.isCoverArtDisabled && !customCoverRepository.isCustomCoverPath(it)
+            }
+        })
+    }
+    HomeCoverPrefetch(
+        gridState = gridState,
+        window = coverPrefetchWindow,
+        enabled = !isShelfView && !uiState.isLoading && !uiState.isBootstrapping &&
+            uiState.gameFolderSet && uiState.biosValid
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontalSystemBarPadding)
+    ) {
+        AnimatedVisibility(
+            visible = !isShelfView && uiState.homeBackgroundType != HomeBackgroundType.NONE,
+            enter = fadeIn(animationSpec = tween(380, easing = EaseOut)),
+            exit = fadeOut(animationSpec = tween(280, easing = EaseIn))
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                HomeBackgroundMedia(
+                    type = uiState.homeBackgroundType,
+                    file = homeBackgroundRepository.existingFile(uiState.homeBackgroundType),
+                    preset = uiState.homeBackgroundPreset,
+                    revision = uiState.homeBackgroundRevision,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            MaterialTheme.colorScheme.background.copy(
+                                alpha = uiState.homeBackgroundDim / 100f
+                            )
+                        )
+                )
+            }
+        }
+        if (uiState.isBootstrapping || uiState.isLoading) {
+            LoadingState()
+        } else if (!uiState.gameFolderSet || !uiState.biosValid) {
+            EmptyState(
+                biosReady = uiState.biosValid,
+                gamesReady = uiState.gameFolderSet,
+                onBiosClick = {
+                    if (tvUiEnabled) tvStorageRequest = TvStorageRequest.BIOS_FILE
+                    else biosPicker.safeLaunch(null) { context.showNoDocumentPickerMessage() }
+                },
+                onFolderClick = {
+                    if (tvUiEnabled) tvStorageRequest = TvStorageRequest.GAME_FOLDER
+                    else folderPicker.safeLaunch(null) { context.showNoDocumentPickerMessage() }
+                },
+                topInset = topInset
+            )
+        } else {
+            AnimatedContent(
+                targetState = isShelfView,
+                transitionSpec = {
+                    if (targetState) {
+                        (
+                            slideInHorizontally(
+                                initialOffsetX = { it / 5 },
+                                animationSpec = tween(440, easing = EaseOut)
+                            ) +
+                                fadeIn(animationSpec = tween(360, easing = EaseOut)) +
+                                scaleIn(
+                                    initialScale = 0.97f,
+                                    animationSpec = tween(440, easing = EaseOut)
+                                )
+                            ) togetherWith
+                            (
+                                slideOutHorizontally(
+                                    targetOffsetX = { -it / 8 },
+                                    animationSpec = tween(300, easing = EaseIn)
+                                ) +
+                                    fadeOut(animationSpec = tween(260, easing = EaseIn)) +
+                                    scaleOut(
+                                        targetScale = 0.985f,
+                                        animationSpec = tween(300, easing = EaseIn)
+                                    )
+                                )
+                    } else {
+                        (
+                            slideInHorizontally(
+                                initialOffsetX = { -it / 5 },
+                                animationSpec = tween(420, easing = EaseOut)
+                            ) +
+                                fadeIn(animationSpec = tween(350, easing = EaseOut)) +
+                                scaleIn(
+                                    initialScale = 0.985f,
+                                    animationSpec = tween(420, easing = EaseOut)
+                                )
+                            ) togetherWith
+                            (
+                                slideOutHorizontally(
+                                    targetOffsetX = { it / 5 },
+                                    animationSpec = tween(340, easing = EaseIn)
+                                ) +
+                                    fadeOut(animationSpec = tween(290, easing = EaseIn)) +
+                                    scaleOut(
+                                        targetScale = 0.97f,
+                                        animationSpec = tween(340, easing = EaseIn)
+                                    )
+                                )
+                    }
+                },
+                label = "home-library-mode"
+            ) { shelfMode ->
+                if (shelfMode) {
+                    HomeShelfMode(
+                        games = uiState.games,
+                        recentGames = uiState.recentGames,
+                        isCoverArtDisabled = uiState.isCoverArtDisabled,
+                        // Keep the outgoing shelf edge-to-edge until its exit animation finishes.
+                        // The parent state already points at the standard Home layout at that time.
+                        topInset = 0.dp,
+                        bottomInset = 0.dp,
+                        horizontalInset = horizontalInset,
+                        modifier = Modifier.fillMaxSize(),
+                        onExitShelfMode = viewModel::toggleShelfMode,
+                        onEnable3dCoverArt = viewModel::enable3dCoverArt,
+                        onGameClick = onGameClick,
+                        onLongClickStart = onGameClick,
+                        onLongClickContinue = onContinueGame,
+                        onLongClickLoadSave = onLoadSaveClick,
+                        onLongClickManage = onManageGameClick,
+                        onLongClickCreateShortcut = onCreateShortcutClick,
+                        onLongClickOpenGameDb = onOpenGameDbClick,
+                        onLongClickHide = { viewModel.setGameHidden(it, true) },
+                        onShowHiddenGames = onShowHiddenGames,
+                        onLongClickCustomCover = { game ->
+                            gameAwaitingPickerLaunch = game
+                        },
+                        onLongClickRestoreCover = { game -> restoreCustomCover(game) },
+                        onLongClickChangeSerial = requestSerialChange
+                    )
+                } else {
+                    val columns = if (isListView) GridCells.Fixed(1) else GridCells.Adaptive(minSize = minCellSize)
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .onSizeChanged { libraryAreaSizePx = it }
+                    ) {
+                        LazyVerticalGrid(
+                            columns = columns,
+                            state = gridState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(
+                                top = topInset,
+                                bottom = 76.dp + bottomInset
+                            ),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                HomeHeader(
+                                    gamesCount = uiState.games.size,
+                                    isWide = isWide,
+                                    isLandscape = isLandscape,
+                                    horizontalInset = horizontalInset,
+                                    sectionTopSpacing = sectionTopSpacing,
+                                    isRefreshing = uiState.isRefreshing,
+                                    refreshEnabled = !uiState.isRefreshing,
+                                    isShelfView = false,
+                                    standardViewMode = standardViewMode,
+                                    sortOption = uiState.sortOption,
+                                    onSortSelected = viewModel::updateSortOption,
+                                    onRefresh = viewModel::refreshGames,
+                                    onToggleShelfMode = viewModel::toggleShelfMode,
+                                    onToggleLibraryViewMode = viewModel::toggleLibraryViewMode,
+                                    onMenuClick = onMenuClick
+                                )
+                            }
+
+                            if (uiState.showHomeSearch) {
+                                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                    HomeSearchField(
+                                        searchQuery = uiState.searchQuery,
+                                        horizontalInset = horizontalInset,
+                                        sectionBottomSpacing = sectionTopSpacing,
+                                        onSearchQueryChange = viewModel::updateSearchQuery
+                                    )
+                                }
+                            }
+
+                            if (uiState.games.isEmpty()) {
+                                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                    NoGamesState(onShowHiddenGames = onShowHiddenGames)
+                                }
+                            } else {
+                                if (uiState.recentGames.isNotEmpty()) {
+                                    item(key = "recent", contentType = "recent", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                        val recentFocusRequester = libraryFocusRegistry.rememberRowRequester("recent")
+                                        val recentRowState = rememberLazyListState()
+                                        val recentFocusIndex by remember(recentRowState) {
+                                            derivedStateOf { recentRowState.firstVisibleItemIndex }
+                                        }
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = sectionTopSpacing)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = horizontalInset)
+                                                    .padding(vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                Text(
+                                                    text = stringResource(R.string.home_recent_title),
+                                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                HomeSectionDivider(modifier = Modifier.weight(1f))
+                                            }
+                                            Spacer(modifier = Modifier.height(sectionInnerSpacing))
+                                            LazyRow(
+                                                state = recentRowState,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 4.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                rowItemsIndexed(
+                                                    items = uiState.recentGames,
+                                                    key = { _, game -> "recent_${game.path}" }
+                                                ) { index, game ->
+                                                    val showCoverPlaceholder = uiState.isCoverArtDisabled &&
+                                                        !customCoverRepository.isCustomCoverPath(game.coverArtPath)
+                                                    RecentGameCard(
+                                                        modifier = Modifier
+                                                            .padding(
+                                                                start = if (index == 0) horizontalInset else 0.dp,
+                                                                end = if (index == uiState.recentGames.lastIndex) horizontalInset else 0.dp
+                                                            ),
+                                                        focusModifier = if (index == recentFocusIndex) Modifier.focusRequester(recentFocusRequester) else Modifier,
+                                                        game = game,
+                                                        showCenteredTitlePlaceholder = showCoverPlaceholder,
+                                                        onClick = { onGameClick(game) },
+                                                        onLongClickStart = { onGameClick(game) },
+                                                        onLongClickContinue = { onContinueGame(game) },
+                                                        onLongClickLoadSave = { onLoadSaveClick(game) },
+                                                        onLongClickManage = { onManageGameClick(game) },
+                                                        onLongClickCreateShortcut = { onCreateShortcutClick(game) },
+                                                        onLongClickOpenGameDb = { onOpenGameDbClick(game) },
+                                                        onLongClickHide = { viewModel.setGameHidden(game, true) },
+                                                        onShowHiddenGames = onShowHiddenGames,
+                                                        onLongClickCustomCover = {
+                                                            gameAwaitingPickerLaunch = game
+                                                        },
+                                                        onLongClickRestoreCover = { restoreCustomCover(game) },
+                                                        onLongClickChangeSerial = requestSerialChange?.let { action ->
+                                                            { action(game) }
+                                                        },
+                                                        compact = isLandscape,
+                                                        coverScale = uiState.homeGridScale
+                                                    )
+                                                }
+                                            }
+                                            HomeSectionDivider(
+                                                modifier = Modifier
+                                                    .padding(horizontal = horizontalInset)
+                                                    .padding(top = 10.dp, bottom = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                homeLibraryItems(
+                                    sections = uiState.librarySections,
+                                    columns = columnsCount,
+                                    listView = isListView,
+                                    header = { section ->
+                                        Box(Modifier.fillMaxWidth().padding(horizontal = horizontalInset)) {
+                                            HomePlatformHeader(requireNotNull(section.platform), section.games.size)
+                                        }
+                                    },
+                                    row = { rowGames, rowColumns ->
+                                        val rowFocusRequester = libraryFocusRegistry.rememberRowRequester(homeLibraryRowKey(rowGames.first()))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalInset),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            rowGames.forEach { game ->
+                                                val showCoverPlaceholder = uiState.isCoverArtDisabled &&
+                                                    !customCoverRepository.isCustomCoverPath(game.coverArtPath)
+                                                Box(modifier = Modifier.weight(1f)) {
+                                                    val itemFocusModifier = if (game == rowGames.first()) {
+                                                        Modifier.focusRequester(rowFocusRequester)
+                                                    } else {
+                                                        Modifier
+                                                    }
+                                                    if (isListView) {
+                                                        GameListCard(
+                                                            focusModifier = itemFocusModifier,
+                                                            game = game,
+                                                            showCoverArt = !showCoverPlaceholder,
+                                                            onClick = { onGameClick(game) },
+                                                            onLongClickStart = { onGameClick(game) },
+                                                            onLongClickContinue = { onContinueGame(game) },
+                                                            onLongClickLoadSave = { onLoadSaveClick(game) },
+                                                            onLongClickManage = { onManageGameClick(game) },
+                                                            onLongClickCreateShortcut = { onCreateShortcutClick(game) },
+                                                            onLongClickOpenGameDb = { onOpenGameDbClick(game) },
+                                                            onLongClickHide = { viewModel.setGameHidden(game, true) },
+                                                            onShowHiddenGames = onShowHiddenGames,
+                                                            onLongClickCustomCover = {
+                                                                gameAwaitingPickerLaunch = game
+                                                            },
+                                                            onLongClickRestoreCover = { restoreCustomCover(game) },
+                                                            onLongClickChangeSerial = requestSerialChange?.let { action ->
+                                                                { action(game) }
+                                                            }
+                                                        )
+                                                    } else {
+                                                        GameCard(
+                                                            focusModifier = itemFocusModifier,
+                                                            game = game,
+                                                            showCenteredTitlePlaceholder = showCoverPlaceholder,
+                                                            onClick = { onGameClick(game) },
+                                                            onLongClickStart = { onGameClick(game) },
+                                                            onLongClickContinue = { onContinueGame(game) },
+                                                            onLongClickLoadSave = { onLoadSaveClick(game) },
+                                                            onLongClickManage = { onManageGameClick(game) },
+                                                            onLongClickCreateShortcut = { onCreateShortcutClick(game) },
+                                                            onLongClickOpenGameDb = { onOpenGameDbClick(game) },
+                                                            onLongClickHide = { viewModel.setGameHidden(game, true) },
+                                                            onShowHiddenGames = onShowHiddenGames,
+                                                            onLongClickCustomCover = {
+                                                                gameAwaitingPickerLaunch = game
+                                                            },
+                                                            onLongClickRestoreCover = { restoreCustomCover(game) },
+                                                            onLongClickChangeSerial = requestSerialChange?.let { action ->
+                                                                { action(game) }
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            repeat(rowColumns - rowGames.size) {
+                                                Spacer(modifier = Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        ScrollToTopButton(
+                            visible = showScrollToTop,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 16.dp, bottom = 16.dp + bottomInset),
+                            onClick = {
+                                scope.launch {
+                                    gridState.animateScrollToItem(0)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+    if (showHiddenGames && uiState.hiddenGames.isNotEmpty()) HiddenGamesDialog(
+        games = uiState.hiddenGames,
+        onShowGame = { viewModel.setGameHidden(it, false) },
+        onShowAll = viewModel::showAllHiddenGames,
+        onDismiss = { showHiddenGames = false }
+    )
+    serialDialogGame?.let { game ->
+        GameSerialDialog(
+            game = game,
+            onDismiss = { serialDialogGame = null },
+            onConfirm = { serial ->
+                serialDialogGame = null
+                viewModel.updateGameSerial(game, serial)
+            }
+        )
+    }
+    val canPresentDialogs = !uiState.isBootstrapping &&
+        !uiState.isLoading &&
+        !uiState.isRefreshing &&
+        !isShelfView &&
+        !showWelcomeSupportOptions
+    val activeDialog = HomeDialogPolicy.activeDialog(
+        canPresent = canPresentDialogs,
+        welcomePending = uiState.showWelcomeDialog,
+        hardwareWarningPending = uiState.showHardwareWarning
+    )
+    if (showWelcomeSupportOptions && supportOffers.isNotEmpty()) {
+        ProSupportOptionsDialog(
+            offers = supportOffers,
+            purchaseInProgress = uiState.isProPurchaseInProgress,
+            onPurchase = { tier ->
+                showWelcomeSupportOptions = false
+                viewModel.dismissWelcomeDialog()
+                (context as? Activity)?.let { activity ->
+                    viewModel.purchasePro(activity, tier)
+                }
+            },
+            onDismiss = { showWelcomeSupportOptions = false }
+        )
+    }
+    when (activeDialog) {
+        HomeActiveDialog.WELCOME -> WelcomeProDialog(
+            isProUnlocked = uiState.isProUnlocked,
+            proPrice = uiState.proPrice,
+            isProductLoading = uiState.isProProductLoading,
+            isPurchaseInProgress = uiState.isProPurchaseInProgress,
+            onDismiss = viewModel::dismissWelcomeDialog,
+            onPurchase = {
+                viewModel.dismissWelcomeDialog()
+                (context as? Activity)?.let(viewModel::purchasePro)
+            },
+            onShowSupportOptions = if (supportOffers.isNotEmpty()) {
+                { showWelcomeSupportOptions = true }
+            } else {
+                null
+            }
+        )
+        HomeActiveDialog.HARDWARE_WARNING -> HardwareWarningDialog(
+            gpuName = uiState.hardwareWarningGpu,
+            onDismiss = viewModel::dismissHardwareWarning
+        )
+        HomeActiveDialog.NONE -> Unit
+    }
+
+}
+
+@Composable
+private fun HomeSectionDivider(modifier: Modifier = Modifier) {
+    HorizontalDivider(
+        modifier = modifier,
+        thickness = 1.dp,
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)
+    )
+
+}
+
+@Composable
+private fun HomePlatformHeader(platform: LibraryPlatform, count: Int) {
+    val label = when (platform) {
+        LibraryPlatform.PS2 -> R.string.home_platform_ps2
+        LibraryPlatform.ARCADE -> R.string.home_platform_arcade
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .padding(top = 16.dp, bottom = 8.dp)
+            .semantics(mergeDescendants = true) { heading() },
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(label),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = NumberFormat.getIntegerInstance().format(count),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        HomeSectionDivider()
+    }
+}
+
+@Composable
+private fun WelcomeProDialog(
+    isProUnlocked: Boolean,
+    proPrice: String?,
+    isProductLoading: Boolean,
+    isPurchaseInProgress: Boolean,
+    onDismiss: () -> Unit,
+    onPurchase: () -> Unit,
+    onShowSupportOptions: (() -> Unit)?
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        showEyebrow = false,
+        showIconContainer = false,
+        icon = {
+            Image(
+                painter = painterResource(
+                    if (isProUnlocked) R.drawable.ic_drawer_app_pro else R.drawable.ic_drawer_app
+                ),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit
+            )
+        },
+        title = { Text(text = stringResource(R.string.welcome_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = stringResource(R.string.welcome_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = when {
+                        isProUnlocked -> stringResource(R.string.pro_status_active)
+                        proPrice != null -> proPrice
+                        isProductLoading -> stringResource(R.string.pro_price_loading)
+                        else -> stringResource(R.string.pro_price_unavailable)
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (onShowSupportOptions != null) {
+                    TextButton(
+                        onClick = onShowSupportOptions,
+                        enabled = !isPurchaseInProgress && !isProductLoading,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Star,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = stringResource(R.string.settings_pro_support_more))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (isProUnlocked) {
+                Button(
+                    shape = neonButtonShape(),onClick = onDismiss) {
+                    Text(text = stringResource(R.string.welcome_secondary))
+                }
+            } else {
+                Button(
+                    shape = neonButtonShape(),onClick = onPurchase, enabled = !isPurchaseInProgress && !isProductLoading) {
+                    Text(
+                        text = if (isPurchaseInProgress) {
+                            stringResource(R.string.pro_purchase_busy)
+                        } else {
+                            stringResource(R.string.welcome_primary)
+                        }
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            if (!isProUnlocked) {
+                TextButton(onClick = onDismiss) {
+                    Text(text = stringResource(R.string.welcome_secondary))
+                }
+            }
+        }
+    )
+}
+@Composable
+private fun HardwareWarningDialog(
+    gpuName: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        showEyebrow = false,
+        showIconContainer = false,
+        icon = {
+            Icon(
+                imageVector = Icons.Rounded.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(40.dp)
+            )
+        },
+        title = { Text(text = stringResource(R.string.hardware_warning_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = stringResource(R.string.hardware_warning_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (gpuName.isNotBlank()) {
+                    Text(
+                        text = stringResource(R.string.hardware_warning_gpu, gpuName),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.hardware_warning_recommended),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            Button(shape = neonButtonShape(), onClick = onDismiss) {
+                Text(text = stringResource(R.string.hardware_warning_continue))
+            }
+        }
+    )
+}
+
+@Composable
+private fun HomeHeader(
+    gamesCount: Int,
+    isWide: Boolean,
+    isLandscape: Boolean,
+    horizontalInset: androidx.compose.ui.unit.Dp,
+    sectionTopSpacing: androidx.compose.ui.unit.Dp,
+    isRefreshing: Boolean,
+    refreshEnabled: Boolean,
+    isShelfView: Boolean,
+    standardViewMode: HomeLibraryViewMode,
+    sortOption: HomeSortOption,
+    onSortSelected: (HomeSortOption) -> Unit,
+    onRefresh: () -> Unit,
+    onToggleShelfMode: () -> Unit,
+    onToggleLibraryViewMode: () -> Unit,
+    onMenuClick: (() -> Unit)? = null
+) {
+    var showLibraryOptions by remember { mutableStateOf(false) }
+    val screenDensity = LocalDensity.current
+    val libraryMenuMaxHeight = with(screenDensity) {
+        (LocalWindowInfo.current.containerSize.height.toDp() - 24.dp).coerceAtLeast(240.dp)
+    }
+    val standardToggleIcon = when {
+        isShelfView && standardViewMode == HomeLibraryViewMode.LIST -> Icons.Rounded.ViewAgenda
+        isShelfView && standardViewMode == HomeLibraryViewMode.GRID -> Icons.Rounded.ViewModule
+        standardViewMode == HomeLibraryViewMode.LIST -> Icons.Rounded.ViewModule
+        else -> Icons.Rounded.ViewAgenda
+    }
+    val standardToggleDescription = when {
+        isShelfView && standardViewMode == HomeLibraryViewMode.LIST -> stringResource(R.string.home_view_list)
+        isShelfView && standardViewMode == HomeLibraryViewMode.GRID -> stringResource(R.string.home_view_grid)
+        standardViewMode == HomeLibraryViewMode.LIST -> stringResource(R.string.home_view_grid)
+        else -> stringResource(R.string.home_view_list)
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = horizontalInset,
+                end = horizontalInset,
+                top = if (isLandscape) sectionTopSpacing else 2.dp,
+                bottom = sectionTopSpacing
+            ),
+        shape = neonShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.62f)
+        ),
+        tonalElevation = 1.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = 10.dp + if (LocalNeonTheme.current) 8.dp else 0.dp,
+                    end = 10.dp,
+                    top = 8.dp,
+                    bottom = 8.dp
+                ),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (!isWide && onMenuClick != null) {
+                    val drawerInteractionSource = remember { MutableInteractionSource() }
+                    Surface(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clickable(
+                                interactionSource = drawerInteractionSource,
+                                indication = null,
+                                onClick = rememberDebouncedClick(onClick = onMenuClick)
+                            )
+                            .gamepadFocusableCard(
+                                shape = neonShape(14.dp),
+                                interactionSource = drawerInteractionSource,
+                                addFocusTarget = false
+                            ),
+                        shape = neonShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.54f),
+                        border = BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.50f)
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Menu,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.shell_library),
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = stringResource(R.string.home_game_count, gamesCount),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Surface(
+                shape = neonShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.50f)
+                )
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        IconButton(
+                            modifier = Modifier.size(42.dp),
+                            onClick = { showLibraryOptions = true }
+                        ) {
+                            if (isRefreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(19.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Rounded.Tune,
+                                    contentDescription = stringResource(R.string.home_library_options),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = showLibraryOptions,
+                            onDismissRequest = { showLibraryOptions = false },
+                            modifier = Modifier
+                                .widthIn(min = 248.dp, max = 310.dp)
+                                .heightIn(max = libraryMenuMaxHeight)
+                                .compensateDropdownMenuPadding(),
+                            shape = neonShape(20.dp),
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 0.dp,
+                            shadowElevation = 12.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
+                        ) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            GameContextMenuItem(
+                                text = stringResource(R.string.home_refresh),
+                                icon = Icons.Rounded.Refresh,
+                                emphasized = true,
+                                enabled = refreshEnabled,
+                                onClick = { showLibraryOptions = false; onRefresh() }
+                            )
+                            GameContextMenuDivider()
+                            HomeSortOption.entries.forEach { option ->
+                                val label = when (option) {
+                                    HomeSortOption.TITLE_ASC -> R.string.home_sort_title_asc
+                                    HomeSortOption.TITLE_DESC -> R.string.home_sort_title_desc
+                                    HomeSortOption.RECENT_DESC -> R.string.home_sort_recent_desc
+                                    HomeSortOption.RECENT_ASC -> R.string.home_sort_recent_asc
+                                    HomeSortOption.SIZE_DESC -> R.string.home_sort_size_desc
+                                    HomeSortOption.SIZE_ASC -> R.string.home_sort_size_asc
+                                    HomeSortOption.PLATFORM -> R.string.home_sort_platform
+                                }
+                                GameContextMenuItem(
+                                    text = stringResource(label),
+                                    icon = when (option) {
+                                        HomeSortOption.TITLE_ASC,
+                                        HomeSortOption.TITLE_DESC -> Icons.Rounded.SortByAlpha
+                                        HomeSortOption.RECENT_DESC,
+                                        HomeSortOption.RECENT_ASC -> Icons.Rounded.History
+                                        HomeSortOption.SIZE_DESC,
+                                        HomeSortOption.SIZE_ASC -> Icons.Rounded.Storage
+                                        HomeSortOption.PLATFORM -> Icons.Rounded.Devices
+                                    },
+                                    selected = sortOption == option,
+                                    onClick = { onSortSelected(option); showLibraryOptions = false }
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                    HomeHeaderActionDivider()
+                    IconButton(
+                        modifier = Modifier.size(42.dp),
+                        onClick = onToggleShelfMode
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.ViewCarousel,
+                            contentDescription = if (isShelfView) {
+                                stringResource(R.string.home_exit_shelf)
+                            } else {
+                                stringResource(R.string.home_view_shelf)
+                            },
+                            tint = if (isShelfView) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    HomeHeaderActionDivider()
+                    IconButton(
+                        modifier = Modifier.size(42.dp),
+                        onClick = onToggleLibraryViewMode
+                    ) {
+                        Icon(
+                            imageVector = standardToggleIcon,
+                            contentDescription = standardToggleDescription,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private val DropdownMenuVerticalPaddingCompensation = 8.dp
+
+/**
+ * Material's DropdownMenu applies its 8dp vertical padding outside the scroll viewport,
+ * which leaves fixed empty strips at the top and bottom and clips the content early.
+ * Expanding the measured height by that padding lets the internal scroll use the full
+ * menu surface, so every item scrolls through completely without visible bands.
+ */
+private fun Modifier.compensateDropdownMenuPadding(): Modifier = layout { measurable, constraints ->
+    val padding = DropdownMenuVerticalPaddingCompensation.roundToPx()
+    val childMaxHeight = if (constraints.hasBoundedHeight) {
+        constraints.maxHeight + padding * 2
+    } else {
+        Constraints.Infinity
+    }
+    val placeable = measurable.measure(
+        constraints.copy(minHeight = 0, maxHeight = childMaxHeight)
+    )
+    val height = (placeable.height - padding * 2).coerceAtLeast(0)
+    layout(placeable.width, height) {
+        placeable.place(0, -padding)
+    }
+}
+
+@Composable
+private fun HomeHeaderActionDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(20.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+    )
+}
+
+@Composable
+private fun HomeSearchField(
+    searchQuery: String,
+    horizontalInset: androidx.compose.ui.unit.Dp,
+    sectionBottomSpacing: androidx.compose.ui.unit.Dp,
+    onSearchQueryChange: (String) -> Unit
+) {
+    OutlinedTextField(
+        value = searchQuery,
+        onValueChange = onSearchQueryChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = horizontalInset)
+            .padding(top = 0.dp, bottom = sectionBottomSpacing)
+            .skipGamepadTextFieldFocus(),
+        placeholder = {
+            Text(
+                stringResource(R.string.home_search),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            )
+        },
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Rounded.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            )
+        },
+        trailingIcon = {
+            if (searchQuery.isNotBlank()) {
+                IconButton(onClick = { onSearchQueryChange("") }) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.home_search_clear),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        singleLine = true,
+        shape = neonShape(20.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+        )
+    )
+}
+
+@Composable
+private fun ScrollToTopButton(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(180)) + scaleIn(tween(180)),
+        exit = fadeOut(tween(140)) + scaleOut(tween(140)),
+        modifier = modifier
+    ) {
+        val shape = neonShape(18.dp)
+        val interactionSource = remember { MutableInteractionSource() }
+
+        Box(
+            modifier = Modifier
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick
+                )
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.KeyboardArrowUp,
+                contentDescription = stringResource(R.string.back),
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun LoadingState() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            PremiumLoadingAnimation(size = 80.dp)
+
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(
+    biosReady: Boolean,
+    gamesReady: Boolean,
+    onBiosClick: () -> Unit,
+    onFolderClick: () -> Unit,
+    topInset: androidx.compose.ui.unit.Dp
+) {
+    val scrollState = rememberScrollState()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(
+                top = topInset,
+                start = ScreenHorizontalPadding,
+                end = ScreenHorizontalPadding,
+                bottom = 24.dp
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(100.dp)
+                    .clip(neonShape(28.dp))
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                GradientStart.copy(alpha = 0.15f),
+                                GradientEnd.copy(alpha = 0.15f)
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.SportsEsports,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.home_empty_title),
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = stringResource(R.string.home_empty_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                FilledTonalButton(
+                    shape = neonButtonShape(),
+                    onClick = onBiosClick,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Memory,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.home_choose_bios))
+                }
+                FilledTonalButton(
+                    shape = neonButtonShape(),
+                    onClick = onFolderClick,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.FolderOpen,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.settings_game_path))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            StatusCard(
+                icon = Icons.Rounded.CheckCircle,
+                title = stringResource(R.string.settings_bios_path),
+                isReady = biosReady,
+                modifier = Modifier.fillMaxWidth()
+            )
+            StatusCard(
+                icon = Icons.Rounded.FolderOpen,
+                title = stringResource(R.string.settings_game_path),
+                isReady = gamesReady,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusCard(
+    icon: ImageVector,
+    title: String,
+    isReady: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = neonShape(18.dp),
+        color = if (isReady) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        } else {
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
+        },
+        tonalElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(neonShape(10.dp))
+                    .background(
+                        if (isReady) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        else MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (isReady) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = if (isReady) stringResource(R.string.home_status_ready)
+                    else stringResource(R.string.home_status_missing),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isReady) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun NoGamesState(onShowHiddenGames: (() -> Unit)? = null) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(400.dp)
+            .padding(ScreenHorizontalPadding),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Search,
+                contentDescription = null,
+                modifier = Modifier.size(56.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
+            )
+            Text(
+                text = stringResource(R.string.home_empty_search_title),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = stringResource(if (onShowHiddenGames != null) R.string.home_hidden_description else R.string.home_empty_search_subtitle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            if (onShowHiddenGames != null) FilledTonalButton(
+                shape = neonButtonShape(),onClick = onShowHiddenGames) {
+                Icon(Icons.Rounded.Visibility, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.home_game_menu_show_hidden))
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentGameCard(
+    modifier: Modifier = Modifier,
+    focusModifier: Modifier = Modifier,
+    game: GameItem,
+    showCenteredTitlePlaceholder: Boolean,
+    onClick: () -> Unit,
+    onLongClickStart: () -> Unit,
+    onLongClickContinue: () -> Unit,
+    onLongClickLoadSave: () -> Unit,
+    onLongClickManage: () -> Unit,
+    onLongClickCreateShortcut: () -> Unit,
+    onLongClickOpenGameDb: () -> Unit,
+    onLongClickHide: () -> Unit,
+    onShowHiddenGames: (() -> Unit)?,
+    onLongClickCustomCover: () -> Unit,
+    onLongClickRestoreCover: () -> Unit,
+    onLongClickChangeSerial: (() -> Unit)?,
+    compact: Boolean,
+    coverScale: Float
+) {
+    val debouncedClick = rememberDebouncedClick(onClick = onClick)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (isPressed) 0.95f else 1f, tween(100))
+    var showMenu by remember(game.path) { mutableStateOf(false) }
+    val is3dCover = isGenerated3dCover(game.coverArtPath)
+    var coverAspectRatio by remember(game.coverArtPath) { mutableStateOf<Float?>(null) }
+    val coverShape = if (is3dCover || !showCenteredTitlePlaceholder) {
+        RectangleShape
+    } else {
+        neonShape(16.dp)
+    }
+    val resolvedCoverAspectRatio = if (is3dCover || showCenteredTitlePlaceholder) {
+        GameCoverAspectRatio
+    } else {
+        (coverAspectRatio ?: GameCoverAspectRatio).coerceIn(0.62f, 1.0f)
+    }
+
+    Box(
+        modifier = modifier
+            .width((if (compact) 98.dp else 108.dp) * coverScale)
+    ) {
+        Surface(
+            modifier = focusModifier
+                .fillMaxWidth()
+                .graphicsLayer(scaleX = scale, scaleY = scale)
+                .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = debouncedClick,
+                    onLongClick = { showMenu = true }
+                )
+                .gamepadFocusableCard(
+                    showIdleBorder = !is3dCover,
+                    shape = coverShape,
+                    interactionSource = interactionSource,
+                    addFocusTarget = false
+                ),
+            shape = coverShape,
+            color = if (is3dCover) Color.Transparent else MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(resolvedCoverAspectRatio)
+                    .background(if (is3dCover) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            ) {
+                if (showCenteredTitlePlaceholder) {
+                    GridCoverPlaceholder(
+                        modifier = Modifier.fillMaxSize(),
+                        title = game.title,
+                        titleMaxLines = if (compact) 3 else 4,
+                        contentScale = ContentScale.Fit
+                    )
+                } else {
+                    GameCoverArt(
+                        coverPath = game.coverArtPath,
+                        fallbackTitle = game.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                        onAspectRatioResolved = { ratio ->
+                            if (ratio.isFinite() && ratio > 0f) coverAspectRatio = ratio
+                        }
+                    )
+                }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 8.dp, bottom = 8.dp)
+        ) {
+            GameCardContextMenu(
+                game = game,
+                expanded = showMenu,
+                offset = DpOffset(x = 0.dp, y = 10.dp),
+                onDismiss = { showMenu = false },
+                onStart = {
+                    showMenu = false
+                    onLongClickStart()
+                },
+                onContinue = {
+                    showMenu = false
+                    onLongClickContinue()
+                },
+                onLoadSave = {
+                    showMenu = false
+                    onLongClickLoadSave()
+                },
+                onManage = {
+                    showMenu = false
+                    onLongClickManage()
+                },
+                onCreateShortcut = {
+                    showMenu = false
+                    onLongClickCreateShortcut()
+                },
+                onOpenGameDb = {
+                    showMenu = false
+                    onLongClickOpenGameDb()
+                },
+                onHide = {
+                    showMenu = false
+                    onLongClickHide()
+                },
+                onShowHiddenGames = onShowHiddenGames?.let { action ->
+                    { showMenu = false; action() }
+                },
+                onCustomCover = {
+                    showMenu = false
+                    onLongClickCustomCover()
+                },
+                onRestoreCover = {
+                    showMenu = false
+                    onLongClickRestoreCover()
+                },
+                onChangeSerial = onLongClickChangeSerial?.let { action ->
+                    { showMenu = false; action() }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun GameCard(
+    modifier: Modifier = Modifier,
+    focusModifier: Modifier = Modifier,
+    game: GameItem,
+    showCenteredTitlePlaceholder: Boolean,
+    onClick: () -> Unit,
+    onLongClickStart: () -> Unit,
+    onLongClickContinue: () -> Unit,
+    onLongClickLoadSave: () -> Unit,
+    onLongClickManage: () -> Unit,
+    onLongClickCreateShortcut: () -> Unit,
+    onLongClickOpenGameDb: () -> Unit,
+    onLongClickHide: () -> Unit,
+    onShowHiddenGames: (() -> Unit)?,
+    onLongClickCustomCover: () -> Unit,
+    onLongClickRestoreCover: () -> Unit,
+    onLongClickChangeSerial: (() -> Unit)?
+) {
+    val debouncedClick = rememberDebouncedClick(onClick = onClick)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (isPressed) 0.96f else 1f, tween(100))
+    var showMenu by remember(game.path) { mutableStateOf(false) }
+    val is3dCover = isGenerated3dCover(game.coverArtPath)
+    var coverAspectRatio by remember(game.coverArtPath) { mutableStateOf<Float?>(null) }
+    // Real covers keep their own proportions inside a plain rectangle, so nothing is
+    // cropped by rounded corners and no empty bars appear inside the frame.
+    val coverShape = if (is3dCover || !showCenteredTitlePlaceholder) {
+        RectangleShape
+    } else {
+        neonShape(16.dp)
+    }
+    val resolvedCoverAspectRatio = if (is3dCover || showCenteredTitlePlaceholder) {
+        GameCoverAspectRatio
+    } else {
+        (coverAspectRatio ?: GameCoverAspectRatio).coerceIn(0.62f, 1.0f)
+    }
+    val isLightTheme = MaterialTheme.colorScheme.background.luminance() > 0.5f
+    val gridCardBorder = if (isLightTheme) {
+        BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.34f))
+    } else {
+        null
+    }
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        Surface(
+        modifier = focusModifier
+            .fillMaxWidth()
+            .graphicsLayer(scaleX = scale, scaleY = scale)
+            .animateContentSize()
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = debouncedClick,
+                onLongClick = { showMenu = true }
+            )
+            .gamepadFocusableCard(
+                showIdleBorder = !is3dCover,
+                shape = coverShape,
+                interactionSource = interactionSource,
+                addFocusTarget = false
+            ),
+        shape = coverShape,
+        color = if (is3dCover) Color.Transparent else MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        border = if (is3dCover) null else gridCardBorder
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(resolvedCoverAspectRatio)
+                .background(if (is3dCover) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+        ) {
+            if (showCenteredTitlePlaceholder) {
+                GridCoverPlaceholder(
+                    modifier = Modifier.fillMaxSize(),
+                    title = game.title,
+                    titleMaxLines = 4,
+                    contentScale = ContentScale.Fit
+                )
+            } else {
+                GameCoverArt(
+                    coverPath = game.coverArtPath,
+                    fallbackTitle = game.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                    onAspectRatioResolved = { ratio ->
+                        if (ratio.isFinite() && ratio > 0f) coverAspectRatio = ratio
+                    }
+                )
+            }
+        }
+    }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 8.dp, bottom = 8.dp)
+        ) {
+            GameCardContextMenu(
+                game = game,
+                expanded = showMenu,
+                offset = DpOffset(x = 0.dp, y = 10.dp),
+                onDismiss = { showMenu = false },
+                onStart = {
+                    showMenu = false
+                    onLongClickStart()
+                },
+                onContinue = {
+                    showMenu = false
+                    onLongClickContinue()
+                },
+                onLoadSave = {
+                    showMenu = false
+                    onLongClickLoadSave()
+                },
+                onManage = {
+                    showMenu = false
+                    onLongClickManage()
+                },
+                onCreateShortcut = {
+                    showMenu = false
+                    onLongClickCreateShortcut()
+                },
+                onOpenGameDb = {
+                    showMenu = false
+                    onLongClickOpenGameDb()
+                },
+                onHide = {
+                    showMenu = false
+                    onLongClickHide()
+                },
+                onShowHiddenGames = onShowHiddenGames?.let { action ->
+                    { showMenu = false; action() }
+                },
+                onCustomCover = {
+                    showMenu = false
+                    onLongClickCustomCover()
+                },
+                onRestoreCover = {
+                    showMenu = false
+                    onLongClickRestoreCover()
+                },
+                onChangeSerial = onLongClickChangeSerial?.let { action ->
+                    { showMenu = false; action() }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun GameListCard(
+    modifier: Modifier = Modifier,
+    focusModifier: Modifier = Modifier,
+    game: GameItem,
+    showCoverArt: Boolean,
+    onClick: () -> Unit,
+    onLongClickStart: () -> Unit,
+    onLongClickContinue: () -> Unit,
+    onLongClickLoadSave: () -> Unit,
+    onLongClickManage: () -> Unit,
+    onLongClickCreateShortcut: () -> Unit,
+    onLongClickOpenGameDb: () -> Unit,
+    onLongClickHide: () -> Unit,
+    onShowHiddenGames: (() -> Unit)?,
+    onLongClickCustomCover: () -> Unit,
+    onLongClickRestoreCover: () -> Unit,
+    onLongClickChangeSerial: (() -> Unit)?
+) {
+    val debouncedClick = rememberDebouncedClick(onClick = onClick)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (isPressed) 0.985f else 1f, tween(100))
+    var showMenu by remember(game.path) { mutableStateOf(false) }
+    val is3dCover = isGenerated3dCover(game.coverArtPath)
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        Surface(
+        modifier = focusModifier
+            .fillMaxWidth()
+            .graphicsLayer(scaleX = scale, scaleY = scale)
+            .animateContentSize()
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = debouncedClick,
+                onLongClick = { showMenu = true }
+            )
+            .gamepadFocusableCard(
+                shape = neonShape(16.dp),
+                interactionSource = interactionSource,
+                addFocusTarget = false
+            ),
+        shape = neonShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            if (showCoverArt) {
+                val listCoverShape = if (is3dCover || !game.coverArtPath.isNullOrBlank()) {
+                    RectangleShape
+                } else {
+                    neonShape(10.dp)
+                }
+                Box(
+                    modifier = Modifier
+                        .width(52.dp)
+                        .aspectRatio(GameCoverAspectRatio)
+                        .clip(listCoverShape)
+                ) {
+                    GameCoverArt(
+                        coverPath = game.coverArtPath,
+                        fallbackTitle = game.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 78.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = game.title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth(),
+                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 2
+                )
+                SerialLabel(game = game)
+                Text(
+                    text = game.fileName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = formatCompactFileSize(game.fileSize),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.align(Alignment.End)
+                )
+            }
+        }
+    }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 8.dp, bottom = 8.dp)
+        ) {
+            GameCardContextMenu(
+                game = game,
+                expanded = showMenu,
+                offset = DpOffset.Zero,
+                onDismiss = { showMenu = false },
+                onStart = {
+                    showMenu = false
+                    onLongClickStart()
+                },
+                onContinue = {
+                    showMenu = false
+                    onLongClickContinue()
+                },
+                onLoadSave = {
+                    showMenu = false
+                    onLongClickLoadSave()
+                },
+                onManage = {
+                    showMenu = false
+                    onLongClickManage()
+                },
+                onCreateShortcut = {
+                    showMenu = false
+                    onLongClickCreateShortcut()
+                },
+                onOpenGameDb = {
+                    showMenu = false
+                    onLongClickOpenGameDb()
+                },
+                onHide = {
+                    showMenu = false
+                    onLongClickHide()
+                },
+                onShowHiddenGames = onShowHiddenGames?.let { action ->
+                    { showMenu = false; action() }
+                },
+                onCustomCover = {
+                    showMenu = false
+                    onLongClickCustomCover()
+                },
+                onRestoreCover = {
+                    showMenu = false
+                    onLongClickRestoreCover()
+                },
+                onChangeSerial = onLongClickChangeSerial?.let { action ->
+                    { showMenu = false; action() }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+internal fun GridCoverPlaceholder(
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    titleMaxLines: Int = 3,
+    contentScale: ContentScale = ContentScale.Crop
+) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        CoverPlaceholderArt(
+            modifier = Modifier.fillMaxSize(),
+            contentScale = contentScale
+        )
+
+        if (!title.isNullOrBlank()) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                maxLines = titleMaxLines,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp)
+            )
+        }
+    }
+}
+
+@Composable
+internal fun CoverPlaceholderArt(
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop
+) {
+    Image(
+        painter = painterResource(R.drawable.game_cover_placeholder_bg),
+        contentDescription = null,
+        modifier = modifier,
+        contentScale = contentScale,
+        alpha = 0.98f
+    )
+}
+
+@Composable
+private fun HiddenGamesDialog(
+    games: List<GameItem>,
+    onShowGame: (GameItem) -> Unit,
+    onShowAll: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        showEyebrow = false,
+        icon = { Icon(Icons.Rounded.VisibilityOff, null, tint = MaterialTheme.colorScheme.primary) },
+        title = { Text(stringResource(R.string.home_hidden_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(stringResource(R.string.home_hidden_description), style = MaterialTheme.typography.bodyMedium)
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(games, key = { it.path }) { game ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = neonShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                        ) {
+                            Row(
+                                Modifier.padding(start = 12.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                GameCoverArt(
+                                    coverPath = game.coverArtPath,
+                                    fallbackTitle = game.title,
+                                    modifier = Modifier.width(40.dp).height(58.dp).clip(neonShape(8.dp)),
+                                    contentScale = ContentScale.Fit
+                                )
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(game.title, style = MaterialTheme.typography.titleSmall,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text(game.fileName, style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                                TextButton(onClick = { onShowGame(game) }) {
+                                    Text(stringResource(R.string.home_hidden_show))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onShowAll) { Text(stringResource(R.string.home_hidden_show_all)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } }
+    )
+}
+
+@Composable
+internal fun GameCardContextMenu(
+    game: GameItem,
+    expanded: Boolean,
+    offset: DpOffset,
+    onDismiss: () -> Unit,
+    onStart: () -> Unit,
+    onContinue: () -> Unit,
+    onLoadSave: () -> Unit,
+    onManage: () -> Unit,
+    onCreateShortcut: () -> Unit,
+    onOpenGameDb: () -> Unit,
+    onCustomCover: () -> Unit,
+    onRestoreCover: () -> Unit,
+    onHide: () -> Unit,
+    onShowHiddenGames: (() -> Unit)?,
+    onChangeSerial: (() -> Unit)?
+) {
+    val context = LocalContext.current
+    val customCovers = remember(context) { CustomGameCoverRepository(context) }
+    val hasCustomCover = remember(game.coverArtPath, customCovers) {
+        customCovers.isCustomCoverPath(game.coverArtPath)
+    }
+    val screenDensity = LocalDensity.current
+    val contextMenuMaxHeight = with(screenDensity) {
+        (LocalWindowInfo.current.containerSize.height.toDp() - 24.dp).coerceAtLeast(240.dp)
+    }
+    DropdownMenu(
+        expanded = expanded,
+        offset = offset,
+        onDismissRequest = onDismiss,
+        modifier = Modifier
+            .widthIn(min = 248.dp, max = 310.dp)
+            .heightIn(max = contextMenuMaxHeight)
+            .compensateDropdownMenuPadding(),
+        shape = neonShape(20.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+        shadowElevation = 12.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
+    ) {
+        Spacer(modifier = Modifier.height(8.dp))
+        GameContextMenuItem(
+            text = stringResource(R.string.home_game_menu_start),
+            icon = Icons.Rounded.PlayArrow,
+            emphasized = true,
+            onClick = onStart
+        )
+        GameContextMenuItem(
+            text = stringResource(R.string.home_game_menu_continue),
+            icon = Icons.Rounded.Restore,
+            onClick = onContinue
+        )
+        GameContextMenuItem(
+            text = stringResource(R.string.home_game_menu_load_save),
+            icon = Icons.Rounded.Save,
+            onClick = onLoadSave
+        )
+        GameContextMenuDivider()
+        GameContextMenuItem(
+            text = stringResource(R.string.home_game_menu_manager),
+            icon = Icons.Rounded.Tune,
+            onClick = onManage
+        )
+        GameContextMenuItem(
+            text = stringResource(R.string.home_game_menu_gamedb),
+            icon = Icons.Rounded.Search,
+            onClick = onOpenGameDb
+        )
+        if (onChangeSerial != null) GameContextMenuItem(
+            text = stringResource(R.string.home_game_menu_change_serial),
+            icon = Icons.Rounded.Numbers,
+            onClick = onChangeSerial
+        )
+        GameContextMenuDivider()
+        GameContextMenuItem(
+            text = stringResource(R.string.home_game_menu_shortcut),
+            icon = Icons.Rounded.Link,
+            onClick = onCreateShortcut
+        )
+        GameContextMenuItem(
+            text = stringResource(R.string.home_game_menu_custom_cover),
+            icon = Icons.Rounded.Image,
+            onClick = onCustomCover
+        )
+        if (hasCustomCover) GameContextMenuItem(
+            text = stringResource(R.string.home_game_menu_restore_cover),
+            icon = Icons.Rounded.Restore,
+            onClick = onRestoreCover
+        )
+        GameContextMenuDivider()
+        GameContextMenuItem(
+            text = stringResource(R.string.home_game_menu_hide),
+            icon = Icons.Rounded.VisibilityOff,
+            onClick = onHide
+        )
+        if (onShowHiddenGames != null) GameContextMenuItem(
+            text = stringResource(R.string.home_game_menu_show_hidden),
+            icon = Icons.Rounded.Visibility,
+            onClick = onShowHiddenGames
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun GameContextMenuItem(
+    text: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    emphasized: Boolean = false,
+    enabled: Boolean = true,
+    selected: Boolean = false
+) {
+    val contentAlpha = if (enabled) 1f else 0.38f
+    DropdownMenuItem(
+        text = {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Medium
+                ),
+                color = (
+                    if (emphasized) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    ).copy(alpha = contentAlpha),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        },
+        onClick = onClick,
+        enabled = enabled,
+        leadingIcon = {
+            val iconBoxColor = if (emphasized) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.68f)
+            }
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(neonShape(11.dp))
+                    .background(iconBoxColor.copy(alpha = iconBoxColor.alpha * contentAlpha)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(19.dp),
+                    tint = (
+                        if (emphasized) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        ).copy(alpha = contentAlpha)
+                )
+            }
+        },
+        trailingIcon = if (selected) {
+            {
+                Icon(
+                    imageVector = Icons.Rounded.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        } else {
+            null
+        },
+        contentPadding = PaddingValues(horizontal = 12.dp)
+    )
+}
+
+@Composable
+private fun GameContextMenuDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.62f)
+    )
+}
+
+@Composable
+private fun SerialLabel(
+    game: GameItem,
+    modifier: Modifier = Modifier
+) {
+    val serial = game.serial?.takeIf { it.isNotBlank() } ?: return
+    Text(
+        modifier = modifier,
+        text = serial,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.primary,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+internal fun formatCompactFileSize(bytes: Long): String {
+    return when {
+        bytes >= 1_073_741_824L -> String.format(Locale.US, "%.2f GB", bytes / 1_073_741_824.0)
+        bytes >= 1_048_576L -> String.format(Locale.US, "%.1f MB", bytes / 1_048_576.0)
+        bytes >= 1024L -> String.format(Locale.US, "%.0f KB", bytes / 1024.0)
+        else -> "$bytes B"
+    }
+}

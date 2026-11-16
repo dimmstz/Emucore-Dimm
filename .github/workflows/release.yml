@@ -88,11 +88,10 @@ jobs:
     name: Build Universal ARM64 Android Release (4KB + 16KB Pages)
     needs: prepare
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
-      - name: Checkout repository with submodules
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Check Gradle wrapper availability
         id: check_gradle
@@ -103,12 +102,12 @@ jobs:
             echo "has_gradlew=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Setup JDK 17
+      - name: Setup JDK 21
         if: steps.check_gradle.outputs.has_gradlew == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
           cache: 'gradle'
 
       - name: Setup Android SDK, NDK r29 & CMake
@@ -116,6 +115,14 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: 'platforms;android-36 build-tools;36.0.0 ndk;29.0.14206865 cmake;3.22.1'
+
+      - name: Ensure Android API 37 platform & Hydrate Native Core
+        if: steps.check_gradle.outputs.has_gradlew == 'true'
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-37" || true
+          chmod +x scripts/prepare-android-core.sh
+          ./scripts/prepare-android-core.sh
 
       - name: Configure Keystore Signing (if secrets provided)
         if: steps.check_gradle.outputs.has_gradlew == 'true'
@@ -134,7 +141,7 @@ jobs:
               echo "emucorex.release.keyPassword=$ANDROID_KEY_PASSWORD"
             } >> emucorex_repo/local.properties
           else
-            echo "Keystore secret não configurada; compilando release sem assinatura customizada."
+            echo "Keystore secret não configurada; compilando release com assinatura padrão instalável."
           fi
 
       - name: Assemble Universal ARM64 APK & AAB

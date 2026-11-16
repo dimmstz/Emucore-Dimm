@@ -1,0 +1,6240 @@
+package com.sbro.emucorex.ui.emulation
+
+import android.app.Application
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.util.Log
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.dimm.emustation.BuildConfig
+import com.sbro.emucorex.EmuCoreXApp
+import com.sbro.emucorex.discord.DiscordIntegration
+import com.sbro.emucorex.core.AndroidGamePerformance
+import com.sbro.emucorex.core.AndroidGamePhase
+import com.sbro.emucorex.core.AppAnalytics
+import com.sbro.emucorex.core.AudioDefaults
+import com.sbro.emucorex.core.BiosValidator
+import com.sbro.emucorex.core.DocumentPathResolver
+import com.sbro.emucorex.core.EmulatorBridge
+import com.sbro.emucorex.core.RendererDefaults
+import com.sbro.emucorex.core.SetupValidator
+import com.sbro.emucorex.core.VulkanStartupGuard
+import com.sbro.emucorex.core.EmulatorStorage
+import com.sbro.emucorex.core.GamepadManager
+import com.sbro.emucorex.core.KeyboardMouseManager
+import com.sbro.emucorex.core.GpuDriverManager
+import com.sbro.emucorex.core.FrameGenerationManager
+import com.sbro.emucorex.core.FrameGenerationSettings
+import com.sbro.emucorex.core.GsHackDefaults
+import com.sbro.emucorex.core.MobileSocNameMapper
+import com.sbro.emucorex.core.NativeApp
+import com.sbro.emucorex.core.PerformanceProfiles
+import com.sbro.emucorex.core.PerformancePresets
+import com.sbro.emucorex.core.resolveAndroidGamePhase
+import com.sbro.emucorex.core.utils.RetroAchievementsLiveStateManager
+import com.sbro.emucorex.core.utils.RetroAchievementsStateManager
+import com.sbro.emucorex.core.normalizeUpscale
+import com.sbro.emucorex.data.ActivePatchNotice
+import com.sbro.emucorex.data.AppPreferences
+import com.sbro.emucorex.data.AppPreferences.Companion.FPS_OVERLAY_MODE_SIMPLE
+import com.sbro.emucorex.data.AppPreferences.Companion.FPS_OVERLAY_MODE_DETAILED
+import com.sbro.emucorex.data.CheatBlock
+import com.sbro.emucorex.data.InstalledCheatPack
+import com.sbro.emucorex.data.KeyboardMouseSettings
+import com.sbro.emucorex.data.PatchRepository
+import com.sbro.emucorex.data.DisplayCrop
+import com.sbro.emucorex.data.OverlayControlLayout
+import com.sbro.emucorex.data.CheatRepository
+import com.sbro.emucorex.data.GameRepository
+import com.sbro.emucorex.data.MemoryCardRepository
+import com.sbro.emucorex.data.OverlayLayoutSnapshot
+import com.sbro.emucorex.data.PerGameSettings
+import com.sbro.emucorex.data.PerGameInterfaceSettings
+import com.sbro.emucorex.data.PerGameSettingsRepository
+import com.sbro.emucorex.data.RemoteCheatPack
+import com.sbro.emucorex.data.RemoteContentCatalogRepository
+import com.sbro.emucorex.data.resolveShaderChain
+import com.sbro.emucorex.data.toggleStick
+import com.sbro.emucorex.data.validatePerGameMemoryCardName
+import com.sbro.emucorex.data.TouchControlsLayoutProfile
+import com.sbro.emucorex.data.PER_GAME_CUSTOM_TOUCH_CONTROLS_KEY
+import com.sbro.emucorex.data.PER_GAME_TOUCH_CONTROLS_LAYOUT_KEY
+import com.sbro.emucorex.data.saveTouchControlsLayout
+import com.sbro.emucorex.data.withCustomTouchControls
+import com.sbro.emucorex.data.withGamepadBindingsByPad
+import com.sbro.emucorex.data.withKeyboardMouseSettings
+import com.sbro.emucorex.data.withTouchControlsLayout
+import com.sbro.emucorex.data.TouchControlVisualStyle
+import com.sbro.emucorex.data.TouchControlPressEffect
+import com.sbro.emucorex.data.CustomTouchControl
+import com.sbro.emucorex.data.CustomTouchControlLibrary
+import com.sbro.emucorex.data.GameMenuLayoutStyle
+import com.sbro.emucorex.data.GameMenuTabId
+import com.sbro.emucorex.data.GameMenuSectionId
+import com.sbro.emucorex.data.DefaultGameMenuTabOrder
+import com.sbro.emucorex.data.DefaultGameMenuSectionOrder
+import com.sbro.emucorex.data.PlayTimeSyncCacheRepository
+import com.sbro.emucorex.data.PerformanceOverlayMetrics
+import com.sbro.emucorex.data.PlayerProfileRepository
+import com.sbro.emucorex.data.PlayerPlayTimeDelta
+import com.sbro.emucorex.data.RetroArchShaderRepository
+import com.sbro.emucorex.data.SaveStateRepository
+import com.sbro.emucorex.data.ShaderPackInstallProgress
+import com.sbro.emucorex.data.ShaderPackInstallStage
+import com.sbro.emucorex.data.pcsx2.Pcsx2CompatibilityRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds
+
+enum class EmulationTransportMode {
+    None,
+    FastForward
+}
+
+private val PER_GAME_GPU_DRIVER_KEYS = setOf(
+    "gpuDriverType",
+    "customDriverPath",
+    "mediatekAngleOpenGl"
+)
+
+private val PER_GAME_MEMORY_CARD_KEYS = setOf(
+    "memoryCardSlot1",
+    "memoryCardSlot2"
+)
+
+private val PER_GAME_DEDICATED_CARD_KEYS = setOf(
+    "dedicatedMemoryCards"
+)
+
+private fun buildPerformanceOverlayHeader(application: Application): String {
+    val packageInfo = runCatching {
+        application.packageManager.getPackageInfo(application.packageName, 0)
+    }.getOrNull()
+    val appVersion = packageInfo?.versionName?.takeIf(String::isNotBlank) ?: "?"
+    val buildNumber = packageInfo?.longVersionCode?.toString() ?: "?"
+    val coreVersion = runCatching { NativeApp.getCoreVersion().orEmpty() }
+        .getOrDefault("")
+        .ifBlank { "?" }
+    return "EmuCoreX-$appVersion | $buildNumber | $coreVersion"
+}
+
+internal fun replacePerformanceCpuName(text: String, cpuName: String): String {
+    if (cpuName.isBlank() || cpuName == "Unknown") return text
+    return text.lineSequence().joinToString("\n") { line ->
+        if (!line.startsWith("CPU:")) return@joinToString line
+        val valuesStart = line.indexOf(" | ")
+        if (valuesStart < 0) "CPU:$cpuName" else "CPU:$cpuName${line.substring(valuesStart)}"
+    }
+}
+
+data class EmulationUiState(
+    val isRunning: Boolean = false,
+    val ps2GunProfileActive: Boolean = false,
+    val isStarting: Boolean = false,
+    val isPaused: Boolean = false,
+    val showMenu: Boolean = false,
+    val isActionInProgress: Boolean = false,
+    val actionLabel: String? = null,
+    val controlsVisible: Boolean = true,
+    val showFps: Boolean = true,
+    val confirmSaveLoadActions: Boolean = true,
+    val backButtonExitsGame: Boolean = false,
+    val compactControls: Boolean = true,
+    val keepScreenOn: Boolean = true,
+    val fpsOverlayCorner: Int = AppPreferences.FPS_OVERLAY_CORNER_TOP_RIGHT,
+    val fpsOverlayScale: Int = AppPreferences.DEFAULT_FPS_OVERLAY_SCALE,
+    val fpsOverlayMetrics: Int = PerformanceOverlayMetrics.DEFAULT,
+    val overlayScale: Int = 100,
+    val overlayOpacity: Int = AppPreferences.DEFAULT_OVERLAY_OPACITY,
+    val touchControlVisualStyle: TouchControlVisualStyle = TouchControlVisualStyle.CLASSIC,
+    val touchControlPressEffect: TouchControlPressEffect = TouchControlPressEffect.GROW,
+    val customTouchControls: CustomTouchControlLibrary = CustomTouchControlLibrary.Empty,
+    val gameMenuLayoutStyle: GameMenuLayoutStyle = GameMenuLayoutStyle.SIDEBAR,
+    val gameMenuTabOrder: List<GameMenuTabId> = DefaultGameMenuTabOrder,
+    val hiddenGameMenuTabs: Set<GameMenuTabId> = emptySet(),
+    val gameMenuSectionOrder: List<GameMenuSectionId> = DefaultGameMenuSectionOrder,
+    val hiddenGameMenuSections: Set<GameMenuSectionId> = emptySet(),
+    val hideOverlayOnGamepad: Boolean = true,
+    val dpadOffset: Pair<Float, Float> = AppPreferences.DEFAULT_DPAD_OFFSET_X to AppPreferences.DEFAULT_DPAD_OFFSET_Y,
+    val lstickOffset: Pair<Float, Float> = AppPreferences.DEFAULT_LSTICK_OFFSET_X to AppPreferences.DEFAULT_LSTICK_OFFSET_Y,
+    val rstickOffset: Pair<Float, Float> = AppPreferences.DEFAULT_RSTICK_OFFSET_X to AppPreferences.DEFAULT_RSTICK_OFFSET_Y,
+    val actionOffset: Pair<Float, Float> = AppPreferences.DEFAULT_ACTION_OFFSET_X to AppPreferences.DEFAULT_ACTION_OFFSET_Y,
+    val lbtnOffset: Pair<Float, Float> = AppPreferences.DEFAULT_LBTN_OFFSET_X to AppPreferences.DEFAULT_LBTN_OFFSET_Y,
+    val rbtnOffset: Pair<Float, Float> = AppPreferences.DEFAULT_RBTN_OFFSET_X to AppPreferences.DEFAULT_RBTN_OFFSET_Y,
+    val centerOffset: Pair<Float, Float> = AppPreferences.DEFAULT_CENTER_OFFSET_X to AppPreferences.DEFAULT_CENTER_OFFSET_Y,
+    val stickScale: Int = 100,
+    val leftStickSensitivity: Int = 100,
+    val rightStickSensitivity: Int = 100,
+    val invertLeftStick: Boolean = false,
+    val invertRightStick: Boolean = false,
+    val invertLeftStickHorizontal: Boolean = false,
+    val invertRightStickHorizontal: Boolean = false,
+    val racingMode: Boolean = false,
+    val stickyButtons: Set<String> = emptySet(),
+    val touchscreenRightStick: Boolean = AppPreferences.DEFAULT_TOUCHSCREEN_RIGHT_STICK,
+    val touchscreenRightStickSensitivity: Int = AppPreferences.DEFAULT_TOUCHSCREEN_RIGHT_STICK_SENSITIVITY,
+    val touchscreenLeftStick: Boolean = AppPreferences.DEFAULT_TOUCHSCREEN_LEFT_STICK,
+    val touchscreenLeftStickSensitivity: Int = AppPreferences.DEFAULT_TOUCHSCREEN_LEFT_STICK_SENSITIVITY,
+    val touchHaptics: Boolean = false,
+    val stickToggleTarget: Int = AppPreferences.DEFAULT_STICK_TOGGLE_TARGET,
+    val touchHapticsPreset: Int = AppPreferences.DEFAULT_TOUCH_HAPTICS_PRESET,
+    val touchHapticsStrength: Int = AppPreferences.DEFAULT_TOUCH_HAPTICS_STRENGTH,
+    val gyroMode: Int = AppPreferences.GYRO_MODE_OFF,
+    val gyroSensitivity: Int = AppPreferences.DEFAULT_GYRO_SENSITIVITY,
+    val gyroSmoothing: Int = AppPreferences.DEFAULT_GYRO_SMOOTHING,
+    val gyroInvertX: Boolean = false,
+    val gyroInvertY: Boolean = false,
+    val gyroStickTarget: Int = AppPreferences.DEFAULT_GYRO_STICK_TARGET,
+    val lightGunAim: Int = AppPreferences.DEFAULT_LIGHT_GUN_AIM,
+    val lightGunCursorEnabled: Boolean = true,
+    val usbPort1Device: Int = AppPreferences.USB_DEVICE_NONE,
+    val usbPort2Device: Int = AppPreferences.USB_DEVICE_NONE,
+    val gamepadStickDeadzone: Int = AppPreferences.DEFAULT_GAMEPAD_STICK_DEADZONE,
+    val gamepadLeftStickSensitivity: Int = AppPreferences.DEFAULT_GAMEPAD_STICK_SENSITIVITY,
+    val gamepadRightStickSensitivity: Int = AppPreferences.DEFAULT_GAMEPAD_STICK_SENSITIVITY,
+    val gamepadLeftStickNegativeDeadzone: Int = AppPreferences.DEFAULT_GAMEPAD_STICK_NEGATIVE_DEADZONE,
+    val gamepadRightStickNegativeDeadzone: Int = AppPreferences.DEFAULT_GAMEPAD_STICK_NEGATIVE_DEADZONE,
+    val gamepadLeftStickAntiDeadzone: Int = AppPreferences.DEFAULT_GAMEPAD_STICK_ANTI_DEADZONE,
+    val gamepadRightStickAntiDeadzone: Int = AppPreferences.DEFAULT_GAMEPAD_STICK_ANTI_DEADZONE,
+    val gamepadLeftStickCurve: Int = AppPreferences.DEFAULT_GAMEPAD_STICK_CURVE,
+    val gamepadRightStickCurve: Int = AppPreferences.DEFAULT_GAMEPAD_STICK_CURVE,
+    val gamepadRightStickUpToR2: Boolean = false,
+    val gamepadRightStickDownToL2: Boolean = false,
+    val gamepadButtonHaptics: Boolean = false,
+    val gamepadBindingsByPad: Map<Int, Map<String, Int>> = emptyMap(),
+    val pressureModifierAmount: Int = AppPreferences.DEFAULT_PRESSURE_MODIFIER_AMOUNT,
+    val stickSurfaceMode: Boolean = false,
+    val controlLayouts: Map<String, OverlayControlLayout> = AppPreferences.defaultOverlayControlLayouts(),
+    val fpsOverlayMode: Int = FPS_OVERLAY_MODE_DETAILED,
+    val performanceOverlayHeader: String = "",
+    val transportMode: EmulationTransportMode = EmulationTransportMode.None,
+    val toastMessage: String? = null,
+    val statusMessage: String? = null,
+    val currentSlot: Int = 1,
+    val renderer: Int = RendererDefaults.defaultForHardware(),
+    val frameGenerationReady: Boolean = false,
+    val frameGenerationEnabled: Boolean = false,
+    val frameGenerationMultiplier: Int = 2,
+    val frameGenerationPerformance: Boolean = true,
+    val frameGenerationFlowScale: Int = 100,
+    val frameGenerationTargetRate: Int = 0,
+    val upscale: Float = 1f,
+    val aspectRatio: Int = 1,
+    val localMultiplayerMode: Int = AppPreferences.LOCAL_MULTIPLAYER_OFF,
+    val displayCrop: DisplayCrop = DisplayCrop.ThinEdges,
+    val performancePreset: Int = PerformancePresets.CUSTOM,
+    val enableInstantVu1: Boolean = true,
+    val enableMtvu: Boolean = true,
+    val enableIopThread: Boolean = true,
+    val enableVUAot: Boolean = true,
+    val enableThreadPinning: Boolean = AppPreferences.DEFAULT_THREAD_PINNING,
+    val enableFastCdvd: Boolean = false,
+    val enableFastBoot: Boolean = true,
+    val enableCheats: Boolean = false,
+    val hwDownloadMode: Int = GsHackDefaults.HW_DOWNLOAD_MODE_DEFAULT,
+    val hwDownloadModeUserOverride: Boolean = false,
+    val eeCycleRate: Int = PerformanceProfiles.safeConfig.eeCycleRate,
+    val eeCycleSkip: Int = PerformanceProfiles.safeConfig.eeCycleSkip,
+    val frameSkip: Int = 0,
+    val skipDuplicateFrames: Boolean = true,
+    val lowLatencyMode: Boolean = false,
+    val textureFiltering: Int = GsHackDefaults.BILINEAR_FILTERING_DEFAULT,
+    val trilinearFiltering: Int = GsHackDefaults.TRILINEAR_FILTERING_DEFAULT,
+    val blendingAccuracy: Int = GsHackDefaults.BLENDING_ACCURACY_DEFAULT,
+    val blendingAccuracyUserOverride: Boolean = false,
+    val texturePreloading: Int = GsHackDefaults.TEXTURE_PRELOADING_DEFAULT,
+    val enableFxaa: Boolean = false,
+    val casMode: Int = 0,
+    val sgsrMode: Int = 0,
+    val casSharpness: Int = 50,
+    val tvShader: Int = GsHackDefaults.TV_SHADER_DEFAULT,
+    val shadeBoostEnabled: Boolean = false,
+    val shadeBoostBrightness: Int = 50,
+    val shadeBoostContrast: Int = 50,
+    val shadeBoostSaturation: Int = 50,
+    val shadeBoostGamma: Int = 50,
+    val anisotropicFiltering: Int = 0,
+    val enableHwMipmapping: Boolean = GsHackDefaults.HW_MIPMAPPING_DEFAULT,
+    val antiBlur: Boolean = GsHackDefaults.ANTI_BLUR_DEFAULT,
+    val deinterlaceMode: Int = GsHackDefaults.DEINTERLACE_MODE_DEFAULT,
+    val dithering: Int = GsHackDefaults.DITHERING_DEFAULT,
+    val widescreenPatches: Boolean = false,
+    val noInterlacingPatches: Boolean = false,
+    val cpuSpriteRenderSize: Int = GsHackDefaults.CPU_SPRITE_RENDER_SIZE_DEFAULT,
+    val cpuSpriteRenderLevel: Int = GsHackDefaults.CPU_SPRITE_RENDER_LEVEL_DEFAULT,
+    val softwareClutRender: Int = GsHackDefaults.SOFTWARE_CLUT_RENDER_DEFAULT,
+    val gpuTargetClutMode: Int = GsHackDefaults.GPU_TARGET_CLUT_DEFAULT,
+    val skipDrawStart: Int = 0,
+    val skipDrawEnd: Int = 0,
+    val autoFlushHardware: Int = GsHackDefaults.AUTO_FLUSH_DEFAULT,
+    val cpuFramebufferConversion: Boolean = false,
+    val disableDepthConversion: Boolean = false,
+    val disableSafeFeatures: Boolean = false,
+    val disableRenderFixes: Boolean = false,
+    val preloadFrameData: Boolean = false,
+    val disablePartialInvalidation: Boolean = false,
+    val textureInsideRt: Int = GsHackDefaults.TEXTURE_INSIDE_RT_DEFAULT,
+    val readTargetsOnClose: Boolean = false,
+    val estimateTextureRegion: Boolean = false,
+    val gpuPaletteConversion: Boolean = false,
+    val halfPixelOffset: Int = GsHackDefaults.HALF_PIXEL_OFFSET_DEFAULT,
+    val nativeScaling: Int = GsHackDefaults.NATIVE_SCALING_DEFAULT,
+    val roundSprite: Int = GsHackDefaults.ROUND_SPRITE_DEFAULT,
+    val bilinearUpscale: Int = GsHackDefaults.BILINEAR_UPSCALE_DEFAULT,
+    val textureOffsetX: Int = 0,
+    val textureOffsetY: Int = 0,
+    val alignSprite: Boolean = false,
+    val mergeSprite: Boolean = false,
+    val forceEvenSpritePosition: Boolean = false,
+    val nativePaletteDraw: Boolean = false,
+    val cheatsGameKey: String? = null,
+    val availableCheats: List<CheatBlock> = emptyList(),
+    val frameLimitEnabled: Boolean = true,
+    val fastForwardSpeed: Float = AppPreferences.DEFAULT_FAST_FORWARD_SPEED,
+    val targetFps: Int = 0,
+    val ntscFramerate: Float = AppPreferences.DEFAULT_NTSC_FRAMERATE,
+    val palFramerate: Float = AppPreferences.DEFAULT_PAL_FRAMERATE,
+    val currentGameTitle: String = "",
+    val currentGameSubtitle: String = "",
+    val currentGameCoverArtPath: String? = null,
+    val gameSettingsProfileActive: Boolean = false,
+    val currentSlotLastModified: Long = 0L,
+    val currentSlotPreviewPath: String? = null,
+    val autoSaveEnabled: Boolean = false,
+    val autoSaveIntervalMinutes: Int = 1,
+    val autoSaveOnExit: Boolean = false,
+    val autoLoadOnStart: Boolean = false,
+    val autoSaveLastModified: Long = 0L,
+    val autoSavePreviewPath: String? = null,
+    val isAutoSaveInProgress: Boolean = false,
+    val activePlayTimeMs: Long = 0L
+)
+
+internal data class EmulationLaunchConfig(
+    val performanceProfile: Int,
+    val biosPath: String?,
+    val emulatorDataPath: String?,
+    val memoryCardSlot1: String?,
+    val memoryCardSlot2: String?,
+    val renderer: Int,
+    val upscaleMultiplier: Float,
+    val gpuDriverType: Int,
+    val customDriverPath: String?,
+    val gpuHardwareProfile: Int,
+    val mediatekAngleOpenGl: Boolean,
+    val aspectRatio: Int,
+    val localMultiplayerMode: Int,
+    val displayCrop: DisplayCrop,
+    val audioVolume: Int,
+    val audioFastForwardVolume: Int,
+    val audioMuted: Boolean,
+    val audioInterpolation: Int,
+    val audioSyncMode: Int,
+    val audioLightweightSpu2: Boolean,
+    val audioBackend: Int,
+    val audioBufferMs: Int,
+    val audioOutputLatencyMs: Int,
+    val audioMinimalOutputLatency: Boolean,
+    val enableEeRecompiler: Boolean,
+    val enableIopRecompiler: Boolean,
+    val enableVu0Recompiler: Boolean,
+    val enableVu1Recompiler: Boolean,
+    val enableFastmem: Boolean,
+    val eeFpuRoundMode: Int,
+    val vu0RoundMode: Int,
+    val vu1RoundMode: Int,
+    val eeFpuClampingMode: Int,
+    val vu0ClampingMode: Int,
+    val vu1ClampingMode: Int,
+    val enableGameFixes: Boolean,
+    val autoGsHardwareFixes: Boolean,
+    val eeTimingHack: Boolean,
+    val waitLoopSpeedhack: Boolean,
+    val intcStatSpeedhack: Boolean,
+    val vuFlagHack: Boolean,
+    val instantVu1: Boolean,
+    val mtvu: Boolean,
+    val enableIopThread: Boolean = true,
+    val enableVUAot: Boolean = true,
+    val enableThreadPinning: Boolean,
+    val fastCdvd: Boolean,
+    val enableFastBoot: Boolean,
+    val enableCheats: Boolean,
+    val hwDownloadMode: Int,
+    val hwDownloadModeUserOverride: Boolean,
+    val eeCycleRate: Int,
+    val eeCycleSkip: Int,
+    val frameSkip: Int,
+    val skipDuplicateFrames: Boolean,
+    val lowLatencyMode: Boolean,
+    val frameLimitEnabled: Boolean,
+    val vSyncEnabled: Boolean,
+    val fastForwardSpeed: Float,
+    val targetFps: Int,
+    val ntscFramerate: Float,
+    val palFramerate: Float,
+    val textureFiltering: Int,
+    val trilinearFiltering: Int,
+    val blendingAccuracy: Int,
+    val blendingAccuracyUserOverride: Boolean,
+    val texturePreloading: Int,
+    val shaderChainEnabled: Boolean,
+    val shaderChainPreset: String,
+    val enableFxaa: Boolean,
+    val casMode: Int,
+    val sgsrMode: Int,
+    val casSharpness: Int,
+    val tvShader: Int,
+    val shadeBoostEnabled: Boolean,
+    val shadeBoostBrightness: Int,
+    val shadeBoostContrast: Int,
+    val shadeBoostSaturation: Int,
+    val shadeBoostGamma: Int,
+    val deinterlaceMode: Int,
+    val dithering: Int,
+    val anisotropicFiltering: Int,
+    val enableHwMipmapping: Boolean,
+    val hwRov: Boolean,
+    val antiBlur: Boolean,
+    val widescreenPatches: Boolean,
+    val noInterlacingPatches: Boolean,
+    val cpuSpriteRenderSize: Int,
+    val cpuSpriteRenderLevel: Int,
+    val softwareClutRender: Int,
+    val gpuTargetClutMode: Int,
+    val skipDrawStart: Int,
+    val skipDrawEnd: Int,
+    val autoFlushHardware: Int,
+    val cpuFramebufferConversion: Boolean,
+    val disableDepthConversion: Boolean,
+    val disableSafeFeatures: Boolean,
+    val disableRenderFixes: Boolean,
+    val preloadFrameData: Boolean,
+    val disablePartialInvalidation: Boolean,
+    val textureInsideRt: Int,
+    val readTargetsOnClose: Boolean,
+    val estimateTextureRegion: Boolean,
+    val gpuPaletteConversion: Boolean,
+    val halfPixelOffset: Int,
+    val nativeScaling: Int,
+    val roundSprite: Int,
+    val bilinearUpscale: Int,
+    val textureOffsetX: Int,
+    val textureOffsetY: Int,
+    val alignSprite: Boolean,
+    val mergeSprite: Boolean,
+    val forceEvenSpritePosition: Boolean,
+    val nativePaletteDraw: Boolean,
+    val pressureModifierAmount: Int,
+    val fpuCorrectAddSub: Boolean,
+    val dev9EthernetEnabled: Boolean,
+    val dev9EthernetDevice: String,
+    val dev9InterceptDhcp: Boolean,
+    val dev9Dns1Mode: String,
+    val dev9Dns1: String,
+    val dev9Dns2Mode: String,
+    val dev9Dns2: String,
+    val dev9LogDhcp: Boolean,
+    val dev9LogDns: Boolean,
+    val dev9LocalLinkMode: Int,
+    val dev9LocalLinkAddress: String,
+    val dev9LocalLinkPort: Int,
+    val dev9LocalLinkPeerId: Int,
+    val dev9LocalLinkRoomCode: String
+)
+
+internal data class LiveRuntimeSnapshot(
+    val showFps: Boolean,
+    val fpsOverlayMode: Int,
+    val confirmSaveLoadActions: Boolean,
+    val backButtonExitsGame: Boolean,
+    val renderer: Int,
+    val frameGenerationReady: Boolean,
+    val frameGenerationEnabled: Boolean,
+    val frameGenerationMultiplier: Int,
+    val frameGenerationPerformance: Boolean,
+    val frameGenerationFlowScale: Int,
+    val frameGenerationTargetRate: Int,
+    val upscale: Float,
+    val aspectRatio: Int,
+    val localMultiplayerMode: Int,
+    val displayCrop: DisplayCrop,
+    val performancePreset: Int,
+    val enableInstantVu1: Boolean,
+    val enableMtvu: Boolean,
+    val enableIopThread: Boolean = true,
+    val enableVUAot: Boolean = true,
+    val enableThreadPinning: Boolean,
+    val enableFastCdvd: Boolean,
+    val enableFastBoot: Boolean,
+    val enableCheats: Boolean,
+    val hwDownloadMode: Int,
+    val hwDownloadModeUserOverride: Boolean,
+    val eeCycleRate: Int,
+    val eeCycleSkip: Int,
+    val frameSkip: Int,
+    val skipDuplicateFrames: Boolean,
+    val lowLatencyMode: Boolean,
+    val frameLimitEnabled: Boolean,
+    val fastForwardSpeed: Float,
+    val racingMode: Boolean,
+    val stickyButtons: Set<String>,
+    val touchscreenRightStick: Boolean,
+    val touchscreenRightStickSensitivity: Int,
+    val touchscreenLeftStick: Boolean,
+    val touchscreenLeftStickSensitivity: Int,
+    val touchHaptics: Boolean,
+    val stickToggleTarget: Int,
+    val touchHapticsPreset: Int,
+    val touchHapticsStrength: Int,
+    val touchControlVisualStyle: TouchControlVisualStyle,
+    val touchControlPressEffect: TouchControlPressEffect,
+    val gyroMode: Int,
+    val gyroSensitivity: Int,
+    val gyroSmoothing: Int,
+    val gyroInvertX: Boolean,
+    val gyroInvertY: Boolean,
+    val gyroStickTarget: Int,
+    val lightGunAim: Int,
+    val lightGunCursorEnabled: Boolean,
+    val gamepadRightStickUpToR2: Boolean,
+    val gamepadRightStickDownToL2: Boolean,
+    val gamepadButtonHaptics: Boolean,
+    val gamepadStickDeadzone: Int,
+    val gamepadLeftStickSensitivity: Int,
+    val gamepadRightStickSensitivity: Int,
+    val gamepadLeftStickNegativeDeadzone: Int,
+    val gamepadRightStickNegativeDeadzone: Int,
+    val gamepadLeftStickAntiDeadzone: Int,
+    val gamepadRightStickAntiDeadzone: Int,
+    val gamepadLeftStickCurve: Int,
+    val gamepadRightStickCurve: Int,
+    val gamepadBindingsByPad: Map<Int, Map<String, Int>>,
+    val pressureModifierAmount: Int,
+    val autoSaveOnExit: Boolean,
+    val autoLoadOnStart: Boolean,
+    val targetFps: Int,
+    val ntscFramerate: Float,
+    val palFramerate: Float,
+    val textureFiltering: Int,
+    val trilinearFiltering: Int,
+    val blendingAccuracy: Int,
+    val blendingAccuracyUserOverride: Boolean,
+    val texturePreloading: Int,
+    val enableFxaa: Boolean,
+    val casMode: Int,
+    val sgsrMode: Int,
+    val casSharpness: Int,
+    val tvShader: Int,
+    val shadeBoostEnabled: Boolean,
+    val shadeBoostBrightness: Int,
+    val shadeBoostContrast: Int,
+    val shadeBoostSaturation: Int,
+    val shadeBoostGamma: Int,
+    val anisotropicFiltering: Int,
+    val enableHwMipmapping: Boolean,
+    val antiBlur: Boolean,
+    val deinterlaceMode: Int,
+    val dithering: Int,
+    val widescreenPatches: Boolean,
+    val noInterlacingPatches: Boolean,
+    val cpuSpriteRenderSize: Int,
+    val cpuSpriteRenderLevel: Int,
+    val softwareClutRender: Int,
+    val gpuTargetClutMode: Int,
+    val skipDrawStart: Int,
+    val skipDrawEnd: Int,
+    val autoFlushHardware: Int,
+    val cpuFramebufferConversion: Boolean,
+    val disableDepthConversion: Boolean,
+    val disableSafeFeatures: Boolean,
+    val disableRenderFixes: Boolean,
+    val preloadFrameData: Boolean,
+    val disablePartialInvalidation: Boolean,
+    val textureInsideRt: Int,
+    val readTargetsOnClose: Boolean,
+    val estimateTextureRegion: Boolean,
+    val gpuPaletteConversion: Boolean,
+    val halfPixelOffset: Int,
+    val nativeScaling: Int,
+    val roundSprite: Int,
+    val bilinearUpscale: Int,
+    val textureOffsetX: Int,
+    val textureOffsetY: Int,
+    val alignSprite: Boolean,
+    val mergeSprite: Boolean,
+    val forceEvenSpritePosition: Boolean,
+    val nativePaletteDraw: Boolean
+)
+
+/**
+ * Process-lifetime scope for exit work (autosave, play-time sync, VM shutdown). It must outlive the
+ * ViewModel, which is cleared as soon as the emulation route is popped.
+ */
+private object EmulationExitCoordinator {
+    val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    var inFlight: Job? = null
+
+    fun launchTracked(block: suspend () -> Unit): Job {
+        val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) { block() }
+        inFlight = job
+        job.invokeOnCompletion { if (inFlight === job) inFlight = null }
+        job.start()
+        return job
+    }
+}
+
+class EmulationViewModel(application: Application) : AndroidViewModel(application) {
+    private companion object {
+        const val TAG = "EmulationViewModel"
+        private const val AUTO_SAVE_SLOT = 0
+        private const val PLAY_TIME_LOCAL_CACHE_INTERVAL_MS = 60_000L
+        private const val PLAY_TIME_CLOUD_SYNC_INTERVAL_MS = 10L * 60_000L
+        private const val ACTIVE_PATCH_NOTICE_DURATION_MS = 7_000L
+        private val SAVE_STATE_FILE_REGEX = Regex("""^(.+?) \(([0-9A-Fa-f]{8})\)\.(\d{2})\.p2s$""")
+    }
+
+
+    private val preferences = AppPreferences(application)
+    private val cheatRepository = CheatRepository(application)
+    private val remoteContentCatalogRepository = RemoteContentCatalogRepository(application)
+    private val retroArchShaderRepository = RetroArchShaderRepository(application)
+    private val memoryCardRepository = MemoryCardRepository(application, preferences)
+    private val perGameSettingsRepository = PerGameSettingsRepository(application)
+    private val frameGenerationManager = FrameGenerationManager(application)
+    private val compatibilityRepository = Pcsx2CompatibilityRepository(application)
+    private val gameRepository = GameRepository()
+    private val saveStateRepository = SaveStateRepository(application)
+    private val playerProfileRepository = PlayerProfileRepository(application)
+    private val playTimeSyncCacheRepository = PlayTimeSyncCacheRepository(application)
+    private val performanceCpuName = MobileSocNameMapper.currentDeviceName()
+    private val androidGamePerformance = AndroidGamePerformance(application)
+    private val initialFrameGeneration = frameGenerationManager.snapshot()
+    private val _uiState = MutableStateFlow(
+        EmulationUiState(
+            performanceOverlayHeader = buildPerformanceOverlayHeader(application),
+            frameGenerationReady = initialFrameGeneration.isConfigured,
+            frameGenerationEnabled = initialFrameGeneration.settings.enabled,
+            frameGenerationMultiplier = initialFrameGeneration.settings.multiplier,
+            frameGenerationPerformance = initialFrameGeneration.settings.performanceMode,
+            frameGenerationFlowScale = initialFrameGeneration.settings.flowScalePercent,
+            frameGenerationTargetRate = initialFrameGeneration.settings.targetRefreshRate
+        )
+    )
+    val uiState: StateFlow<EmulationUiState> = _uiState.asStateFlow()
+    private val _performanceState = MutableStateFlow(EmulationPerformanceState())
+    val performanceState: StateFlow<EmulationPerformanceState> = _performanceState.asStateFlow()
+    private val _shaderPreparationUiState = MutableStateFlow(
+        ShaderPreparationUiSnapshot(
+            phase = ShaderPreparationUiPhase.Hidden,
+            total = 0,
+            completed = 0,
+            alreadyAvailable = 0,
+            failed = 0,
+            cancelled = 0,
+            inFlight = 0,
+            finished = false,
+            checkpointSaved = false
+        )
+    )
+    val shaderPreparationUiState: StateFlow<ShaderPreparationUiSnapshot> = _shaderPreparationUiState.asStateFlow()
+    // Kept outside EmulationUiState: that data class is near the JVM 255-argument limit.
+    private val _activePatchNotice = MutableStateFlow<ActivePatchNotice?>(null)
+    val activePatchNotice: StateFlow<ActivePatchNotice?> = _activePatchNotice.asStateFlow()
+    private val _keyboardMouseOverride = MutableStateFlow<KeyboardMouseSettings?>(null)
+    val keyboardMouseOverride: StateFlow<KeyboardMouseSettings?> = _keyboardMouseOverride.asStateFlow()
+    // Kept outside EmulationUiState: that data class is near the JVM 255-argument
+    // limit. The cheat pack browser is menu-scoped and must outlive the menu, so
+    // its downloads and catalog cache are owned here instead of by the composable.
+    private val _cheatPackBrowser = MutableStateFlow(CheatPackBrowserState())
+    internal val cheatPackBrowser: StateFlow<CheatPackBrowserState> = _cheatPackBrowser.asStateFlow()
+    private var cheatPackCatalogJob: Job? = null
+    private var cheatPackInstallJob: Job? = null
+    // The in-game Shaders tab keeps its own state: effective selection is
+    // resolved from the per-game profile plus the app-wide preference, and
+    // pack downloads must survive the menu being closed.
+    private val _shaderBrowser = MutableStateFlow(ShaderBrowserState())
+    internal val shaderBrowser: StateFlow<ShaderBrowserState> = _shaderBrowser.asStateFlow()
+    private var shaderBrowserJob: Job? = null
+    private var shaderBrowserRefreshGeneration = 0L
+    private var shaderPackInstallJob: Job? = null
+    private val shaderSelectionMutex = Mutex()
+    private val lifecycleMutex = Mutex()
+    private val transportMutex = Mutex()
+    private val shaderPreparationLifecycleGate = ShaderPreparationLifecycleGate()
+    private var shaderPreparationMayBeActive: Boolean
+        get() = shaderPreparationLifecycleGate.mayBeActive
+        set(value) = shaderPreparationLifecycleGate.setMayBeActive(value)
+    private val shaderPreparationChoiceGate = ShaderPreparationChoiceGate()
+    @Volatile
+    private var shaderPreparationAbortRequested = false
+    @Volatile
+    private var shaderPreparationCancelRequested = false
+    @Volatile
+    private var pausedForBackground = false
+    private var hostInBackground = false
+    @Volatile
+    private var fastForwardRequested = false
+    @Volatile
+    private var viewModelCleared = false
+    @Volatile
+    private var isShuttingDown = false
+    @Volatile
+    private var cancelPendingStart = false
+    @Volatile
+    private var currentGameTitle: String = ""
+    @Volatile
+    private var currentGamePath: String? = null
+    private var currentLaunchRequest: ShaderPreparationLaunchRequest? = null
+    private var currentAnalyticsAudioBackend: Int = AudioDefaults.BACKEND_DEFAULT
+    @Volatile
+    private var currentGameSerial: String = ""
+    @Volatile
+    private var currentGameCoverArtPath: String? = null
+    @Volatile
+    private var currentGameCrc: String = ""
+    @Volatile
+    private var currentGameSource: String = ""
+    @Volatile
+    private var globalInterfaceSettings = PerGameInterfaceSettings()
+    @Volatile
+    private var currentInterfaceSettingsProfile: PerGameInterfaceSettings? = null
+    private var currentTouchControlsLayoutProfile: TouchControlsLayoutProfile? = null
+    private var currentCustomTouchControlsProfile: CustomTouchControlLibrary? = null
+    private var lastAutoSavePlayTimeMs: Long = 0L
+    private var pendingPlayTimeSyncMs: Long = 0L
+    private var playTimeSyncJob: Job? = null
+    private var savePreviewJob: Job? = null
+    private var lastCloudPlayTimeSyncAtMs: Long = 0L
+    private var shouldCountCurrentProfileSession = false
+    // Autotest and boot-smoke VMs may run for minutes, but must never enter persistent player stats.
+    private var shouldTrackCurrentProfilePlayTime = false
+    private val playTimeSyncMutex = Mutex()
+    init {
+        viewModelScope.launch {
+            preferences.cleanupLegacyClampingPreferencesIfNeeded()
+            preferences.migrateOverlayLayoutIfNeeded()
+        }
+        viewModelScope.launch {
+            uiState
+                .map { state ->
+                    resolveAndroidGamePhase(
+                        isStarting = state.isStarting,
+                        isRunning = state.isRunning,
+                        isPaused = state.isPaused,
+                        showMenu = state.showMenu
+                    )
+                }
+                .distinctUntilChanged()
+                .collect(androidGamePerformance::update)
+        }
+    }
+
+    private fun applyInterfaceSettings(state: EmulationUiState): EmulationUiState =
+        state.withInterfaceSettings(currentInterfaceSettingsProfile?.resolveAgainst(globalInterfaceSettings) ?: globalInterfaceSettings)
+
+    private fun applyGlobalInterfacePreferenceUpdate(transform: (PerGameInterfaceSettings) -> PerGameInterfaceSettings) {
+        globalInterfaceSettings = transform(globalInterfaceSettings).sanitized()
+        _uiState.value = applyInterfaceSettings(_uiState.value)
+        syncNativePerformanceOverlayState(_uiState.value)
+        syncGamepadAnalogSettings(_uiState.value)
+    }
+
+    private suspend fun persistInterfaceSettings(updatedState: EmulationUiState, persistGlobal: suspend () -> Unit) {
+        val normalized = updatedState.toInterfaceSettings().sanitized()
+        val gameKey = activePerGameKey()
+        var profileActive = false
+        if (gameKey == null) {
+            globalInterfaceSettings = normalized.copy(providedKeys = emptySet())
+            currentInterfaceSettingsProfile = null
+            persistGlobal()
+        } else {
+            val overrides = normalized.overridesComparedWith(globalInterfaceSettings)
+            profileActive = perGameSettingsRepository.transaction {
+                val existing = perGameSettingsRepository.get(gameKey)
+                val keys = existing?.providedKeys
+                    ?.minus("interfaceSettings")
+                    ?.let { if (overrides != null) it + "interfaceSettings" else it }
+                val active = existing != null || overrides != null
+                if (active) {
+                    perGameSettingsRepository.save((existing ?: PerGameSettings(
+                        gameKey = gameKey,
+                        gameTitle = resolvePerGameTitle(updatedState),
+                        gameSerial = currentGameSerial.takeIf { it.isNotBlank() }
+                    )).copy(interfaceSettings = overrides, providedKeys = keys))
+                }
+                active
+            }
+            if (activePerGameKey() != gameKey) return
+            currentInterfaceSettingsProfile = overrides
+        }
+        if (activePerGameKey() != gameKey) return
+        val autoSaveWasEnabled = _uiState.value.autoSaveEnabled
+        val finalState = _uiState.updateAndGet { current ->
+            current.withInterfaceSettings(normalized).copy(
+                gameSettingsProfileActive = gameKey != null && profileActive
+            )
+        }
+        if (!autoSaveWasEnabled && finalState.autoSaveEnabled) lastAutoSavePlayTimeMs = finalState.activePlayTimeMs
+        syncNativePerformanceOverlayState(finalState)
+        syncGamepadAnalogSettings(finalState)
+        refreshKeyboardMouseOverride()
+    }
+
+    private suspend fun refreshKeyboardMouseOverride() {
+        val override = perGameSettingsRepository.transaction {
+            activePerGameKey()
+                ?.let(perGameSettingsRepository::get)
+                ?.keyboardMouse
+        }
+        _keyboardMouseOverride.value = override
+        KeyboardMouseManager.setPerGameOverride(override)
+    }
+
+    fun setKeyboardMouseSettings(settings: KeyboardMouseSettings?) {
+        viewModelScope.launch {
+            val gameKey = activePerGameKey() ?: return@launch
+            perGameSettingsRepository.transaction {
+                val existing = perGameSettingsRepository.get(gameKey)
+                val base = existing ?: PerGameSettings(
+                    gameKey = gameKey,
+                    gameTitle = resolvePerGameTitle(_uiState.value),
+                    gameSerial = currentGameSerial.takeIf { it.isNotBlank() }
+                )
+                perGameSettingsRepository.save(base.withKeyboardMouseSettings(settings))
+            }
+            refreshKeyboardMouseOverride()
+        }
+    }
+
+    private fun syncGamepadAnalogSettings(state: EmulationUiState) {
+        if (!state.gameSettingsProfileActive) return
+        GamepadManager.applyPerGameOverrides(
+            bindingsByPad = null,
+            deadzone = state.gamepadStickDeadzone,
+            leftSensitivity = state.gamepadLeftStickSensitivity,
+            rightSensitivity = state.gamepadRightStickSensitivity,
+            leftNegativeDeadzone = state.gamepadLeftStickNegativeDeadzone,
+            rightNegativeDeadzone = state.gamepadRightStickNegativeDeadzone,
+            leftAntiDeadzone = state.gamepadLeftStickAntiDeadzone,
+            rightAntiDeadzone = state.gamepadRightStickAntiDeadzone,
+            leftStickCurve = state.gamepadLeftStickCurve,
+            rightStickCurve = state.gamepadRightStickCurve,
+            invertLeftStick = state.invertLeftStick,
+            invertRightStick = state.invertRightStick,
+            invertLeftStickHorizontal = state.invertLeftStickHorizontal,
+            invertRightStickHorizontal = state.invertRightStickHorizontal
+        )
+    }
+
+    private inline fun applyGlobalRuntimePreferenceUpdate(
+        crossinline transform: (EmulationUiState) -> EmulationUiState
+    ) {
+        val current = _uiState.value
+        if (current.gameSettingsProfileActive) return
+        _uiState.value = transform(current)
+        syncNativePerformanceOverlayState(_uiState.value)
+        syncGamepadRuntimeSettings(_uiState.value)
+    }
+
+    private fun syncNativePerformanceOverlayState(state: EmulationUiState) {
+        if (!NativeApp.hasNativeCore) return
+        val detailed = state.showFps && state.fpsOverlayMode != FPS_OVERLAY_MODE_SIMPLE
+        NativeApp.setPerformanceMetricsEnabled(
+            visible = state.showFps,
+            detailed = detailed,
+            gpuTiming = detailed && PerformanceOverlayMetrics.isEnabled(
+                state.fpsOverlayMetrics,
+                PerformanceOverlayMetrics.HOST_GPU
+            )
+        )
+    }
+
+    private fun syncGamepadRightStickTriggerMapping(state: EmulationUiState) {
+        GamepadManager.setRightStickTriggerMapping(
+            upToR2 = state.gamepadRightStickUpToR2,
+            downToL2 = state.gamepadRightStickDownToL2
+        )
+    }
+
+    private fun syncGamepadRuntimeSettings(state: EmulationUiState) {
+        syncGamepadRightStickTriggerMapping(state)
+        GamepadManager.setButtonHapticsEnabled(
+            enabled = state.gamepadButtonHaptics,
+            strengthPercent = state.touchHapticsStrength,
+            preset = state.touchHapticsPreset
+        )
+        if (NativeApp.hasNativeCore) {
+            NativeApp.setPadPressureModifierAmount(state.pressureModifierAmount.coerceIn(1, 100))
+        }
+    }
+
+    private fun isRetroAchievementsHardcoreRestricted(): Boolean {
+        // The saved preference may be pending until the next full reset. Only
+        // the native rc_client state restricts actions in the current session.
+        return RetroAchievementsLiveStateManager.state.value.hardcoreActive
+    }
+
+    private fun showHardcoreBlockedToast() {
+        _uiState.value = _uiState.value.copy(
+            isActionInProgress = false,
+            actionLabel = null,
+            transportMode = EmulationTransportMode.None,
+            toastMessage = "hardcore_blocked"
+        )
+        viewModelScope.launch {
+            delay(2000.milliseconds)
+            if (_uiState.value.toastMessage == "hardcore_blocked") {
+                _uiState.value = _uiState.value.copy(toastMessage = null)
+            }
+        }
+    }
+
+    private suspend fun enforceRetroAchievementsHardcoreRuntimeState() {
+        if (!isRetroAchievementsHardcoreRestricted()) return
+
+        fastForwardRequested = false
+        if (_uiState.value.transportMode == EmulationTransportMode.FastForward || _uiState.value.enableCheats) {
+            _uiState.value = _uiState.value.copy(
+                transportMode = EmulationTransportMode.None,
+                enableCheats = false
+            )
+        }
+        runCatching { EmulatorBridge.setTurboModeEnabled(false) }
+        runCatching { EmulatorBridge.setFrameLimitEnabled(true) }
+        runCatching { EmulatorBridge.setSetting("EmuCore", "EnableCheats", "bool", "false") }
+        runCatching { EmulatorBridge.reloadPatches() }
+    }
+
+    init {
+        viewModelScope.launch {
+            preferences.overlayShow.collect { enabled ->
+                applyGlobalInterfacePreferenceUpdate { it.copy(overlayShow = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.showFps.collect { enabled ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(showFps = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.overlayLayoutSnapshot.collect { snapshot ->
+                applyOverlayLayoutSnapshot(snapshot)
+            }
+        }
+        viewModelScope.launch {
+            preferences.touchControlVisualStyle.collect { style ->
+                val override = withContext(Dispatchers.IO) {
+                    activePerGameKey()
+                        ?.let(perGameSettingsRepository::get)
+                        ?.touchControlVisualStyle
+                }
+                _uiState.value = _uiState.value.copy(touchControlVisualStyle = override ?: style)
+            }
+        }
+        viewModelScope.launch {
+            preferences.touchControlPressEffect.collect { effect ->
+                val override = withContext(Dispatchers.IO) {
+                    activePerGameKey()
+                        ?.let(perGameSettingsRepository::get)
+                        ?.touchControlPressEffect
+                }
+                _uiState.value = _uiState.value.copy(touchControlPressEffect = override ?: effect)
+            }
+        }
+        viewModelScope.launch {
+            preferences.customTouchControls.collect { library ->
+                _uiState.value = _uiState.value.copy(
+                    customTouchControls = currentCustomTouchControlsProfile ?: library
+                )
+            }
+        }
+        viewModelScope.launch {
+            preferences.gameMenuLayoutStyle.collect { style ->
+                _uiState.value = _uiState.value.copy(gameMenuLayoutStyle = style)
+            }
+        }
+        viewModelScope.launch {
+            preferences.gameMenuTabOrder.collect { order ->
+                _uiState.value = _uiState.value.copy(gameMenuTabOrder = order)
+            }
+        }
+        viewModelScope.launch {
+            preferences.hiddenGameMenuTabs.collect { hidden ->
+                _uiState.value = _uiState.value.copy(hiddenGameMenuTabs = hidden)
+            }
+        }
+        viewModelScope.launch {
+            preferences.gameMenuSectionOrder.collect { order ->
+                _uiState.value = _uiState.value.copy(gameMenuSectionOrder = order)
+            }
+        }
+        viewModelScope.launch {
+            preferences.hiddenGameMenuSections.collect { hidden ->
+                _uiState.value = _uiState.value.copy(hiddenGameMenuSections = hidden)
+            }
+        }
+        viewModelScope.launch {
+            preferences.fpsOverlayMode.collect { mode ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(fpsOverlayMode = mode) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.fpsOverlayCorner.collect { corner ->
+                applyGlobalInterfacePreferenceUpdate { it.copy(fpsOverlayCorner = corner) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.fpsOverlayScale.collect { scale ->
+                applyGlobalInterfacePreferenceUpdate { it.copy(fpsOverlayScale = scale) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.fpsOverlayMetrics.collect { metrics ->
+                applyGlobalInterfacePreferenceUpdate { it.copy(fpsOverlayMetrics = metrics) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.compactControls.collect { enabled ->
+                applyGlobalInterfacePreferenceUpdate { it.copy(compactControls = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gamepadStickDeadzone.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gamepadStickDeadzone = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.invertLeftStick.collect { enabled ->
+                applyGlobalInterfacePreferenceUpdate { it.copy(invertLeftStick = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.invertRightStick.collect { enabled ->
+                applyGlobalInterfacePreferenceUpdate { it.copy(invertRightStick = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.invertLeftStickHorizontal.collect { enabled ->
+                applyGlobalInterfacePreferenceUpdate { it.copy(invertLeftStickHorizontal = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.invertRightStickHorizontal.collect { enabled ->
+                applyGlobalInterfacePreferenceUpdate { it.copy(invertRightStickHorizontal = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gamepadLeftStickSensitivity.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gamepadLeftStickSensitivity = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gamepadRightStickSensitivity.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gamepadRightStickSensitivity = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gamepadLeftStickNegativeDeadzone.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gamepadLeftStickNegativeDeadzone = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gamepadRightStickNegativeDeadzone.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gamepadRightStickNegativeDeadzone = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gamepadLeftStickAntiDeadzone.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gamepadLeftStickAntiDeadzone = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gamepadRightStickAntiDeadzone.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gamepadRightStickAntiDeadzone = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gamepadLeftStickCurve.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gamepadLeftStickCurve = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gamepadRightStickCurve.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gamepadRightStickCurve = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gamepadRightStickUpToR2.collect { enabled ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gamepadRightStickUpToR2 = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gamepadRightStickDownToL2.collect { enabled ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gamepadRightStickDownToL2 = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gamepadButtonHaptics.collect { enabled ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gamepadButtonHaptics = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.pressureModifierAmount.collect { amount ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(pressureModifierAmount = amount.coerceIn(1, 100)) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.confirmSaveLoadActions.collect { enabled ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(confirmSaveLoadActions = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.backButtonExitsGame.collect { enabled ->
+                _uiState.value = _uiState.value.copy(backButtonExitsGame = enabled)
+            }
+        }
+        viewModelScope.launch {
+            preferences.keepScreenOn.collect { enabled ->
+                applyGlobalInterfacePreferenceUpdate { it.copy(keepScreenOn = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            RetroAchievementsLiveStateManager.state.collect { state ->
+                if (state.hardcoreActive) {
+                    enforceRetroAchievementsHardcoreRuntimeState()
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferences.performancePreset.collect { preset ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(performancePreset = preset) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.hwDownloadMode.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(hwDownloadMode = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.hwDownloadModeUserOverride.collect { owned ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(hwDownloadModeUserOverride = owned) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.eeCycleRate.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(eeCycleRate = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.eeCycleSkip.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(eeCycleSkip = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.renderer.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(renderer = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.upscaleMultiplier.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(upscale = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.aspectRatio.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(aspectRatio = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.localMultiplayerMode.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(localMultiplayerMode = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.displayCrop.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(displayCrop = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.enableInstantVu1.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(enableInstantVu1 = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.enableMtvu.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(enableMtvu = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.enableIopThread.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(enableIopThread = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.enableVUAot.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(enableVUAot = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.enableThreadPinning.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(enableThreadPinning = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.enableFastCdvd.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(enableFastCdvd = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.enableFastBoot.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(enableFastBoot = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.enableCheats.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(enableCheats = value && !isRetroAchievementsHardcoreRestricted()) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.frameSkip.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(frameSkip = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.skipDuplicateFrames.collect { enabled ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(skipDuplicateFrames = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.lowLatencyMode.collect { enabled ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(lowLatencyMode = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.textureFiltering.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(textureFiltering = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.trilinearFiltering.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(trilinearFiltering = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.blendingAccuracy.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(blendingAccuracy = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.blendingAccuracyUserOverride.collect { owned ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(blendingAccuracyUserOverride = owned) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.texturePreloading.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(texturePreloading = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.enableFxaa.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(enableFxaa = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.casMode.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(casMode = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.sgsrMode.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(sgsrMode = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.casSharpness.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(casSharpness = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.tvShader.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(tvShader = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.shadeBoostEnabled.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(shadeBoostEnabled = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.shadeBoostBrightness.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(shadeBoostBrightness = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.shadeBoostContrast.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(shadeBoostContrast = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.shadeBoostSaturation.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(shadeBoostSaturation = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.shadeBoostGamma.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(shadeBoostGamma = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.anisotropicFiltering.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(anisotropicFiltering = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.enableHwMipmapping.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(enableHwMipmapping = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.antiBlur.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(antiBlur = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.enableWidescreenPatches.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(widescreenPatches = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.enableNoInterlacingPatches.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(noInterlacingPatches = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.cpuSpriteRenderSize.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(cpuSpriteRenderSize = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.cpuSpriteRenderLevel.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(cpuSpriteRenderLevel = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.softwareClutRender.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(softwareClutRender = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gpuTargetClutMode.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gpuTargetClutMode = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.skipDrawStart.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(skipDrawStart = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.skipDrawEnd.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(skipDrawEnd = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.autoFlushHardware.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(autoFlushHardware = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.cpuFramebufferConversion.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(cpuFramebufferConversion = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.disableDepthConversion.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(disableDepthConversion = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.disableSafeFeatures.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(disableSafeFeatures = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.disableRenderFixes.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(disableRenderFixes = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.preloadFrameData.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(preloadFrameData = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.disablePartialInvalidation.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(disablePartialInvalidation = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.textureInsideRt.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(textureInsideRt = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.readTargetsOnClose.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(readTargetsOnClose = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.estimateTextureRegion.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(estimateTextureRegion = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.gpuPaletteConversion.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(gpuPaletteConversion = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.halfPixelOffset.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(halfPixelOffset = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.nativeScaling.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(nativeScaling = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.roundSprite.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(roundSprite = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.bilinearUpscale.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(bilinearUpscale = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.textureOffsetX.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(textureOffsetX = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.textureOffsetY.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(textureOffsetY = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.alignSprite.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(alignSprite = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.mergeSprite.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(mergeSprite = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.forceEvenSpritePosition.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(forceEvenSpritePosition = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.nativePaletteDraw.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(nativePaletteDraw = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.frameLimitEnabled.collect { enabled ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(frameLimitEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.targetFps.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(targetFps = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.fastForwardSpeed.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(fastForwardSpeed = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.racingMode.collect { enabled ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(racingMode = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.stickyButtons.collect { buttons ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(stickyButtons = buttons) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.touchscreenRightStick.collect { enabled ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(touchscreenRightStick = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.touchscreenRightStickSensitivity.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(touchscreenRightStickSensitivity = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.touchscreenLeftStick.collect { enabled ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(touchscreenLeftStick = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.touchscreenLeftStickSensitivity.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(touchscreenLeftStickSensitivity = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.touchHaptics.collect { enabled ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(touchHaptics = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.stickToggleTarget.collect { value ->
+                val profile = withContext(Dispatchers.IO) {
+                    activePerGameKey()?.let(perGameSettingsRepository::get)
+                }
+                if (profile == null || profile.providedKeys?.contains("stickToggleTarget") == false) {
+                    _uiState.value = _uiState.value.copy(stickToggleTarget = value)
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferences.touchHapticsPreset.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(touchHapticsPreset = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.touchHapticsStrength.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(touchHapticsStrength = value) }
+            }
+        }
+        viewModelScope.launch { preferences.gyroMode.collect { value -> applyGlobalRuntimePreferenceUpdate { it.copy(gyroMode = value) } } }
+        viewModelScope.launch { preferences.gyroSensitivity.collect { value -> applyGlobalRuntimePreferenceUpdate { it.copy(gyroSensitivity = value) } } }
+        viewModelScope.launch { preferences.gyroSmoothing.collect { value -> applyGlobalRuntimePreferenceUpdate { it.copy(gyroSmoothing = value) } } }
+        viewModelScope.launch { preferences.gyroInvertX.collect { value -> applyGlobalRuntimePreferenceUpdate { it.copy(gyroInvertX = value) } } }
+        viewModelScope.launch { preferences.gyroInvertY.collect { value -> applyGlobalRuntimePreferenceUpdate { it.copy(gyroInvertY = value) } } }
+        viewModelScope.launch { preferences.gyroStickTarget.collect { value -> applyGlobalRuntimePreferenceUpdate { it.copy(gyroStickTarget = value) } } }
+        viewModelScope.launch { preferences.lightGunAim.collect { value -> applyGlobalRuntimePreferenceUpdate { it.copy(lightGunAim = value) } } }
+        viewModelScope.launch { preferences.lightGunCursorEnabled.collect { value -> applyGlobalRuntimePreferenceUpdate { it.copy(lightGunCursorEnabled = value) } } }
+        viewModelScope.launch { preferences.usbPort1Device.collect { value -> _uiState.value = _uiState.value.copy(usbPort1Device = value) } }
+        viewModelScope.launch { preferences.usbPort2Device.collect { value -> _uiState.value = _uiState.value.copy(usbPort2Device = value) } }
+        viewModelScope.launch {
+            preferences.ntscFramerate.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(ntscFramerate = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.palFramerate.collect { value ->
+                applyGlobalRuntimePreferenceUpdate { it.copy(palFramerate = value) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.autoSaveEnabled.collect { enabled ->
+                applyGlobalInterfacePreferenceUpdate { it.copy(autoSaveEnabled = enabled) }
+                if (_uiState.value.autoSaveEnabled) {
+                    lastAutoSavePlayTimeMs = _uiState.value.activePlayTimeMs
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferences.autoSaveIntervalMinutes.collect { value ->
+                applyGlobalInterfacePreferenceUpdate { it.copy(autoSaveIntervalMinutes = value.coerceIn(1, 999)) }
+            }
+        }
+        
+        viewModelScope.launch {
+            while (isActive) {
+                delay(250.milliseconds)
+                pollNativePerformanceMetrics()
+            }
+        }
+        viewModelScope.launch {
+            while (isActive) {
+                delay(1_000.milliseconds)
+                tickActivePlayTimeAndAutoSave()
+            }
+        }
+        syncNativePerformanceOverlayState(_uiState.value)
+    }
+
+    private fun tickActivePlayTimeAndAutoSave() {
+        val state = _uiState.value
+        if (!state.isRunning || state.isStarting || state.isPaused || state.showMenu || isShuttingDown) {
+            return
+        }
+
+        val nextPlayTimeMs = state.activePlayTimeMs + 1_000L
+        _uiState.value = state.copy(activePlayTimeMs = nextPlayTimeMs)
+        if (shouldTrackCurrentProfilePlayTime) {
+            pendingPlayTimeSyncMs += 1_000L
+            if (pendingPlayTimeSyncMs >= PLAY_TIME_LOCAL_CACHE_INTERVAL_MS) {
+                schedulePlayTimeSync()
+            }
+        }
+
+        val intervalMs = state.autoSaveIntervalMinutes.coerceIn(1, 999) * 60_000L
+        if (!state.autoSaveEnabled ||
+            state.isActionInProgress ||
+            state.isAutoSaveInProgress ||
+            nextPlayTimeMs - lastAutoSavePlayTimeMs < intervalMs
+        ) {
+            return
+        }
+
+        lastAutoSavePlayTimeMs = nextPlayTimeMs
+        performAutoSave()
+    }
+
+    private fun schedulePlayTimeSync() {
+        if (playTimeSyncJob?.isActive == true) return
+        playTimeSyncJob = viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    cachePendingPlayTime()
+                    flushCachedPlayTimeIfDue(force = false)
+                }
+            } finally {
+                playTimeSyncJob = null
+            }
+        }
+    }
+
+    private suspend fun cachePendingPlayTime() {
+        playTimeSyncMutex.withLock {
+            if (!shouldTrackCurrentProfilePlayTime) {
+                pendingPlayTimeSyncMs = 0L
+                shouldCountCurrentProfileSession = false
+                return@withLock
+            }
+            val durationMs = pendingPlayTimeSyncMs
+            if (durationMs <= 0L) return@withLock
+            val path = currentGamePath
+            val title = currentGameTitle
+            val serial = currentGameSerial.takeIf { it.isNotBlank() }
+            val coverArtPath = currentGameCoverArtPath
+            pendingPlayTimeSyncMs = 0L
+            val cached = runCatching {
+                playTimeSyncCacheRepository.add(
+                    PlayerPlayTimeDelta(
+                        gamePath = path,
+                        title = title,
+                        serial = serial,
+                        coverArtPath = coverArtPath,
+                        durationMs = durationMs,
+                        sessionCount = if (shouldCountCurrentProfileSession) 1L else 0L
+                    )
+                )
+            }.isSuccess
+            if (cached) {
+                shouldCountCurrentProfileSession = false
+            } else {
+                pendingPlayTimeSyncMs += durationMs
+            }
+        }
+    }
+
+    private suspend fun flushCachedPlayTimeIfDue(force: Boolean) {
+        val nowMs = System.currentTimeMillis()
+        val lastSyncAtMs = maxOf(lastCloudPlayTimeSyncAtMs, playTimeSyncCacheRepository.getLastCloudSyncAtMs())
+        if (!force && nowMs - lastSyncAtMs < PLAY_TIME_CLOUD_SYNC_INTERVAL_MS) {
+            return
+        }
+        if (!playerProfileRepository.hasSignedInUser()) {
+            return
+        }
+        val entries = playTimeSyncCacheRepository.drain()
+        if (entries.isEmpty()) return
+        val synced = runCatching {
+            playerProfileRepository.recordPlayTimeBatch(entries)
+        }.isSuccess
+        if (synced) {
+            lastCloudPlayTimeSyncAtMs = nowMs
+            playTimeSyncCacheRepository.setLastCloudSyncAtMs(nowMs)
+        } else {
+            playTimeSyncCacheRepository.restore(entries)
+        }
+    }
+
+    private suspend fun syncPendingPlayTime(forceCloud: Boolean = true) {
+        cachePendingPlayTime()
+        flushCachedPlayTimeIfDue(force = forceCloud)
+    }
+
+    private fun syncCachedPlayTimeInBackground(forceCloud: Boolean = true) {
+        val app = getApplication<Application>() as EmuCoreXApp
+        app.applicationScope.launch {
+            flushCachedPlayTimeIfDue(force = forceCloud)
+        }
+    }
+
+    private fun performAutoSave() {
+        viewModelScope.launch(Dispatchers.IO) {
+            saveAutoSaveSlot(allowWhileMenu = false, allowPaused = false, showActionProgress = false)
+        }
+    }
+
+    private suspend fun saveAutoSaveSlot(
+        allowWhileMenu: Boolean,
+        allowPaused: Boolean,
+        showActionProgress: Boolean
+    ): Boolean {
+        val path = currentGamePath ?: return false
+        val previousModified = saveStateLastModified(path, AUTO_SAVE_SLOT)
+        val before = _uiState.value
+        _uiState.value = before.copy(
+            isAutoSaveInProgress = true,
+            isActionInProgress = if (showActionProgress) true else before.isActionInProgress,
+            actionLabel = if (showActionProgress) "saving" else before.actionLabel
+        )
+        val scheduled = lifecycleMutex.withLock {
+            val state = _uiState.value
+            if (isShuttingDown ||
+                !state.isRunning ||
+                (!allowPaused && state.isPaused) ||
+                (!allowWhileMenu && state.showMenu)
+            ) {
+                false
+            } else {
+                try {
+                    EmulatorBridge.saveState(AUTO_SAVE_SLOT)
+                } catch (_: Exception) {
+                    false
+                }
+            }
+        }
+        val success = scheduled && waitForSaveStateUpdate(path, AUTO_SAVE_SLOT, previousModified)
+        val after = _uiState.value
+        _uiState.value = after.copy(
+            isAutoSaveInProgress = false,
+            isActionInProgress = if (showActionProgress) false else after.isActionInProgress,
+            actionLabel = if (showActionProgress) null else after.actionLabel
+        )
+        if (success) {
+            refreshSaveStateMetadata()
+        }
+        AppAnalytics.logSaveStateAction(action = "save", automatic = true, success = success)
+        return success
+    }
+
+    /**
+     * Summarises the launch-time patch options in the app's own HUD. The core renders no
+     * OSD on Android, so nothing about patches would be visible otherwise.
+     */
+    private fun maybeShowActivePatchNotice() {
+        viewModelScope.launch {
+            val enabled = runCatching { preferences.showPatchMessages.first() }.getOrDefault(false)
+            if (!enabled) return@launch
+            val state = _uiState.value
+            val userPatchCount = withContext(Dispatchers.IO) {
+                runCatching {
+                    PatchRepository(getApplication(), preferences)
+                        .countUserPatches(currentGameSerial, currentGameCrc)
+                }.getOrDefault(0)
+            }
+            val notice = ActivePatchNotice(
+                widescreen = state.widescreenPatches,
+                noInterlacing = state.noInterlacingPatches,
+                cheats = state.enableCheats,
+                userPatchCount = userPatchCount
+            )
+            if (!notice.hasAnything) return@launch
+            _activePatchNotice.value = notice
+            delay(ACTIVE_PATCH_NOTICE_DURATION_MS.milliseconds)
+            if (_activePatchNotice.value == notice) {
+                _activePatchNotice.value = null
+            }
+        }
+    }
+
+    private fun pollNativePerformanceMetrics() {
+        if (!NativeApp.hasNativeCore) return
+        val state = _uiState.value
+        if (!state.isRunning || isShuttingDown || state.isPaused || !state.showFps) return
+        val raw = NativeApp.getPerformanceMetricsSnapshot().orEmpty()
+        if (raw.isBlank()) return
+
+        _performanceState.value = parseEmulationPerformanceSnapshot(raw, state.fpsOverlayMode, performanceCpuName) ?: return
+    }
+
+    private fun publishShaderPreparationStatus(status: com.sbro.emucorex.core.ShaderPreparationStatus) {
+        val phase = when (status.state) {
+            com.sbro.emucorex.core.ShaderPreparationStatus.State.IDLE -> ShaderPreparationUiPhase.Hidden
+            com.sbro.emucorex.core.ShaderPreparationStatus.State.WAITING_FOR_LIFECYCLE ->
+                ShaderPreparationUiPhase.WaitingForLifecycle
+            com.sbro.emucorex.core.ShaderPreparationStatus.State.STARTING -> ShaderPreparationUiPhase.Starting
+            com.sbro.emucorex.core.ShaderPreparationStatus.State.RUNNING -> ShaderPreparationUiPhase.Running
+            com.sbro.emucorex.core.ShaderPreparationStatus.State.CANCELLING -> ShaderPreparationUiPhase.Cancelling
+            com.sbro.emucorex.core.ShaderPreparationStatus.State.COMPLETED -> ShaderPreparationUiPhase.Completed
+            com.sbro.emucorex.core.ShaderPreparationStatus.State.CANCELLED -> ShaderPreparationUiPhase.Cancelled
+            com.sbro.emucorex.core.ShaderPreparationStatus.State.FAILED -> ShaderPreparationUiPhase.Failed
+            com.sbro.emucorex.core.ShaderPreparationStatus.State.UNSUPPORTED -> ShaderPreparationUiPhase.Unsupported
+        }
+        val error = when (status.error) {
+            com.sbro.emucorex.core.ShaderPreparationStatus.Error.NONE -> null
+            com.sbro.emucorex.core.ShaderPreparationStatus.Error.LIFECYCLE_BUSY -> ShaderPreparationUiError.LifecycleBusy
+            com.sbro.emucorex.core.ShaderPreparationStatus.Error.UNSUPPORTED_RENDERER -> ShaderPreparationUiError.UnsupportedRenderer
+            com.sbro.emucorex.core.ShaderPreparationStatus.Error.CACHE_DISABLED -> ShaderPreparationUiError.CacheDisabled
+            com.sbro.emucorex.core.ShaderPreparationStatus.Error.MISSING_SOURCE -> ShaderPreparationUiError.MissingSource
+            com.sbro.emucorex.core.ShaderPreparationStatus.Error.DEVICE_CREATION_FAILED -> ShaderPreparationUiError.DeviceCreationFailed
+            com.sbro.emucorex.core.ShaderPreparationStatus.Error.PIPELINE_FAILURES -> ShaderPreparationUiError.PipelineFailures
+            com.sbro.emucorex.core.ShaderPreparationStatus.Error.CHECKPOINT_FAILED -> ShaderPreparationUiError.CheckpointFailed
+            com.sbro.emucorex.core.ShaderPreparationStatus.Error.INTERNAL_ERROR -> ShaderPreparationUiError.InternalError
+        }
+        _shaderPreparationUiState.value = ShaderPreparationUiSnapshot(
+            phase = phase,
+            total = status.total,
+            completed = status.completed,
+            alreadyAvailable = status.alreadyAvailable,
+            failed = status.failed,
+            cancelled = status.cancelled,
+            inFlight = status.inFlight,
+            finished = status.finished,
+            checkpointSaved = status.checkpointSaved,
+            jobId = status.jobId,
+            attempt = status.attempt,
+            error = error,
+            adapterName = status.adapterName,
+            cancelRequested = status.cancelRequested
+        )
+    }
+
+    private fun setShaderPreparationPhase(
+        phase: ShaderPreparationUiPhase,
+        error: ShaderPreparationUiError? = null
+    ) {
+        _shaderPreparationUiState.value = _shaderPreparationUiState.value.copy(phase = phase, error = error)
+    }
+
+    private suspend fun awaitShaderPreparationChoice(
+        phase: ShaderPreparationUiPhase,
+        error: ShaderPreparationUiError? = null
+    ): LaunchPreparationChoice {
+        if (shaderPreparationAbortRequested || cancelPendingStart) {
+            return LaunchPreparationChoice.Abort
+        }
+        return shaderPreparationChoiceGate.await {
+            setShaderPreparationPhase(phase, error)
+            if (shaderPreparationAbortRequested || cancelPendingStart) {
+                shaderPreparationChoiceGate.abort()
+            }
+        }
+    }
+
+    private fun isShaderPreparationTerminal(status: com.sbro.emucorex.core.ShaderPreparationStatus): Boolean =
+        status.state == com.sbro.emucorex.core.ShaderPreparationStatus.State.COMPLETED ||
+            status.state == com.sbro.emucorex.core.ShaderPreparationStatus.State.CANCELLED ||
+            status.state == com.sbro.emucorex.core.ShaderPreparationStatus.State.FAILED ||
+            status.state == com.sbro.emucorex.core.ShaderPreparationStatus.State.UNSUPPORTED
+
+    private suspend fun prepareShadersBeforeLaunch(
+        renderer: Int,
+        bootToBios: Boolean,
+        bootSmokeProbe: Boolean,
+        autotestMode: Boolean,
+        restoredAfterProcessDeath: Boolean
+    ): Boolean {
+        fun shouldOffer(readiness: ShaderPreparationReadiness) = ShaderPreparationUiPolicy.shouldOffer(
+                renderer = RendererDefaults.normalizeAndroidRenderer(renderer),
+                bootToBios = bootToBios,
+                bootSmokeProbe = bootSmokeProbe,
+                autotestMode = autotestMode,
+                restoredAfterProcessDeath = restoredAfterProcessDeath,
+                readiness = readiness
+            )
+
+        if (!shouldOffer(ShaderPreparationReadiness.NeedsPreparation)) {
+            return true
+        }
+
+        shaderPreparationAbortRequested = false
+        shaderPreparationCancelRequested = false
+        shaderPreparationMayBeActive = false
+        shaderPreparationChoiceGate.reset()
+        _shaderPreparationUiState.value = _shaderPreparationUiState.value.copy(
+            phase = ShaderPreparationUiPhase.Hidden,
+            error = null,
+            ownerKnown = true
+        )
+
+        val readiness = ShaderPreparationReadinessCoordinator.check(
+            lifecycleGate = shaderPreparationLifecycleGate,
+            isAborted = { shaderPreparationAbortRequested || cancelPendingStart },
+            probe = { EmulatorBridge.checkShaderPreparationReadiness() }
+        )
+        if (readiness == ShaderPreparationReadinessResult.Aborted ||
+            shaderPreparationAbortRequested || cancelPendingStart) {
+            return false
+        }
+        if (readiness == ShaderPreparationReadinessResult.Prepared &&
+            !shouldOffer(ShaderPreparationReadiness.ValidatedPrepared)) {
+            return !shaderPreparationAbortRequested && !cancelPendingStart
+        }
+
+        _shaderPreparationUiState.value = _shaderPreparationUiState.value.copy(
+            phase = ShaderPreparationUiPhase.Offer,
+            error = null,
+            jobId = 0L,
+            attempt = 0,
+            total = 0,
+            completed = 0,
+            alreadyAvailable = 0,
+            failed = 0,
+            cancelled = 0,
+            inFlight = 0,
+            finished = false,
+            checkpointSaved = false,
+            adapterName = null,
+            cancelRequested = false,
+            ownerKnown = true
+        )
+
+        when (awaitShaderPreparationChoice(ShaderPreparationUiPhase.Offer)) {
+            LaunchPreparationChoice.Skip -> {
+                setShaderPreparationPhase(ShaderPreparationUiPhase.Hidden)
+                return true
+            }
+            LaunchPreparationChoice.Abort -> return false
+            LaunchPreparationChoice.Prepare -> Unit
+            else -> return false
+        }
+
+        var firstStart = true
+        while (true) {
+            if (shaderPreparationAbortRequested || cancelPendingStart) {
+                return false
+            }
+
+            val result = shaderPreparationLifecycleGate.admitAndObserve(
+                admit = {
+                    shaderPreparationMayBeActive = true
+                    if (firstStart) {
+                        setShaderPreparationPhase(ShaderPreparationUiPhase.Starting)
+                        firstStart = false
+                        EmulatorBridge.startShaderPreparation()
+                    } else {
+                        val jobId = _shaderPreparationUiState.value.jobId
+                        shaderPreparationCancelRequested = false
+                        jobId > 0L && EmulatorBridge.resumeShaderPreparation(jobId)
+                    }
+                },
+                observe = { started ->
+                    if (!started) {
+                        Log.w(TAG, "Shader preparation start or resume was rejected by native runtime")
+                    }
+                    ShaderPreparationRunCoordinator.awaitKnownTerminal(
+                    startAccepted = started,
+                    readStatus = { EmulatorBridge.getShaderPreparationStatusSnapshot() },
+                    cancellationRequested = {
+                        shaderPreparationAbortRequested || shaderPreparationCancelRequested || cancelPendingStart
+                    },
+                    cancel = { jobId -> EmulatorBridge.cancelShaderPreparation(jobId) },
+                    waitBetweenPolls = { delay(250L) },
+                    onStatus = { status -> publishShaderPreparationStatus(status) },
+                    shutdownIfStatusRemainsUnknown = {
+                        val stopped = EmulatorBridge.shutdownShaderPreparationRuntime()
+                        if (stopped) shaderPreparationMayBeActive = false
+                        stopped
+                    }
+                    )
+                }
+            )
+
+            when (result) {
+                is ShaderPreparationWaitResult.Terminal -> {
+                    shaderPreparationMayBeActive = false
+                    shaderPreparationCancelRequested = false
+                    publishShaderPreparationStatus(result.status)
+                    if (result.status.state == com.sbro.emucorex.core.ShaderPreparationStatus.State.COMPLETED) {
+                        return when (awaitShaderPreparationChoice(ShaderPreparationUiPhase.Completed)) {
+                            LaunchPreparationChoice.ContinueToGame -> {
+                                setShaderPreparationPhase(ShaderPreparationUiPhase.Hidden)
+                                true
+                            }
+                            LaunchPreparationChoice.Abort -> false
+                            else -> false
+                        }
+                    }
+                    if (shaderPreparationAbortRequested || cancelPendingStart) return false
+                    when (awaitShaderPreparationChoice(_shaderPreparationUiState.value.phase)) {
+                        LaunchPreparationChoice.Resume -> continue
+                        LaunchPreparationChoice.ContinueToGame -> {
+                            setShaderPreparationPhase(ShaderPreparationUiPhase.Hidden)
+                            return true
+                        }
+                        LaunchPreparationChoice.Abort -> return false
+                        else -> return false
+                    }
+                }
+                ShaderPreparationWaitResult.NoWorker -> {
+                    shaderPreparationMayBeActive = false
+                    _shaderPreparationUiState.value = _shaderPreparationUiState.value.copy(
+                        phase = ShaderPreparationUiPhase.Failed,
+                        error = ShaderPreparationUiError.InternalError,
+                        jobId = 0L,
+                        ownerKnown = true
+                    )
+                    when (awaitShaderPreparationChoice(ShaderPreparationUiPhase.Failed, ShaderPreparationUiError.InternalError)) {
+                        LaunchPreparationChoice.ContinueToGame -> {
+                            setShaderPreparationPhase(ShaderPreparationUiPhase.Hidden)
+                            return true
+                        }
+                        LaunchPreparationChoice.Abort -> return false
+                        else -> return false
+                    }
+                }
+                ShaderPreparationWaitResult.StatusUnavailable -> {
+                    _shaderPreparationUiState.value = _shaderPreparationUiState.value.copy(
+                        phase = ShaderPreparationUiPhase.Failed,
+                        error = ShaderPreparationUiError.InternalError,
+                        ownerKnown = false
+                    )
+                    when (awaitShaderPreparationChoice(ShaderPreparationUiPhase.Failed, ShaderPreparationUiError.InternalError)) {
+                        LaunchPreparationChoice.Abort -> return false
+                        else -> return false
+                    }
+                }
+                ShaderPreparationWaitResult.RuntimeShutdown -> {
+                    shaderPreparationMayBeActive = false
+                    setShaderPreparationPhase(ShaderPreparationUiPhase.Hidden)
+                    return false
+                }
+            }
+        }
+    }
+
+    fun prepareShaders() {
+        shaderPreparationChoiceGate.choose(LaunchPreparationChoice.Prepare)
+    }
+
+    fun skipShaderPreparation() {
+        shaderPreparationChoiceGate.choose(LaunchPreparationChoice.Skip)
+    }
+
+    fun cancelShaderPreparation() {
+        val jobId = _shaderPreparationUiState.value.jobId
+        if (!_shaderPreparationUiState.value.ownerKnown || jobId <= 0L) {
+            abortPendingShaderPreparation()
+            return
+        }
+        shaderPreparationCancelRequested = true
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { EmulatorBridge.cancelShaderPreparation(jobId) }
+        }
+    }
+
+    fun resumeShaderPreparation() {
+        shaderPreparationChoiceGate.choose(LaunchPreparationChoice.Resume)
+    }
+
+    fun continueLaunchWithoutShaderPreparation() {
+        shaderPreparationChoiceGate.choose(LaunchPreparationChoice.ContinueToGame)
+    }
+
+    fun abortPendingShaderPreparation() {
+        shaderPreparationAbortRequested = true
+        shaderPreparationChoiceGate.abort()
+        val state = _shaderPreparationUiState.value
+        val required = ShaderPreparationExitCleanup.isRequired(
+            hasActiveWorker = shaderPreparationMayBeActive || shaderPreparationLifecycleGate.mayBeActive,
+            phase = state.phase
+        )
+        ShaderPreparationExitCleanup.scheduleIfRequired(required, viewModelScope) {
+            cleanupPendingShaderPreparation()
+        }
+    }
+
+    private suspend fun cleanupPendingShaderPreparation() {
+        shaderPreparationLifecycleGate.withCleanup { mayBeActive ->
+            if (!mayBeActive) return@withCleanup
+            val result = ShaderPreparationRunCoordinator.awaitKnownTerminal(
+                startAccepted = true,
+                readStatus = { EmulatorBridge.getShaderPreparationStatusSnapshot() },
+                cancellationRequested = { true },
+                cancel = { activeJobId -> EmulatorBridge.cancelShaderPreparation(activeJobId) },
+                waitBetweenPolls = { delay(250L) },
+                onStatus = { status -> publishShaderPreparationStatus(status) },
+                shutdownIfStatusRemainsUnknown = { EmulatorBridge.shutdownShaderPreparationRuntime() }
+            )
+            if (result is ShaderPreparationWaitResult.Terminal ||
+                result == ShaderPreparationWaitResult.NoWorker ||
+                result == ShaderPreparationWaitResult.RuntimeShutdown) {
+                shaderPreparationMayBeActive = false
+            }
+        }
+        if (!shaderPreparationMayBeActive) {
+            _shaderPreparationUiState.value = _shaderPreparationUiState.value.copy(
+                phase = ShaderPreparationUiPhase.Hidden,
+                ownerKnown = true
+            )
+        }
+    }
+
+    fun startEmulation(
+        path: String?,
+        slotToLoad: Int? = null,
+        bootToBios: Boolean = false,
+        bootSmokeProbe: Boolean = false,
+        autotestMode: Boolean = false,
+        enableEeRecompilerOverride: Boolean? = null,
+        enableIopRecompilerOverride: Boolean? = null,
+        enableVu0RecompilerOverride: Boolean? = null,
+        enableVu1RecompilerOverride: Boolean? = null,
+        enableFastmemOverride: Boolean? = null,
+        enableMtvuOverride: Boolean? = null,
+        enableIopThreadOverride: Boolean? = null,
+        enableVUAotOverride: Boolean? = null,
+        rendererOverride: Int? = null,
+        gsDumpFrames: Int? = null,
+        gsDumpDelayMs: Int? = null,
+        vu0FamilyMaskOverride: Int? = null,
+        vu1FamilyMaskOverride: Int? = null,
+        restoredAfterProcessDeath: Boolean = false
+    ) {
+        val analyticsLaunchType = when {
+            bootSmokeProbe -> "smoke_test"
+            autotestMode -> "autotest"
+            bootToBios -> "bios"
+            else -> "game"
+        }
+        Log.i(
+            TAG,
+            "startEmulation requested path=$path bootBios=$bootToBios bootSmoke=$bootSmokeProbe autotest=$autotestMode"
+        )
+        if (!NativeApp.hasNativeCore) {
+            Log.e(TAG, "startEmulation rejected: native library is not loaded")
+            _uiState.value = _uiState.value.copy(
+                isRunning = false,
+                isStarting = false,
+                statusMessage = null,
+                toastMessage = "launch_failed"
+            )
+            viewModelScope.launch {
+                delay(2500.milliseconds)
+                if (_uiState.value.toastMessage == "launch_failed") {
+                    _uiState.value = _uiState.value.copy(toastMessage = null)
+                }
+            }
+            return
+        }
+        val launchRequest = ShaderPreparationLaunchRequest(
+            path = if (bootToBios) null else path?.takeIf { it.isNotBlank() },
+            slotToLoad = slotToLoad?.let { normalizeSaveSlot(it) },
+            bootToBios = bootToBios,
+            bootSmokeProbe = bootSmokeProbe,
+            autotestMode = autotestMode,
+            enableEeRecompilerOverride = enableEeRecompilerOverride,
+            enableIopRecompilerOverride = enableIopRecompilerOverride,
+            enableVu0RecompilerOverride = enableVu0RecompilerOverride,
+            enableVu1RecompilerOverride = enableVu1RecompilerOverride,
+            enableFastmemOverride = enableFastmemOverride,
+            enableMtvuOverride = enableMtvuOverride,
+            enableIopThreadOverride = enableIopThreadOverride,
+            enableVUAotOverride = enableVUAotOverride,
+            rendererOverride = rendererOverride,
+            gsDumpFrames = gsDumpFrames,
+            gsDumpDelayMs = gsDumpDelayMs,
+            vu0FamilyMaskOverride = vu0FamilyMaskOverride,
+            vu1FamilyMaskOverride = vu1FamilyMaskOverride,
+            restoredAfterProcessDeath = restoredAfterProcessDeath
+        )
+        if (ShaderPreparationLaunchRetention.shouldIgnoreRecreatedLaunch(
+                current = currentLaunchRequest,
+                requested = launchRequest,
+                isStarting = _uiState.value.isStarting,
+                isRunning = _uiState.value.isRunning || EmulatorBridge.hasValidVm(),
+                preparationVisible = _shaderPreparationUiState.value.phase != ShaderPreparationUiPhase.Hidden
+            )) {
+            Log.i(TAG, "Ignoring duplicate launch request retained across route recreation")
+            return
+        }
+        if (_uiState.value.isStarting) {
+            Log.w(TAG, "startEmulation skipped because another start is in progress")
+            return
+        }
+        val normalizedSlotToLoad = slotToLoad?.let { normalizeSaveSlot(it) }
+        val hasPendingStateLoad = !bootToBios && !bootSmokeProbe && normalizedSlotToLoad != null
+        var analyticsPerformanceProfile = PerformanceProfiles.SAFE
+        var launchRenderer = RendererDefaults.defaultForHardware()
+        cancelPendingStart = false
+        currentLaunchRequest = launchRequest
+        pausedForBackground = false
+        if (pendingPlayTimeSyncMs > 0L) {
+            runCatching {
+                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                    cachePendingPlayTime()
+                }
+            }
+        }
+        currentGamePath = if (bootToBios) null else path?.takeIf { it.isNotBlank() }
+        RetroAchievementsStateManager.setActiveGame(currentGamePath)
+        // Read the per-game touch profile synchronously so the very first rendered frame
+        // already uses it; otherwise the global layout flashes while the game is starting.
+        val launchProfile = if (!bootToBios && !autotestMode) {
+            currentGamePath?.let(perGameSettingsRepository::get)
+        } else {
+            null
+        }
+        currentInterfaceSettingsProfile = launchProfile?.interfaceSettings
+        currentTouchControlsLayoutProfile = launchProfile?.touchControlsLayout
+        currentCustomTouchControlsProfile = launchProfile?.customTouchControls
+        currentGameCoverArtPath = null
+        lastAutoSavePlayTimeMs = 0L
+        pendingPlayTimeSyncMs = 0L
+        shouldCountCurrentProfileSession = false
+        shouldTrackCurrentProfilePlayTime = false
+        _uiState.value = applyInterfaceSettings(
+            _uiState.value
+                .copy(
+                    activePlayTimeMs = 0L,
+                    currentSlotLastModified = 0L,
+                    currentSlotPreviewPath = null,
+                    autoSaveLastModified = 0L,
+                    autoSavePreviewPath = null,
+                    isAutoSaveInProgress = false,
+                    currentGameCoverArtPath = null
+                )
+                .withTouchControlsProfile(
+                    layout = currentTouchControlsLayoutProfile,
+                    customControls = currentCustomTouchControlsProfile
+                )
+        )
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.value = _uiState.value.copy(
+                statusMessage = "status_preparing"
+            )
+
+            // A previous ViewModel may still be autosaving/shutting down; never start before it is done.
+            EmulationExitCoordinator.inFlight?.join()
+            if (_uiState.value.isRunning) {
+                performShutdown()
+                delay(300.milliseconds)
+            } else if (EmulatorBridge.hasValidVm()) {
+                // Leftover VM from a previous ViewModel: stop it through the bridge's serial queue.
+                EmulatorBridge.setTurboModeEnabled(false)
+                EmulatorBridge.shutdown()
+                var waitTime = 0
+                while (EmulatorBridge.isVmActive() && waitTime < 2000) {
+                    delay(50.milliseconds)
+                    waitTime += 50
+                }
+                delay(300.milliseconds)
+            }
+
+            var finalLaunchPath: String? = null
+            lifecycleMutex.withLock {
+                if (isShuttingDown || cancelPendingStart) return@launch
+
+                _uiState.value = _uiState.value.copy(
+                    isStarting = true,
+                    statusMessage = "status_checking_bios"
+                )
+
+                val config = loadLaunchConfig()
+                analyticsPerformanceProfile = config.performanceProfile
+                currentAnalyticsAudioBackend = config.audioBackend
+                val requestedRenderer = rendererOverride ?: config.renderer
+                val fallbackRenderer = VulkanStartupGuard.resolveFallbackRenderer(
+                    getApplication(),
+                    requestedRenderer
+                )
+                val renderer = fallbackRenderer ?: requestedRenderer
+                launchRenderer = renderer
+                if (fallbackRenderer != null) {
+                    _uiState.value = _uiState.value.copy(
+                        renderer = renderer,
+                        toastMessage = "vulkan_fallback_opengl"
+                    )
+                    viewModelScope.launch {
+                        delay(6000.milliseconds)
+                        if (_uiState.value.toastMessage == "vulkan_fallback_opengl") {
+                            _uiState.value = _uiState.value.copy(toastMessage = null)
+                        }
+                    }
+                }
+                Log.i(
+                    TAG,
+                    "Launch config loaded bios=${config.biosPath} renderer=$renderer requested=$requestedRenderer fallback=${fallbackRenderer != null} override=${rendererOverride != null} eeJit=${config.enableEeRecompiler} iopJit=${config.enableIopRecompiler}"
+                )
+                val enableEeRecompiler = enableEeRecompilerOverride ?: config.enableEeRecompiler
+                val enableIopRecompiler = enableIopRecompilerOverride ?: config.enableIopRecompiler
+                val enableVu0Recompiler = enableVu0RecompilerOverride ?: config.enableVu0Recompiler
+                val enableVu1Recompiler = enableVu1RecompilerOverride ?: config.enableVu1Recompiler
+                val enableFastmem = enableFastmemOverride ?: config.enableFastmem
+                val enableMtvu = enableMtvuOverride ?: config.mtvu
+                val enableIopThread = enableIopThreadOverride ?: config.enableIopThread
+                val enableVUAot = enableVUAotOverride ?: config.enableVUAot
+
+                if (!autotestMode) {
+                    val resolvedBiosPath = DocumentPathResolver.prepareBiosDirectory(getApplication(), config.biosPath)
+                        ?: config.biosPath?.let(DocumentPathResolver::resolveDirectoryPath)
+                    val biosDirExists = !resolvedBiosPath.isNullOrBlank() && File(resolvedBiosPath).exists()
+                    val biosLooksUsable = BiosValidator.hasUsableBiosFiles(getApplication(), config.biosPath)
+                    if (!biosDirExists || !biosLooksUsable) {
+                        AppAnalytics.logEmulationStartFailed(analyticsLaunchType, "bios_missing")
+                        _uiState.value = _uiState.value.copy(
+                            isStarting = false,
+                            statusMessage = null,
+                            toastMessage = "bios_missing"
+                        )
+                        delay(2500.milliseconds)
+                        _uiState.value = _uiState.value.copy(toastMessage = null)
+                        return@withLock
+                    }
+                }
+
+                _uiState.value = _uiState.value.copy(
+                    statusMessage = "status_applying_config"
+                )
+                delay(200.milliseconds)
+
+                applyRuntimeConfigToNative(
+                    config = config,
+                    renderer = renderer,
+                    enableEeRecompiler = enableEeRecompiler,
+                    enableIopRecompiler = enableIopRecompiler,
+                    enableVu0Recompiler = enableVu0Recompiler,
+                    enableVu1Recompiler = enableVu1Recompiler,
+                    enableFastmem = enableFastmem,
+                    enableMtvu = enableMtvu,
+                    enableIopThread = enableIopThread,
+                    enableVUAot = enableVUAot,
+                    autotestMode = autotestMode || bootSmokeProbe,
+                    vu0FamilyMaskOverride = vu0FamilyMaskOverride,
+                    vu1FamilyMaskOverride = vu1FamilyMaskOverride
+                )
+
+                val frameGenerationManager = FrameGenerationManager(getApplication())
+                val frameGenerationProfile = path
+                    ?.takeIf { !bootToBios && !autotestMode }
+                    ?.let { gameKey -> withContext(Dispatchers.IO) { perGameSettingsRepository.get(gameKey) } }
+                    ?.takeIf { profile ->
+                        profile.providedKeys == null || "frameGenerationEnabled" in profile.providedKeys
+                    }
+                if (frameGenerationProfile != null) {
+                    frameGenerationManager.applySettingsToNative(
+                        FrameGenerationSettings(
+                            enabled = frameGenerationProfile.frameGenerationEnabled,
+                            multiplier = frameGenerationProfile.frameGenerationMultiplier,
+                            performanceMode = frameGenerationProfile.frameGenerationPerformance,
+                            flowScalePercent = frameGenerationProfile.frameGenerationFlowScale,
+                            targetRefreshRate = frameGenerationProfile.frameGenerationTargetRate
+                        )
+                    )
+                } else {
+                    frameGenerationManager.applyToNative()
+                }
+
+                _uiState.value = _uiState.value.copy(
+                    statusMessage = "status_loading_game"
+                )
+                delay(200.milliseconds)
+
+                val launchPath = when {
+                    bootToBios -> ""
+                    path.isNullOrBlank() -> null
+                    path.startsWith("content://") && DocumentPathResolver.getDisplayName(getApplication(), path)
+                        .substringAfterLast('.', "").equals("elf", ignoreCase = true) ->
+                            DocumentPathResolver.prepareElfLaunchPath(getApplication(), path)
+                    else -> DocumentPathResolver.prepareGameLaunchPath(getApplication(), path)
+                }
+
+                if (!bootToBios && launchPath.isNullOrBlank()) {
+                    AppAnalytics.logEmulationStartFailed(analyticsLaunchType, "path_unavailable")
+                    _uiState.value = _uiState.value.copy(
+                        isStarting = false,
+                        statusMessage = null,
+                        toastMessage = "launch_path_error"
+                    )
+                    delay(2500.milliseconds)
+                    _uiState.value = _uiState.value.copy(toastMessage = null)
+                    return@withLock
+                }
+                
+                finalLaunchPath = launchPath
+                Log.i(TAG, "Prepared launch path=$launchPath originalPath=$path bootBios=$bootToBios")
+                // Vulkan prepares common pipelines on the render device itself.
+                // Game launches never show a preparation dialog or create a second device.
+                if (cancelPendingStart) {
+                    _uiState.value = _uiState.value.copy(
+                        isStarting = false,
+                        statusMessage = null
+                    )
+                    return@withLock
+                }
+                // Whether a per-game profile exists gates the light-gun context; the effective
+                // gyro mode itself comes from the runtime snapshot applied below.
+                var hasPerGameProfile = false
+                if (bootToBios) {
+                    currentGameTitle = "PlayStation 2 BIOS"
+                    currentGamePath = null
+                    RetroAchievementsStateManager.setActiveGame(null)
+                    currentGameSerial = ""
+                    currentGameCoverArtPath = null
+                    currentGameCrc = ""
+                    currentGameSource = "bios_only"
+                    shouldCountCurrentProfileSession = false
+                    shouldTrackCurrentProfilePlayTime = false
+                    _uiState.value = _uiState.value.copy(
+                        currentGameTitle = currentGameTitle,
+                        currentGameSubtitle = currentGameSubtitle(),
+                        currentGameCoverArtPath = null,
+                        gameSettingsProfileActive = false,
+                        cheatsGameKey = null,
+                        availableCheats = emptyList()
+                    )
+                } else if (autotestMode) {
+                    val safePath = path.orEmpty()
+                    currentGameTitle = File(safePath).nameWithoutExtension.ifBlank { "Autotest ELF" }
+                    currentGameSerial = ""
+                    currentGameCoverArtPath = null
+                    currentGameCrc = ""
+                    currentGameSource = "autotest_elf"
+                    shouldCountCurrentProfileSession = false
+                    shouldTrackCurrentProfilePlayTime = false
+                    _uiState.value = _uiState.value.copy(
+                        currentGameTitle = currentGameTitle,
+                        currentGameSubtitle = currentGameSubtitle(),
+                        currentGameCoverArtPath = null,
+                        gameSettingsProfileActive = false,
+                        cheatsGameKey = null,
+                        availableCheats = emptyList()
+                    )
+                } else {
+                    val safePath = path.orEmpty()
+                    val existingProfile = withContext(Dispatchers.IO) {
+                        currentGamePath?.let(perGameSettingsRepository::get)
+                    }
+                    hasPerGameProfile = existingProfile != null
+                    refreshKeyboardMouseOverride()
+                    currentInterfaceSettingsProfile = existingProfile?.interfaceSettings
+                    currentTouchControlsLayoutProfile = existingProfile?.touchControlsLayout
+                    currentCustomTouchControlsProfile = existingProfile?.customTouchControls
+                    val detectedMetadata = EmulatorBridge.getGameMetadata(safePath)
+                    val serialOverride = preferences.getGameSerialOverrideSync(safePath)
+                    val metadata = if (serialOverride != null) {
+                        detectedMetadata.copy(serial = serialOverride)
+                    } else {
+                        detectedMetadata
+                    }
+                    currentGameTitle = compatibilityRepository.findBySerial(metadata.serial)?.title
+                        ?: EmulatorBridge.cleanGameDisplayTitle(metadata.title, safePath)
+                    currentGameSerial = metadata.serial.orEmpty()
+                    currentGameCoverArtPath = gameRepository.findCoverForGame(
+                        path = safePath,
+                        context = getApplication(),
+                        serial = currentGameSerial.takeIf { it.isNotBlank() },
+                        title = currentGameTitle
+                    )
+                    shouldTrackCurrentProfilePlayTime = !bootSmokeProbe
+                    shouldCountCurrentProfileSession = shouldTrackCurrentProfilePlayTime
+                    currentGameCrc = metadata.serialWithCrc.extractCrc().orEmpty()
+                    currentGameSource = when {
+                        safePath.startsWith("content://") -> "content_uri"
+                        launchPath?.startsWith("/") == true -> "file"
+                        else -> "unknown"
+                    }
+                    refreshCurrentGameCheats(metadata, config.enableCheats)
+                    _uiState.value = _uiState.value.copy(
+                        currentGameTitle = currentGameTitle,
+                        currentGameSubtitle = currentGameSubtitle(),
+                        currentGameCoverArtPath = currentGameCoverArtPath,
+                        gameSettingsProfileActive = existingProfile != null
+                    )
+                    syncCurrentGameProfileMetadata()
+                    if (!bootSmokeProbe) {
+                        DiscordIntegration.setPlaying(
+                            title = currentGameTitle,
+                            serial = currentGameSerial.takeIf { it.isNotBlank() }
+                        )
+                    }
+                }
+                _uiState.value = _uiState.value.copy(
+                    customTouchControls = currentCustomTouchControlsProfile
+                        ?: preferences.customTouchControls.first()
+                )
+                updateCrashContext(
+                    launchState = "starting",
+                    launchPath = path
+                )
+
+                _uiState.value = _uiState.value.copy(
+                    isRunning = true,
+                    isStarting = false,
+                    statusMessage = "status_starting_core"
+                )
+                refreshSaveStateMetadata()
+                if (!autotestMode && !bootSmokeProbe && !bootToBios && !path.isNullOrBlank()) {
+                    preferences.markGameLaunched(
+                        path = path,
+                        title = currentGameTitle.ifBlank {
+                            DocumentPathResolver.getDisplayName(getApplication(), path).substringBeforeLast('.')
+                        },
+                        serial = currentGameSerial.takeIf { it.isNotBlank() }
+                    )
+                }
+
+                val liveRuntime = loadLiveRuntimeSnapshot()
+                val overlaySnapshot = preferences.overlayLayoutSnapshot.first()
+
+                val runtimeState = _uiState.value
+                    .copy(ps2GunProfileActive = isPerGameGunProfileActive(hasPerGameProfile, liveRuntime.gyroMode))
+                    .withLiveRuntimeSnapshot(liveRuntime)
+                val overlayState = runtimeState.withOverlayLayoutSnapshot(overlaySnapshot)
+                _uiState.value = applyInterfaceSettings(currentTouchControlsLayoutProfile?.let { overlayState.withTouchControlsLayout(it) } ?: overlayState)
+                syncNativePerformanceOverlayState(_uiState.value)
+                syncGamepadRuntimeSettings(_uiState.value)
+                if (_uiState.value.gameSettingsProfileActive) {
+                    val state = _uiState.value
+                    GamepadManager.applyPerGameOverrides(
+                        bindingsByPad = state.gamepadBindingsByPad,
+                        deadzone = state.gamepadStickDeadzone,
+                        leftSensitivity = state.gamepadLeftStickSensitivity,
+                        rightSensitivity = state.gamepadRightStickSensitivity,
+                        leftNegativeDeadzone = state.gamepadLeftStickNegativeDeadzone,
+                        rightNegativeDeadzone = state.gamepadRightStickNegativeDeadzone,
+                        leftAntiDeadzone = state.gamepadLeftStickAntiDeadzone,
+                        rightAntiDeadzone = state.gamepadRightStickAntiDeadzone,
+                        leftStickCurve = state.gamepadLeftStickCurve,
+                        rightStickCurve = state.gamepadRightStickCurve,
+                        invertLeftStick = state.invertLeftStick,
+                        invertRightStick = state.invertRightStick,
+                        invertLeftStickHorizontal = state.invertLeftStickHorizontal,
+                        invertRightStickHorizontal = state.invertRightStickHorizontal
+                    )
+                }
+                updateCrashContext(
+                    launchState = "starting",
+                    launchPath = path
+                )
+            }
+            
+            if (hasPendingStateLoad) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    var vmReadyWaitFrames = 0
+                    while (vmReadyWaitFrames < 60 && isActive) {
+                        try {
+                            if (EmulatorBridge.hasValidVm()) break
+                        } catch (_: Exception) { }
+                        delay(250.milliseconds)
+                        vmReadyWaitFrames++
+                    }
+                    if (!isActive) return@launch
+
+                    if (!EmulatorBridge.hasValidVm()) {
+                        _uiState.value = _uiState.value.copy(
+                            statusMessage = null,
+                            toastMessage = "load_failed"
+                        )
+                        delay(2500.milliseconds)
+                        if (_uiState.value.toastMessage == "load_failed") {
+                            _uiState.value = _uiState.value.copy(toastMessage = null)
+                        }
+                        return@launch
+                    }
+
+                    delay(500.milliseconds)
+                    val hardcoreBlocked = isRetroAchievementsHardcoreRestricted()
+                    val loaded = if (hardcoreBlocked) {
+                        false
+                    } else {
+                        EmulatorBridge.loadState(normalizedSlotToLoad)
+                    }
+                    AppAnalytics.logSaveStateAction(
+                        action = "load",
+                        automatic = false,
+                        success = loaded
+                    )
+                    _uiState.value = _uiState.value.copy(
+                        isRunning = true,
+                        isPaused = false,
+                        statusMessage = if (loaded) "status_running" else null,
+                        toastMessage = when {
+                            loaded -> null
+                            hardcoreBlocked -> "hardcore_blocked"
+                            else -> "load_failed"
+                        }
+                    )
+                    refreshSaveStateMetadata()
+                    delay(2000.milliseconds)
+                    if (_uiState.value.statusMessage == "status_running") {
+                        _uiState.value = _uiState.value.copy(statusMessage = null)
+                    }
+                    if (_uiState.value.toastMessage == "load_failed") {
+                        delay(500.milliseconds)
+                        if (_uiState.value.toastMessage == "load_failed") {
+                            _uiState.value = _uiState.value.copy(toastMessage = null)
+                        }
+                    }
+                    if (_uiState.value.toastMessage == "hardcore_blocked") {
+                        delay(500.milliseconds)
+                        if (_uiState.value.toastMessage == "hardcore_blocked") {
+                            _uiState.value = _uiState.value.copy(toastMessage = null)
+                        }
+                    }
+                }
+            }
+
+            val pathToLaunch = finalLaunchPath ?: return@launch
+            
+            if (cancelPendingStart) {
+                _uiState.value = _uiState.value.copy(
+                    isRunning = false,
+                    isStarting = false,
+                    statusMessage = null
+                )
+                return@launch
+            }
+
+            if (!hasPendingStateLoad) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    var waitFrames = 0
+                    while (waitFrames < 60 && isActive) {
+                        if (EmulatorBridge.hasValidVm()) {
+                            if (tryAutoLoadOnStart()) {
+                                break
+                            }
+                            _uiState.value = _uiState.value.copy(statusMessage = "status_running")
+                            delay(2000.milliseconds)
+                            if (_uiState.value.statusMessage == "status_running") {
+                                _uiState.value = _uiState.value.copy(statusMessage = null)
+                            }
+                            break
+                        }
+                        delay(250.milliseconds)
+                        waitFrames++
+                    }
+                }
+            }
+
+            val started = try {
+                EmulatorBridge.startEmulation(
+                    pathToLaunch,
+                    renderer = launchRenderer,
+                    bootSmokeProbe = bootSmokeProbe,
+                    allowBiosBoot = bootToBios
+                )
+            } catch (error: Exception) {
+                Log.e(TAG, "EmulatorBridge.startEmulation failed", error)
+                false
+            }
+            Log.i(TAG, "EmulatorBridge.startEmulation returned $started path=$pathToLaunch")
+            val nativeBootError = if (started) {
+                null
+            } else {
+                runCatching { NativeApp.getLastBootError() }.getOrNull()?.takeIf { it.isNotBlank() }
+            }
+            if (nativeBootError != null) {
+                Log.e(TAG, "Native VM start failed: $nativeBootError")
+                NativeApp.setCrashContextString("emu_launch_error", nativeBootError)
+            }
+            val analyticsState = _uiState.value
+            if (started) {
+                AppAnalytics.logEmulationStarted(
+                    launchType = analyticsLaunchType,
+                    renderer = analyticsState.renderer,
+                    audioBackend = currentAnalyticsAudioBackend,
+                    upscaleMultiplier = analyticsState.upscale,
+                    performanceProfile = analyticsPerformanceProfile,
+                    saveStateLoad = hasPendingStateLoad
+                )
+                if (!bootToBios && !bootSmokeProbe && !autotestMode) {
+                    maybeShowActivePatchNotice()
+                }
+            } else {
+                AppAnalytics.logEmulationStartFailed(analyticsLaunchType, "native_start")
+            }
+            if (BuildConfig.DEBUG && started && gsDumpFrames != null && gsDumpFrames > 0) {
+                val delayMs = gsDumpDelayMs?.coerceAtLeast(0) ?: 0
+                viewModelScope.launch(Dispatchers.IO) {
+                    delay(delayMs.milliseconds)
+                    if (EmulatorBridge.hasValidVm()) {
+                        Log.i(TAG, "Queueing GS dump frames=$gsDumpFrames delayMs=$delayMs")
+                        NativeApp.queueGsDump(gsDumpFrames)
+                    }
+                }
+            }
+            updateCrashContext(
+                launchState = if (started) "running" else "launch_failed",
+                launchPath = path
+            )
+            
+            if (!started &&
+                !_uiState.value.isPaused &&
+                !cancelPendingStart &&
+                !isShuttingDown
+            ) {
+                _uiState.value = _uiState.value.copy(
+                    isRunning = false,
+                    statusMessage = null,
+                    toastMessage = nativeBootError?.let { "launch_error:$it" } ?: "launch_failed"
+                )
+                delay(2500.milliseconds)
+                _uiState.value = _uiState.value.copy(toastMessage = null)
+            }
+        }
+    }
+
+    fun togglePause() {
+        val state = _uiState.value
+        if (state.showMenu) {
+            closeMenu()
+            return
+        }
+
+        val isPaused = state.isPaused
+        pausedForBackground = false
+        _uiState.value = _uiState.value.copy(
+            isPaused = !isPaused,
+            showMenu = if (isPaused) false else _uiState.value.showMenu
+        )
+        DiscordIntegration.setPaused(!isPaused)
+        updateCrashContext(launchState = if (!isPaused) "paused" else "running")
+        synchronizePauseState()
+    }
+
+    fun toggleMenu() {
+        val showMenu = !_uiState.value.showMenu
+        if (showMenu) {
+            pausedForBackground = false
+            EmulatorBridge.resetKeyStatus()
+            refreshSaveStateMetadata()
+            _uiState.value = _uiState.value.copy(showMenu = true, isPaused = true)
+            DiscordIntegration.setPaused(true)
+            updateCrashContext(launchState = "paused")
+            synchronizePauseState()
+        } else {
+            closeMenu()
+        }
+    }
+
+    fun swapDisc(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val context = getApplication<Application>()
+            val displayName = DocumentPathResolver.getDisplayName(context, uri.toString())
+            val readable = runCatching {
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+                    descriptor.statSize != 0L
+                } ?: false
+            }.getOrDefault(false)
+
+            if (!SetupValidator.isSupportedDiscImageName(displayName) || !readable) {
+                _uiState.value = _uiState.value.copy(toastMessage = "disc_swap_invalid")
+                delay(2500.milliseconds)
+                if (_uiState.value.toastMessage == "disc_swap_invalid") {
+                    _uiState.value = _uiState.value.copy(toastMessage = null)
+                }
+                return@launch
+            }
+
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+
+            _uiState.value = _uiState.value.copy(
+                isActionInProgress = true,
+                actionLabel = "swapping_disc"
+            )
+            val success = lifecycleMutex.withLock {
+                if (isShuttingDown || !_uiState.value.isRunning) {
+                    false
+                } else {
+                    EmulatorBridge.changeDisc(uri.toString())
+                }
+            }
+
+            // VMManager restores the old image when opening the selected image fails.
+            // Either way the tray cycle must continue, so close the menu and resume.
+            withContext(Dispatchers.Main.immediate) {
+                if (isShuttingDown || !_uiState.value.isRunning) return@withContext
+                pausedForBackground = hostInBackground
+                _uiState.update { it.copy(
+                    isPaused = hostInBackground,
+                    showMenu = false,
+                    isActionInProgress = false,
+                    actionLabel = null,
+                    toastMessage = if (success) "disc_swap_success" else "disc_swap_failed"
+                ) }
+                DiscordIntegration.setPaused(hostInBackground)
+                updateCrashContext(launchState = if (hostInBackground) "paused" else "running")
+                synchronizePauseState()
+            }
+            delay(3000.milliseconds)
+            val expectedToast = if (success) "disc_swap_success" else "disc_swap_failed"
+            if (_uiState.value.toastMessage == expectedToast) {
+                _uiState.value = _uiState.value.copy(toastMessage = null)
+            }
+        }
+    }
+
+    private fun closeMenu() {
+        pausedForBackground = hostInBackground
+        _uiState.value = _uiState.value.copy(showMenu = false, isPaused = hostInBackground)
+        DiscordIntegration.setPaused(hostInBackground)
+        updateCrashContext(launchState = if (hostInBackground) "paused" else "running")
+        synchronizePauseState()
+    }
+
+    private fun synchronizePauseState() {
+        // Enter on Main before dispatching native work. Independent IO launches can reach the
+        // bridge in the reverse order, leaving an old pause behind a newer menu close/resume.
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            lifecycleMutex.withLock {
+                val state = _uiState.value
+                if (!state.isRunning || state.isStarting || isShuttingDown) return@withLock
+                if (hostInBackground || state.isPaused || state.showMenu) EmulatorBridge.pause() else EmulatorBridge.resume()
+            }
+        }
+    }
+
+    fun toggleControlsVisibility() {
+        viewModelScope.launch {
+            val newValue = !_uiState.value.controlsVisible
+            persistInterfaceSettings(_uiState.value.copy(controlsVisible = newValue)) {
+                preferences.setOverlayShow(newValue)
+            }
+        }
+    }
+
+    fun resetCurrentGameSettingsProfile() {
+        viewModelScope.launch {
+            resetCurrentGameProfile()
+        }
+    }
+
+    fun setOverlayScale(value: Int) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(overlayScale = value.coerceIn(50, 150))) {
+                preferences.setOverlayScale(value)
+            }
+        }
+    }
+
+    fun setOverlayOpacity(value: Int) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(
+                overlayOpacity = value.coerceIn(
+                    AppPreferences.OVERLAY_OPACITY_MIN,
+                    AppPreferences.OVERLAY_OPACITY_MAX
+                )
+            )) {
+                preferences.setOverlayOpacity(value)
+            }
+        }
+    }
+
+    fun setHideOverlayOnGamepad(enabled: Boolean) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(hideOverlayOnGamepad = enabled)) {
+                preferences.setHideOverlayOnGamepad(enabled)
+            }
+        }
+    }
+
+    fun setCompactControls(enabled: Boolean) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(compactControls = enabled)) {
+                preferences.setCompactControls(enabled)
+            }
+        }
+    }
+
+    fun setKeepScreenOn(enabled: Boolean) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(keepScreenOn = enabled)) {
+                preferences.setKeepScreenOn(enabled)
+            }
+        }
+    }
+
+    fun setStickScale(value: Int) {
+        viewModelScope.launch {
+            val scaledValue = value.coerceIn(
+                AppPreferences.OVERLAY_CONTROL_SCALE_MIN,
+                AppPreferences.OVERLAY_CONTROL_SCALE_MAX
+            )
+            persistTouchControlsLayout { current ->
+                val updatedLayouts = current.controlLayouts.toMutableMap()
+                listOf("left_stick", "right_stick").forEach { id ->
+                    val existing = updatedLayouts[id]
+                    if (existing != null) {
+                        updatedLayouts[id] = existing.copy(scale = scaledValue)
+                    }
+                }
+                current.copy(
+                    stickScale = scaledValue,
+                    controlLayouts = updatedLayouts
+                )
+            }
+        }
+    }
+
+    fun setLeftStickSensitivity(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(50, 200)
+            persistInterfaceSettings(_uiState.value.copy(leftStickSensitivity = normalized)) {
+                preferences.setLeftStickSensitivity(normalized)
+            }
+        }
+    }
+
+    fun setRightStickSensitivity(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(50, 200)
+            persistInterfaceSettings(_uiState.value.copy(rightStickSensitivity = normalized)) {
+                preferences.setRightStickSensitivity(normalized)
+            }
+        }
+    }
+
+    fun setInvertLeftStick(enabled: Boolean) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(invertLeftStick = enabled)) {
+                preferences.setInvertLeftStick(enabled)
+            }
+        }
+    }
+
+    fun setInvertRightStick(enabled: Boolean) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(invertRightStick = enabled)) {
+                preferences.setInvertRightStick(enabled)
+            }
+        }
+    }
+
+    fun setInvertLeftStickHorizontal(enabled: Boolean) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(invertLeftStickHorizontal = enabled)) {
+                preferences.setInvertLeftStickHorizontal(enabled)
+            }
+        }
+    }
+
+    fun setInvertRightStickHorizontal(enabled: Boolean) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(invertRightStickHorizontal = enabled)) {
+                preferences.setInvertRightStickHorizontal(enabled)
+            }
+        }
+    }
+
+    fun setGamepadStickDeadzone(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(0, 35)
+            persistRuntimeState(_uiState.value.copy(gamepadStickDeadzone = normalized)) {
+                preferences.setGamepadStickDeadzone(normalized)
+            }
+        }
+    }
+
+    fun setGamepadLeftStickSensitivity(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(50, 200)
+            persistRuntimeState(_uiState.value.copy(gamepadLeftStickSensitivity = normalized)) {
+                preferences.setGamepadLeftStickSensitivity(normalized)
+            }
+        }
+    }
+
+    fun setGamepadRightStickSensitivity(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(50, 200)
+            persistRuntimeState(_uiState.value.copy(gamepadRightStickSensitivity = normalized)) {
+                preferences.setGamepadRightStickSensitivity(normalized)
+            }
+        }
+    }
+
+    fun setGamepadLeftStickNegativeDeadzone(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(0, AppPreferences.GAMEPAD_STICK_NEGATIVE_DEADZONE_MAX)
+            persistRuntimeState(_uiState.value.copy(gamepadLeftStickNegativeDeadzone = normalized)) {
+                preferences.setGamepadLeftStickNegativeDeadzone(normalized)
+            }
+        }
+    }
+
+    fun setGamepadRightStickNegativeDeadzone(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(0, AppPreferences.GAMEPAD_STICK_NEGATIVE_DEADZONE_MAX)
+            persistRuntimeState(_uiState.value.copy(gamepadRightStickNegativeDeadzone = normalized)) {
+                preferences.setGamepadRightStickNegativeDeadzone(normalized)
+            }
+        }
+    }
+
+    fun setGamepadLeftStickAntiDeadzone(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(0, AppPreferences.GAMEPAD_STICK_ANTI_DEADZONE_MAX)
+            persistRuntimeState(_uiState.value.copy(gamepadLeftStickAntiDeadzone = normalized)) {
+                preferences.setGamepadLeftStickAntiDeadzone(normalized)
+            }
+        }
+    }
+
+    fun setGamepadRightStickAntiDeadzone(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(0, AppPreferences.GAMEPAD_STICK_ANTI_DEADZONE_MAX)
+            persistRuntimeState(_uiState.value.copy(gamepadRightStickAntiDeadzone = normalized)) {
+                preferences.setGamepadRightStickAntiDeadzone(normalized)
+            }
+        }
+    }
+
+    fun setGamepadLeftStickCurve(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(
+                AppPreferences.GAMEPAD_STICK_CURVE_MIN,
+                AppPreferences.GAMEPAD_STICK_CURVE_MAX
+            )
+            persistRuntimeState(_uiState.value.copy(gamepadLeftStickCurve = normalized)) {
+                preferences.setGamepadLeftStickCurve(normalized)
+            }
+        }
+    }
+
+    fun setGamepadRightStickCurve(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(
+                AppPreferences.GAMEPAD_STICK_CURVE_MIN,
+                AppPreferences.GAMEPAD_STICK_CURVE_MAX
+            )
+            persistRuntimeState(_uiState.value.copy(gamepadRightStickCurve = normalized)) {
+                preferences.setGamepadRightStickCurve(normalized)
+            }
+        }
+    }
+
+    fun setGamepadRightStickUpToR2(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = _uiState.value.copy(gamepadRightStickUpToR2 = enabled)
+            persistRuntimeState(newState) {
+                preferences.setGamepadRightStickUpToR2(enabled)
+            }
+            syncGamepadRightStickTriggerMapping(newState)
+        }
+    }
+
+    fun setGamepadRightStickDownToL2(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = _uiState.value.copy(gamepadRightStickDownToL2 = enabled)
+            persistRuntimeState(newState) {
+                preferences.setGamepadRightStickDownToL2(enabled)
+            }
+            syncGamepadRightStickTriggerMapping(newState)
+        }
+    }
+
+    fun setTouchscreenRightStick(enabled: Boolean) {
+        viewModelScope.launch {
+            persistRuntimeState(_uiState.value.copy(touchscreenRightStick = enabled)) {
+                preferences.setTouchscreenRightStick(enabled)
+            }
+        }
+    }
+
+    fun setTouchscreenRightStickSensitivity(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(
+                AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN,
+                AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX
+            )
+            persistRuntimeState(_uiState.value.copy(touchscreenRightStickSensitivity = normalized)) {
+                preferences.setTouchscreenRightStickSensitivity(normalized)
+            }
+        }
+    }
+
+    fun setTouchscreenLeftStick(enabled: Boolean) {
+        viewModelScope.launch {
+            persistRuntimeState(_uiState.value.copy(touchscreenLeftStick = enabled)) {
+                preferences.setTouchscreenLeftStick(enabled)
+            }
+        }
+    }
+
+    fun setTouchscreenLeftStickSensitivity(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(
+                AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN,
+                AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX
+            )
+            persistRuntimeState(_uiState.value.copy(touchscreenLeftStickSensitivity = normalized)) {
+                preferences.setTouchscreenLeftStickSensitivity(normalized)
+            }
+        }
+    }
+
+    fun setGamepadBindingsByPad(bindingsByPad: Map<Int, Map<String, Int>>) {
+        viewModelScope.launch {
+            val newState = _uiState.value.copy(gamepadBindingsByPad = bindingsByPad)
+            val saved = perGameSettingsRepository.transaction {
+                val gameKey = activePerGameKey() ?: return@transaction false
+                val existingProfile = perGameSettingsRepository.get(gameKey)
+                    ?: return@transaction false
+                perGameSettingsRepository.save(existingProfile.withGamepadBindingsByPad(bindingsByPad))
+                true
+            }
+            if (saved) {
+                _uiState.value = newState
+            } else {
+                persistRuntimeState(newState)
+            }
+            GamepadManager.applyPerGameOverrides(
+                bindingsByPad = bindingsByPad,
+                deadzone = null,
+                leftSensitivity = null,
+                rightSensitivity = null
+            )
+        }
+    }
+
+    fun setStickToggleTarget(value: Int) {
+        viewModelScope.launch {
+            val target = AppPreferences.normalizeStickToggleTarget(value)
+            persistRuntimeState(_uiState.value.copy(stickToggleTarget = target)) {
+                preferences.setStickToggleTarget(target)
+            }
+        }
+    }
+
+    fun toggleSelectedStick() {
+        viewModelScope.launch {
+            persistTouchControlsLayout { state ->
+                state.withTouchControlsLayout(
+                    state.toTouchControlsLayoutProfile().toggleStick(state.stickToggleTarget)
+                )
+            }
+        }
+    }
+
+    fun updateTouchControlOffset(controlId: String, offset: Pair<Float, Float>) {
+        updateTouchControlLayouts(listOf(controlId)) { _, layout -> layout.copy(offset = offset) }
+    }
+
+    fun updateTouchControlOffsets(offsets: Map<String, Pair<Float, Float>>) {
+        if (offsets.isEmpty()) return
+        updateTouchControlLayouts(offsets.keys) { controlId, layout ->
+            layout.copy(offset = offsets.getValue(controlId))
+        }
+    }
+
+    fun updateTouchControlScale(controlId: String, scale: Int) {
+        updateTouchControlLayouts(listOf(controlId)) { _, layout ->
+            layout.copy(
+                scale = scale.coerceIn(
+                    AppPreferences.OVERLAY_CONTROL_SCALE_MIN,
+                    AppPreferences.OVERLAY_CONTROL_SCALE_MAX
+                )
+            )
+        }
+    }
+
+    fun updateTouchControlWidthScale(controlId: String, widthScale: Int) {
+        updateTouchControlLayouts(listOf(controlId)) { _, layout ->
+            layout.copy(widthScale = widthScale.coerceIn(100, 240))
+        }
+    }
+
+    fun updateTouchControlOpacity(controlId: String, opacity: Int) {
+        updateTouchControlLayouts(listOf(controlId)) { _, layout ->
+            layout.copy(
+                opacity = opacity.coerceIn(
+                    AppPreferences.OVERLAY_CONTROL_OPACITY_MIN,
+                    AppPreferences.OVERLAY_CONTROL_OPACITY_MAX
+                )
+            )
+        }
+    }
+
+    fun updateTouchControlSecondaryAction(controlId: String, secondaryActionId: String?) {
+        updateTouchControlLayouts(listOf(controlId)) { _, layout ->
+            layout.copy(
+                secondaryActionId = secondaryActionId
+                    ?.takeIf { it in CustomTouchControl.ALLOWED_ACTION_IDS }
+            )
+        }
+    }
+
+    fun setTouchControlVisible(controlId: String, visible: Boolean) {
+        updateTouchControlLayouts(listOf(controlId)) { _, layout -> layout.copy(visible = visible) }
+    }
+
+    fun setTouchStickSurfaceMode(controlId: String, enabled: Boolean) {
+        if (controlId != "left_stick" && controlId != "right_stick") return
+        updateTouchControlLayouts(listOf(controlId)) { _, layout -> layout.copy(surfaceOnly = enabled) }
+    }
+
+    /**
+     * Applies [transform] to the stored layouts of [controlIds] and persists the result.
+     *
+     * The transform runs inside [PerGameSettingsRepository.transaction], so the snapshot
+     * it edits and the file it writes form one ordered read-modify-write. Without that a
+     * slider tick could write a snapshot taken before a newer edit and discard it.
+     */
+    private fun updateTouchControlLayouts(
+        controlIds: Collection<String>,
+        transform: (controlId: String, layout: OverlayControlLayout) -> OverlayControlLayout
+    ) {
+        viewModelScope.launch {
+            persistTouchControlsLayout { state ->
+                val layouts = state.controlLayouts.toMutableMap()
+                val defaults = AppPreferences.defaultOverlayControlLayouts(state.stickScale)
+                controlIds.forEach { controlId ->
+                    val current = layouts[controlId] ?: defaults[controlId] ?: OverlayControlLayout()
+                    layouts[controlId] = transform(controlId, current)
+                }
+                state.copy(controlLayouts = layouts)
+            }
+        }
+    }
+
+    fun resetTouchControlsLayout() {
+        viewModelScope.launch {
+            resetTouchControlsLayoutForCurrentScope()
+        }
+    }
+
+    fun setCustomTouchControls(library: CustomTouchControlLibrary) {
+        viewModelScope.launch {
+            val sanitized = library.sanitized()
+            val gameKey = activePerGameKey()
+            if (gameKey != null) {
+                perGameSettingsRepository.transaction {
+                    val existing = perGameSettingsRepository.get(gameKey)
+                    perGameSettingsRepository.save(
+                        existing.withCustomTouchControls(
+                            gameKey = gameKey,
+                            gameTitle = resolvePerGameTitle(_uiState.value),
+                            gameSerial = currentGameSerial.takeIf { it.isNotBlank() },
+                            library = sanitized
+                        )
+                    )
+                }
+                currentCustomTouchControlsProfile = sanitized
+                _uiState.value = _uiState.value.copy(
+                    customTouchControls = sanitized,
+                    gameSettingsProfileActive = true
+                )
+            } else {
+                currentCustomTouchControlsProfile = null
+                preferences.setCustomTouchControls(sanitized)
+                _uiState.value = _uiState.value.copy(customTouchControls = sanitized)
+            }
+        }
+    }
+
+    fun toggleFpsVisibility() {
+        viewModelScope.launch {
+            val newValue = !_uiState.value.showFps
+            persistRuntimeState(_uiState.value.copy(showFps = newValue)) {
+                preferences.setShowFps(newValue)
+            }
+        }
+    }
+
+    fun setFpsOverlayMode(mode: Int) {
+        viewModelScope.launch {
+            persistRuntimeState(_uiState.value.copy(fpsOverlayMode = mode)) {
+                preferences.setFpsOverlayMode(mode)
+            }
+        }
+    }
+
+    fun setFpsOverlayCorner(corner: Int) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(fpsOverlayCorner = corner)) {
+                preferences.setFpsOverlayCorner(corner)
+            }
+        }
+    }
+
+    fun setRenderer(renderer: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(renderer = renderer)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setRenderer(renderer)
+            }
+            EmulatorBridge.setRenderer(renderer)
+            updateCrashContext()
+        }
+    }
+
+    fun setFrameGeneration(settings: FrameGenerationSettings) {
+        viewModelScope.launch {
+            val setup = frameGenerationManager.snapshot()
+            val normalized = settings.copy(
+                enabled = settings.enabled && setup.isReady,
+                multiplier = settings.multiplier.coerceIn(2, 4),
+                flowScalePercent = FrameGenerationManager.normalizeFlowScale(settings.flowScalePercent),
+                targetRefreshRate = settings.targetRefreshRate.coerceIn(0, 240)
+            )
+            val newState = _uiState.value.copy(
+                frameGenerationReady = setup.isConfigured,
+                frameGenerationEnabled = normalized.enabled,
+                frameGenerationMultiplier = normalized.multiplier,
+                frameGenerationPerformance = normalized.performanceMode,
+                frameGenerationFlowScale = normalized.flowScalePercent,
+                frameGenerationTargetRate = normalized.targetRefreshRate
+            )
+            val hasPerGameProfile = activePerGameKey() != null
+            persistRuntimeState(newState) {
+                frameGenerationManager.updateSettings(normalized)
+            }
+            if (hasPerGameProfile) {
+                frameGenerationManager.applySettingsToNative(normalized, setup)
+            }
+        }
+    }
+
+    fun setUpscale(upscale: Float) {
+        viewModelScope.launch {
+            val normalizedUpscale = normalizeUpscale(upscale)
+            val newState = markPerformancePresetCustom(_uiState.value).copy(upscale = normalizedUpscale)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setUpscaleMultiplier(normalizedUpscale)
+            }
+            EmulatorBridge.setUpscaleMultiplier(normalizedUpscale)
+            updateCrashContext()
+        }
+    }
+
+    fun setAspectRatio(value: Int) {
+        viewModelScope.launch {
+            persistRuntimeState(_uiState.value.copy(aspectRatio = value)) {
+                preferences.setAspectRatio(value)
+            }
+            EmulatorBridge.setAspectRatio(value)
+            updateCrashContext()
+        }
+    }
+
+    fun setMtvu(enabled: Boolean) {
+        viewModelScope.launch {
+            val effectiveEnabled = enabled && preferences.enableVu1Recompiler.first()
+            val newState = markPerformancePresetCustom(_uiState.value).copy(enableMtvu = effectiveEnabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setEnableMtvu(effectiveEnabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/Speedhacks", "vuThread", "bool", effectiveEnabled.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setIopThread(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(enableIopThread = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setEnableIopThread(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/Speedhacks", "iopThread", "bool", enabled.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setVUAot(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(enableVUAot = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setEnableVUAot(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/CPU/Recompiler", "EnableVUAot", "bool", enabled.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setLocalMultiplayerMode(value: Int) {
+        viewModelScope.launch {
+            val normalized = value.coerceIn(
+                AppPreferences.LOCAL_MULTIPLAYER_OFF,
+                AppPreferences.LOCAL_MULTIPLAYER_HORIZONTAL_CROP_SWAPPED
+            )
+            persistRuntimeState(_uiState.value.copy(localMultiplayerMode = normalized)) {
+                preferences.setLocalMultiplayerMode(normalized)
+            }
+            EmulatorBridge.setLocalMultiplayerMode(normalized)
+            updateCrashContext()
+        }
+    }
+
+    fun setDisplayCrop(value: DisplayCrop) {
+        viewModelScope.launch {
+            val crop = value.sanitized()
+            persistRuntimeState(_uiState.value.copy(displayCrop = crop)) {
+                preferences.setDisplayCrop(crop)
+            }
+            EmulatorBridge.setDisplayCrop(crop)
+            updateCrashContext()
+        }
+    }
+
+    fun setFpsOverlayScale(scale: Int) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(fpsOverlayScale = scale)) {
+                preferences.setFpsOverlayScale(scale)
+            }
+        }
+    }
+
+    fun setFpsOverlayMetrics(metrics: Int) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(fpsOverlayMetrics = metrics)) {
+                preferences.setFpsOverlayMetrics(metrics)
+            }
+        }
+    }
+
+    fun setThreadPinning(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(enableThreadPinning = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setEnableThreadPinning(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore", "EnableThreadPinning", "bool", enabled.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setFastCdvd(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(enableFastCdvd = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setEnableFastCdvd(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/Speedhacks", "fastCDVD", "bool", enabled.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setEnableCheats(enabled: Boolean) {
+        viewModelScope.launch {
+            if (enabled && isRetroAchievementsHardcoreRestricted()) {
+                persistRuntimeState(_uiState.value.copy(enableCheats = false)) {
+                    preferences.setEnableCheats(false)
+                }
+                EmulatorBridge.setSetting("EmuCore", "EnableCheats", "bool", "false")
+                EmulatorBridge.reloadPatches()
+                showHardcoreBlockedToast()
+                return@launch
+            }
+
+            persistRuntimeState(_uiState.value.copy(enableCheats = enabled)) {
+                preferences.setEnableCheats(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore", "EnableCheats", "bool", enabled.toString())
+            if (enabled) {
+                refreshAvailableCheats()
+            }
+            updateCrashContext()
+        }
+    }
+
+    fun setCheatEnabled(blockId: String, enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (enabled && isRetroAchievementsHardcoreRestricted()) {
+                runCatching { EmulatorBridge.setSetting("EmuCore", "EnableCheats", "bool", "false") }
+                runCatching { EmulatorBridge.reloadPatches() }
+                showHardcoreBlockedToast()
+                return@launch
+            }
+
+            val currentState = _uiState.value
+            val gameKey = currentState.cheatsGameKey ?: return@launch
+            val updatedBlocks = currentState.availableCheats.map { block ->
+                if (block.id == blockId) block.copy(enabled = enabled) else block
+            }
+            // Only this ID is written, so toggles made in the cheat manager
+            // (which share the same state file) are preserved.
+            cheatRepository.setBlockEnabled(gameKey, blockId, enabled)
+            syncCheatsForCurrentGame(gameKey)
+            persistRuntimeState(_uiState.value.copy(
+                availableCheats = updatedBlocks,
+                enableCheats = true
+            )) {
+                preferences.setEnableCheats(true)
+            }
+            EmulatorBridge.setSetting("EmuCore", "EnableCheats", "bool", "true")
+            EmulatorBridge.reloadPatches()
+        }
+    }
+
+    /** Enables or disables every cheat in a group (category) at once. */
+    fun setCheatGroupEnabled(blockIds: Collection<String>, enabled: Boolean) {
+        if (blockIds.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            if (enabled && isRetroAchievementsHardcoreRestricted()) {
+                runCatching { EmulatorBridge.setSetting("EmuCore", "EnableCheats", "bool", "false") }
+                runCatching { EmulatorBridge.reloadPatches() }
+                showHardcoreBlockedToast()
+                return@launch
+            }
+
+            val currentState = _uiState.value
+            val gameKey = currentState.cheatsGameKey ?: return@launch
+            val idSet = blockIds.toSet()
+            val updatedBlocks = currentState.availableCheats.map { block ->
+                if (block.id in idSet) block.copy(enabled = enabled) else block
+            }
+            cheatRepository.setBlocksEnabled(gameKey, idSet, enabled)
+            syncCheatsForCurrentGame(gameKey)
+            if (enabled) {
+                persistRuntimeState(currentState.copy(availableCheats = updatedBlocks, enableCheats = true)) {
+                    preferences.setEnableCheats(true)
+                }
+                EmulatorBridge.setSetting("EmuCore", "EnableCheats", "bool", "true")
+            } else {
+                _uiState.value = currentState.copy(availableCheats = updatedBlocks)
+            }
+            EmulatorBridge.reloadPatches()
+        }
+    }
+
+    fun setAllCheatsEnabled(enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (enabled && isRetroAchievementsHardcoreRestricted()) {
+                runCatching { EmulatorBridge.setSetting("EmuCore", "EnableCheats", "bool", "false") }
+                runCatching { EmulatorBridge.reloadPatches() }
+                showHardcoreBlockedToast()
+                return@launch
+            }
+
+            val currentState = _uiState.value
+            val gameKey = currentState.cheatsGameKey ?: return@launch
+            if (currentState.availableCheats.isEmpty()) return@launch
+            val updatedBlocks = currentState.availableCheats.map { block -> block.copy(enabled = enabled) }
+            cheatRepository.setBlocksEnabled(
+                gameKey = gameKey,
+                blockIds = currentState.availableCheats.map { it.id },
+                enabled = enabled
+            )
+            syncCheatsForCurrentGame(gameKey)
+            if (enabled) {
+                persistRuntimeState(currentState.copy(availableCheats = updatedBlocks, enableCheats = true)) {
+                    preferences.setEnableCheats(true)
+                }
+                EmulatorBridge.setSetting("EmuCore", "EnableCheats", "bool", "true")
+            } else {
+                _uiState.value = currentState.copy(availableCheats = updatedBlocks)
+            }
+            EmulatorBridge.reloadPatches()
+        }
+    }
+
+    /**
+     * Loads (or reuses) the online cheat catalog and selects the packs that match
+     * the running game. Called when the Cheats tab is opened; [forceRefresh]
+     * bypasses a previous result for the same game.
+     */
+    fun loadCheatPacks(forceRefresh: Boolean = false) {
+        val serial = currentGameSerial.trim()
+        val crc = currentGameCrc.trim().uppercase(Locale.US)
+        val title = currentGameTitle.trim().takeIf {
+            it.isNotEmpty() && !it.equals("PlayStation 2 BIOS", ignoreCase = true)
+        }
+        val identityKey = "$serial|$crc|${title.orEmpty()}"
+        val snapshot = _cheatPackBrowser.value
+        if (cheatPackCatalogJob?.isActive == true || cheatPackInstallJob?.isActive == true) return
+        val alreadyLoaded = snapshot.identityKey == identityKey &&
+            (snapshot.phase == CheatPackBrowserPhase.Content || snapshot.phase == CheatPackBrowserPhase.Empty)
+        if (!forceRefresh && alreadyLoaded) return
+        if (serial.isEmpty() && crc.isEmpty() && title == null) {
+            _cheatPackBrowser.value = CheatPackBrowserState(
+                phase = CheatPackBrowserPhase.Empty,
+                identityKey = identityKey
+            )
+            return
+        }
+        _cheatPackBrowser.value = snapshot.beginCatalogLoad(identityKey, serial, crc)
+        val gameKey = resolveCheatPackGameKey(serial, crc)
+        cheatPackCatalogJob = viewModelScope.launch(Dispatchers.IO) {
+            // "Installed" badges must survive a game/app restart, so read the
+            // packs recorded on disk instead of relying on session memory.
+            val persistedInstalledIds = gameKey
+                ?.let { key ->
+                    runCatching { cheatRepository.getInstalledCheatPackIds(key) }
+                        .getOrDefault(emptySet())
+                }
+                .orEmpty()
+            val remote = runCatching {
+                remoteContentCatalogRepository.loadCheatCatalog(forceRefresh)
+            }.getOrNull()
+            val entries = remote?.entries.orEmpty()
+            val selection = if (entries.isEmpty()) {
+                null
+            } else {
+                runCatching {
+                    selectInGameCheatPacks(
+                        entries = entries,
+                        serial = serial,
+                        crc = crc,
+                        gameTitle = title.orEmpty()
+                    )
+                }.getOrNull()
+            }
+            _cheatPackBrowser.update { current ->
+                if (current.identityKey != identityKey) {
+                    current
+                } else {
+                    current.applyCatalogSelection(selection).copy(
+                        installedPackIds = current.installedPackIds + persistedInstalledIds
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Downloads and installs a catalog pack for the running game. Existing user
+     * cheats are merged, enabled blocks are preserved, and only the newly added
+     * blocks start disabled, exactly like the cheat manager.
+     */
+    fun installCheatPack(pack: RemoteCheatPack) {
+        if (cheatPackInstallJob?.isActive == true) return
+        val serial = currentGameSerial.trim()
+        val crc = currentGameCrc.trim().uppercase(Locale.US)
+        val gameKey = resolveCheatPackGameKey(serial, crc)
+        if (gameKey == null) {
+            _cheatPackBrowser.update { it.failPackInstall(pack.id) }
+            return
+        }
+        _cheatPackBrowser.update { it.startPackInstall(pack.id) }
+        cheatPackInstallJob = viewModelScope.launch(Dispatchers.IO) {
+            val installedBlocks = runCatching {
+                val contents = remoteContentCatalogRepository.downloadCheatText(pack)
+                cheatRepository.importCheatFile(
+                    gameKey = gameKey,
+                    contents = contents,
+                    enableAllByDefault = false,
+                    mergeWithExisting = true,
+                    installedPack = InstalledCheatPack(
+                        id = pack.id,
+                        title = pack.title,
+                        crc = pack.crc,
+                        blockCount = pack.blockCount
+                    )
+                )
+            }.getOrDefault(0)
+            if (installedBlocks <= 0) {
+                _cheatPackBrowser.update { it.failPackInstall(pack.id) }
+                return@launch
+            }
+            finishCheatPackInstall(packId = pack.id)
+        }
+    }
+
+    /**
+     * Installs a user-selected PNACH file for the running game. Mirrors the cheat
+     * manager: the file replaces the current one for this game and the newly
+     * imported blocks start disabled.
+     */
+    fun importCheatPackText(contents: String, fallbackName: String?) {
+        if (cheatPackInstallJob?.isActive == true) return
+        val gameKey = resolveCheatPackGameKey(
+            serial = currentGameSerial,
+            crc = currentGameCrc,
+            fallbackName = fallbackName
+        ) ?: "cheat_${System.currentTimeMillis()}"
+        _cheatPackBrowser.update { it.startImport() }
+        cheatPackInstallJob = viewModelScope.launch(Dispatchers.IO) {
+            val importedBlocks = if (contents.isBlank()) {
+                0
+            } else {
+                runCatching {
+                    cheatRepository.importCheatFile(
+                        gameKey = gameKey,
+                        contents = contents,
+                        enableAllByDefault = false
+                    )
+                }.getOrDefault(0)
+            }
+            if (importedBlocks <= 0) {
+                _cheatPackBrowser.update { it.failImport() }
+                return@launch
+            }
+            finishCheatPackInstall(packId = null)
+        }
+    }
+
+    private suspend fun finishCheatPackInstall(packId: String?) {
+        _cheatPackBrowser.update { it.finishInstall(packId) }
+        if (isRetroAchievementsHardcoreRestricted()) {
+            // Installing is safe in hardcore mode, but cheats must not be enabled.
+            refreshAvailableCheats()
+            showHardcoreBlockedToast()
+            return
+        }
+        runCatching {
+            persistRuntimeState(_uiState.value.copy(enableCheats = true)) {
+                preferences.setEnableCheats(true)
+            }
+            EmulatorBridge.setSetting("EmuCore", "EnableCheats", "bool", "true")
+        }.onFailure { Log.w(TAG, "Could not enable cheats after installing a pack", it) }
+        refreshAvailableCheats()
+    }
+
+    /**
+     * Loads the preset catalog and re-resolves the effective shader selection.
+     * Called when the in-game Shaders tab is opened so a shader changed in the
+     * game manager (or the app-wide setting) is shown immediately.
+     */
+    fun refreshShaderBrowser() {
+        if (shaderBrowserJob?.isActive == true || shaderPackInstallJob?.isActive == true) return
+        val generation = ++shaderBrowserRefreshGeneration
+        _shaderBrowser.update { it.copy(loading = true, message = null) }
+        shaderBrowserJob = viewModelScope.launch(Dispatchers.IO) {
+            val selection = loadShaderSelection()
+            val presets = runCatching { retroArchShaderRepository.listPresets() }.getOrDefault(emptyList())
+            val installed = runCatching { retroArchShaderRepository.hasInstalledPack() }.getOrDefault(false)
+            _shaderBrowser.update { current ->
+                if (current.busy || generation != shaderBrowserRefreshGeneration) {
+                    // A pack install started while the scan was running; do not
+                    // replace its progress with the pre-install catalog.
+                    current.copy(loading = false, selection = selection)
+                } else {
+                    current.copy(
+                        loading = false,
+                        presets = presets,
+                        installed = installed,
+                        selection = selection
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun refreshShaderBrowserSelection() {
+        val selection = loadShaderSelection()
+        _shaderBrowser.update { it.copy(selection = selection) }
+    }
+
+    private suspend fun loadShaderSelection(): ShaderChainSelection {
+        val settings = preferences.settingsSnapshot.first()
+        val profile = withContext(Dispatchers.IO) {
+            activePerGameKey()?.let(perGameSettingsRepository::get)
+        }
+        return resolveShaderChainSelection(
+            globalEnabled = settings.shaderChainEnabled,
+            globalPreset = settings.shaderChainPreset,
+            profile = profile
+        )
+    }
+
+    /** Downloads the official RetroArch Slang shader pack from inside the game. */
+    fun downloadOfficialShaderPack() {
+        if (shaderPackInstallJob?.isActive == true || _shaderBrowser.value.busy) return
+        ++shaderBrowserRefreshGeneration
+        _shaderBrowser.update {
+            it.copy(
+                busy = true,
+                progress = ShaderPackInstallProgress(ShaderPackInstallStage.DOWNLOADING),
+                message = null
+            )
+        }
+        shaderPackInstallJob = viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                retroArchShaderRepository.downloadOfficialPack { progress ->
+                    _shaderBrowser.update { it.copy(progress = progress) }
+                }
+            }
+            finishShaderPackInstall(succeeded = result.isSuccess)
+        }
+    }
+
+    /** Imports a user-provided shader-pack archive while the game is running. */
+    fun importShaderPack(uri: Uri) {
+        if (shaderPackInstallJob?.isActive == true || _shaderBrowser.value.busy) return
+        ++shaderBrowserRefreshGeneration
+        _shaderBrowser.update {
+            it.copy(
+                busy = true,
+                progress = ShaderPackInstallProgress(ShaderPackInstallStage.INSTALLING),
+                message = null
+            )
+        }
+        shaderPackInstallJob = viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching { retroArchShaderRepository.importArchive(uri) }
+            finishShaderPackInstall(succeeded = result.isSuccess)
+        }
+    }
+
+    private suspend fun finishShaderPackInstall(succeeded: Boolean) {
+        val presets = runCatching { retroArchShaderRepository.listPresets() }.getOrDefault(emptyList())
+        val installed = runCatching { retroArchShaderRepository.hasInstalledPack() }.getOrDefault(false)
+        val selection = loadShaderSelection()
+        _shaderBrowser.update {
+            it.copy(
+                busy = false,
+                loading = false,
+                progress = null,
+                presets = presets,
+                installed = installed,
+                selection = selection,
+                message = if (succeeded) ShaderPackMessage.Installed else ShaderPackMessage.Failed
+            )
+        }
+    }
+
+    /**
+     * Selects a preset for the running game. The write always goes to the
+     * per-game profile; the app-wide shader preference stays untouched.
+     */
+    fun selectShaderPreset(path: String) {
+        val preset = path.trim()
+        applyShaderChainUpdate(
+            if (preset.isEmpty()) {
+                ShaderChainUpdate.GameDisabled
+            } else {
+                ShaderChainUpdate.gameEnabled(preset)
+            }
+        )
+    }
+
+    /** Restores inheritance from the app-wide shader setting for this game. */
+    fun useGlobalShaderSettings() {
+        applyShaderChainUpdate(ShaderChainUpdate.InheritGlobal)
+    }
+
+    /**
+     * Enables or disables the shader chain for the running game. Disabling
+     * writes a game-only override but keeps the game preset so enabling the
+     * switch again restores it; the global preference is never edited.
+     */
+    fun setInGameShadersEnabled(enabled: Boolean) {
+        val selection = _shaderBrowser.value.selection
+        if (!enabled) {
+            applyShaderChainUpdate(
+                ShaderChainUpdate(
+                    overrideEnabled = false,
+                    preset = selection.gamePreset
+                )
+            )
+            return
+        }
+        val targetPreset = when {
+            selection.usesGameProfile && selection.gamePreset.isNotEmpty() -> selection.gamePreset
+            selection.globalPreset.isNotEmpty() -> selection.globalPreset
+            selection.gamePreset.isNotEmpty() -> selection.gamePreset
+            else -> return
+        }
+        val inheritGlobal = selection.globalEnabled &&
+            selection.globalPreset.isNotEmpty() &&
+            !(selection.usesGameProfile && selection.gamePreset.isNotEmpty())
+        applyShaderChainUpdate(
+            if (inheritGlobal) {
+                ShaderChainUpdate.InheritGlobal
+            } else {
+                ShaderChainUpdate.gameEnabled(targetPreset)
+            }
+        )
+    }
+
+    private fun applyShaderChainUpdate(update: ShaderChainUpdate) {
+        viewModelScope.launch(Dispatchers.IO) {
+            shaderSelectionMutex.withLock {
+                runCatching {
+                    val gameKey = activePerGameKey()
+                    if (gameKey != null) {
+                        // Inheriting the global shader does not need a profile:
+                        // do not create one just for returning to the default.
+                        val hasProfile = perGameSettingsRepository.get(gameKey) != null
+                        if (hasProfile || update.overrideEnabled != null) {
+                            persistRuntimeState(_uiState.value, shaderChainUpdate = update)
+                        }
+                    } else {
+                        // BIOS-only sessions have no per-game profile. The
+                        // app-wide value is the only scope that can persist.
+                        when (update.overrideEnabled) {
+                            null -> Unit
+                            true -> preferences.setShaderChain(true, update.preset)
+                            false -> preferences.setShaderChain(false, "")
+                        }
+                    }
+                    // Keep the app-wide "RetroArch shaders" switch in sync with
+                    // a game profile that just enabled shaders. The global
+                    // preset is intentionally left untouched: enabling it for
+                    // other games would change the app-wide selection. When a
+                    // global preset is already chosen but switched off, leave
+                    // that deliberate choice alone.
+                    if (gameKey != null && update.overrideEnabled == true) {
+                        val globalSettings = preferences.settingsSnapshot.first()
+                        if (!globalSettings.shaderChainEnabled && globalSettings.shaderChainPreset.isBlank()) {
+                            preferences.setShaderChain(enabled = true, preset = "")
+                        }
+                    }
+                    val selection = loadShaderSelection()
+                    _shaderBrowser.update { it.copy(selection = selection, message = null) }
+                    EmulatorBridge.setSetting(
+                        "EmuCore/GS",
+                        "ShaderChainEnabled",
+                        "bool",
+                        selection.effectiveEnabled.toString()
+                    )
+                    EmulatorBridge.setSetting(
+                        "EmuCore/GS",
+                        "ShaderChainPreset",
+                        "string",
+                        selection.effectivePreset
+                    )
+                }.onFailure { error ->
+                    Log.w(TAG, "Could not apply the in-game shader selection", error)
+                }
+            }
+        }
+    }
+
+    fun setHwDownloadMode(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(
+                hwDownloadMode = value,
+                hwDownloadModeUserOverride = true
+            )
+            persistRuntimeState(newState, explicitlyClaimedGsKeys = setOf("hwDownloadMode")) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setHwDownloadMode(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "HWDownloadMode", "int", value.toString())
+            EmulatorBridge.setSetting("EmuCore/GS", "HWDownloadModeUserOverride", "bool", "true")
+            updateCrashContext()
+        }
+    }
+
+    fun setEeCycleRate(value: Int) {
+        viewModelScope.launch {
+            val clamped = value.coerceIn(-3, 3)
+            val newState = markPerformancePresetCustom(_uiState.value).copy(eeCycleRate = clamped)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setEeCycleRate(clamped)
+            }
+            EmulatorBridge.setSetting("EmuCore/Speedhacks", "EECycleRate", "int", clamped.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setEeCycleSkip(value: Int) {
+        viewModelScope.launch {
+            val clamped = value.coerceIn(0, 3)
+            val newState = markPerformancePresetCustom(_uiState.value).copy(eeCycleSkip = clamped)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setEeCycleSkip(clamped)
+            }
+            EmulatorBridge.setSetting("EmuCore/Speedhacks", "EECycleSkip", "int", clamped.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setFrameSkip(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(frameSkip = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setFrameSkip(value)
+            }
+            EmulatorBridge.setFrameSkip(value)
+            updateCrashContext()
+        }
+    }
+
+    fun setSkipDuplicateFrames(enabled: Boolean) {
+        viewModelScope.launch {
+            persistRuntimeState(_uiState.value.copy(skipDuplicateFrames = enabled)) {
+                preferences.setSkipDuplicateFrames(enabled)
+            }
+            EmulatorBridge.setSkipDuplicateFrames(enabled)
+            updateCrashContext()
+        }
+    }
+
+    fun setLowLatencyMode(enabled: Boolean) {
+        viewModelScope.launch {
+            persistRuntimeState(_uiState.value.copy(lowLatencyMode = enabled)) {
+                preferences.setLowLatencyMode(enabled)
+            }
+            EmulatorBridge.setLowLatencyMode(enabled)
+            updateCrashContext()
+        }
+    }
+
+    fun setFrameLimitEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            if (!enabled && isRetroAchievementsHardcoreRestricted()) {
+                persistRuntimeState(_uiState.value.copy(frameLimitEnabled = true)) {
+                    preferences.setFrameLimitEnabled(true)
+                }
+                EmulatorBridge.setFrameLimitEnabled(true)
+                showHardcoreBlockedToast()
+                return@launch
+            }
+
+            persistRuntimeState(_uiState.value.copy(frameLimitEnabled = enabled)) {
+                preferences.setFrameLimitEnabled(enabled)
+            }
+            EmulatorBridge.setFrameLimitEnabled(enabled)
+            updateCrashContext()
+        }
+    }
+
+    fun setFastForwardHeld(enabled: Boolean) {
+        if (enabled && isRetroAchievementsHardcoreRestricted()) {
+            fastForwardRequested = false
+            _uiState.value = _uiState.value.copy(transportMode = EmulationTransportMode.None)
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching { EmulatorBridge.setTurboModeEnabled(false) }
+            }
+            showHardcoreBlockedToast()
+            return
+        }
+
+        if (fastForwardRequested == enabled) return
+        fastForwardRequested = enabled
+        _uiState.value = _uiState.value.copy(
+            transportMode = if (enabled) EmulationTransportMode.FastForward else EmulationTransportMode.None
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            transportMutex.withLock {
+                val requested = fastForwardRequested && _uiState.value.isRunning && !isShuttingDown
+                try {
+                    EmulatorBridge.setTurboModeEnabled(requested)
+                } catch (_: Exception) { }
+                if (!requested && _uiState.value.transportMode == EmulationTransportMode.FastForward) {
+                    _uiState.value = _uiState.value.copy(transportMode = EmulationTransportMode.None)
+                }
+            }
+        }
+    }
+
+    fun setTargetFps(value: Int) {
+        viewModelScope.launch {
+            val clamped = if (value <= 0) 0 else value.coerceIn(20, 120)
+            persistRuntimeState(_uiState.value.copy(targetFps = clamped)) {
+                preferences.setTargetFps(clamped)
+            }
+            EmulatorBridge.setTargetFps(clamped, _uiState.value.ntscFramerate, _uiState.value.palFramerate)
+            updateCrashContext()
+        }
+    }
+
+    fun setTextureFiltering(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(textureFiltering = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setTextureFiltering(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "filter", "int", value.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setTrilinearFiltering(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(trilinearFiltering = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setTrilinearFiltering(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "TriFilter", "int", value.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setBlendingAccuracy(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(
+                blendingAccuracy = value,
+                blendingAccuracyUserOverride = true
+            )
+            persistRuntimeState(newState, explicitlyClaimedGsKeys = setOf("blendingAccuracy")) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setBlendingAccuracy(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "accurate_blending_unit", "int", value.toString())
+            EmulatorBridge.setSetting("EmuCore/GS", "BlendingAccuracyUserOverride", "bool", "true")
+            updateCrashContext()
+        }
+    }
+
+    fun setTexturePreloading(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(texturePreloading = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setTexturePreloading(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "texture_preloading", "int", value.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setEnableFxaa(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(enableFxaa = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setEnableFxaa(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "fxaa", "bool", enabled.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setCasMode(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(casMode = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setCasMode(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "CASMode", "int", value.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setCasSharpness(value: Int) {
+        viewModelScope.launch {
+            val clamped = value.coerceIn(0, 100)
+            val newState = markPerformancePresetCustom(_uiState.value).copy(casSharpness = clamped)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setCasSharpness(clamped)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "CASSharpness", "int", clamped.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setSgsrMode(value: Int) {
+        viewModelScope.launch {
+            val clamped = value.coerceIn(0, 3)
+            val newState = markPerformancePresetCustom(_uiState.value).copy(sgsrMode = clamped)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setSgsrMode(clamped)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "SGSRMode", "int", clamped.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setTvShader(value: Int) {
+        viewModelScope.launch {
+            val clamped = GsHackDefaults.coerceTvShader(value)
+            val newState = markPerformancePresetCustom(_uiState.value).copy(tvShader = clamped)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setTvShader(clamped)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "TVShader", "int", clamped.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setShadeBoostBrightness(value: Int) {
+        viewModelScope.launch {
+            val clamped = value.coerceIn(1, 100)
+            val enabled = isShadeBoostActive(
+                brightness = clamped,
+                contrast = _uiState.value.shadeBoostContrast,
+                saturation = _uiState.value.shadeBoostSaturation,
+                gamma = _uiState.value.shadeBoostGamma
+            )
+            val newState = markPerformancePresetCustom(_uiState.value).copy(
+                shadeBoostEnabled = enabled,
+                shadeBoostBrightness = clamped
+            )
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setShadeBoostEnabled(enabled)
+                preferences.setShadeBoostBrightness(clamped)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "ShadeBoost", "bool", enabled.toString())
+            EmulatorBridge.setSetting("EmuCore/GS", "ShadeBoost_Brightness", "int", clamped.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setShadeBoostContrast(value: Int) {
+        viewModelScope.launch {
+            val clamped = value.coerceIn(1, 100)
+            val enabled = isShadeBoostActive(
+                brightness = _uiState.value.shadeBoostBrightness,
+                contrast = clamped,
+                saturation = _uiState.value.shadeBoostSaturation,
+                gamma = _uiState.value.shadeBoostGamma
+            )
+            val newState = markPerformancePresetCustom(_uiState.value).copy(
+                shadeBoostEnabled = enabled,
+                shadeBoostContrast = clamped
+            )
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setShadeBoostEnabled(enabled)
+                preferences.setShadeBoostContrast(clamped)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "ShadeBoost", "bool", enabled.toString())
+            EmulatorBridge.setSetting("EmuCore/GS", "ShadeBoost_Contrast", "int", clamped.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setShadeBoostSaturation(value: Int) {
+        viewModelScope.launch {
+            val clamped = value.coerceIn(1, 100)
+            val enabled = isShadeBoostActive(
+                brightness = _uiState.value.shadeBoostBrightness,
+                contrast = _uiState.value.shadeBoostContrast,
+                saturation = clamped,
+                gamma = _uiState.value.shadeBoostGamma
+            )
+            val newState = markPerformancePresetCustom(_uiState.value).copy(
+                shadeBoostEnabled = enabled,
+                shadeBoostSaturation = clamped
+            )
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setShadeBoostEnabled(enabled)
+                preferences.setShadeBoostSaturation(clamped)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "ShadeBoost", "bool", enabled.toString())
+            EmulatorBridge.setSetting("EmuCore/GS", "ShadeBoost_Saturation", "int", clamped.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setShadeBoostGamma(value: Int) {
+        viewModelScope.launch {
+            val clamped = value.coerceIn(1, 100)
+            val enabled = isShadeBoostActive(
+                brightness = _uiState.value.shadeBoostBrightness,
+                contrast = _uiState.value.shadeBoostContrast,
+                saturation = _uiState.value.shadeBoostSaturation,
+                gamma = clamped
+            )
+            val newState = markPerformancePresetCustom(_uiState.value).copy(
+                shadeBoostEnabled = enabled,
+                shadeBoostGamma = clamped
+            )
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setShadeBoostEnabled(enabled)
+                preferences.setShadeBoostGamma(clamped)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "ShadeBoost", "bool", enabled.toString())
+            EmulatorBridge.setSetting("EmuCore/GS", "ShadeBoost_Gamma", "int", clamped.toString())
+            updateCrashContext()
+        }
+    }
+
+    private fun isShadeBoostActive(
+        brightness: Int,
+        contrast: Int,
+        saturation: Int,
+        gamma: Int
+    ): Boolean {
+        return brightness != 50 || contrast != 50 || saturation != 50 || gamma != 50
+    }
+
+    fun setEnableWidescreenPatches(enabled: Boolean) {
+        viewModelScope.launch {
+            val wasEnabled = _uiState.value.widescreenPatches
+            val newState = markPerformancePresetCustom(_uiState.value).copy(widescreenPatches = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setEnableWidescreenPatches(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore", "EnableWideScreenPatches", "bool", enabled.toString())
+            if (NativeApp.hasNativeCore) {
+                NativeApp.reloadPatches()
+            }
+            updateCrashContext()
+            if (wasEnabled && !enabled && _uiState.value.isRunning) {
+                showWidescreenPatchesRestartToast()
+            }
+        }
+    }
+
+    private suspend fun showWidescreenPatchesRestartToast() {
+        _uiState.value = _uiState.value.copy(toastMessage = "widescreen_patches_restart_required")
+        delay(2500.milliseconds)
+        if (_uiState.value.toastMessage == "widescreen_patches_restart_required") {
+            _uiState.value = _uiState.value.copy(toastMessage = null)
+        }
+    }
+
+    fun setEnableNoInterlacingPatches(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(noInterlacingPatches = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setEnableNoInterlacingPatches(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore", "EnableNoInterlacingPatches", "bool", enabled.toString())
+            if (NativeApp.hasNativeCore) {
+                NativeApp.reloadPatches()
+            }
+            updateCrashContext()
+        }
+    }
+
+    fun setAnisotropicFiltering(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(anisotropicFiltering = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setAnisotropicFiltering(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "MaxAnisotropy", "int", value.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setEnableHwMipmapping(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(enableHwMipmapping = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setEnableHwMipmapping(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "hw_mipmap", "bool", enabled.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setAntiBlur(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(antiBlur = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setAntiBlur(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "pcrtc_antiblur", "bool", enabled.toString())
+            updateCrashContext()
+        }
+    }
+
+    fun setCpuSpriteRenderSize(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(cpuSpriteRenderSize = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setCpuSpriteRenderSize(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_CPUSpriteRenderBW", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setCpuSpriteRenderLevel(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(cpuSpriteRenderLevel = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setCpuSpriteRenderLevel(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_CPUSpriteRenderLevel", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setSoftwareClutRender(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(softwareClutRender = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setSoftwareClutRender(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_CPUCLUTRender", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setGpuTargetClutMode(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(gpuTargetClutMode = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setGpuTargetClutMode(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_GPUTargetCLUTMode", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setSkipDrawStart(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(skipDrawStart = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setSkipDrawStart(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_SkipDraw_Start", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setSkipDrawEnd(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(skipDrawEnd = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setSkipDrawEnd(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_SkipDraw_End", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setAutoFlushHardware(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(autoFlushHardware = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setAutoFlushHardware(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_AutoFlushLevel", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setCpuFramebufferConversion(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(cpuFramebufferConversion = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setCpuFramebufferConversion(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_CPU_FB_Conversion", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setDisableDepthConversion(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(disableDepthConversion = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setDisableDepthConversion(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_DisableDepthSupport", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setDisableSafeFeatures(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(disableSafeFeatures = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setDisableSafeFeatures(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_Disable_Safe_Features", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setDisableRenderFixes(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(disableRenderFixes = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setDisableRenderFixes(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_DisableRenderFixes", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setPreloadFrameData(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(preloadFrameData = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setPreloadFrameData(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "preload_frame_with_gs_data", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setDisablePartialInvalidation(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(disablePartialInvalidation = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setDisablePartialInvalidation(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_DisablePartialInvalidation", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setTextureInsideRt(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(textureInsideRt = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setTextureInsideRt(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_TextureInsideRt", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setReadTargetsOnClose(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(readTargetsOnClose = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setReadTargetsOnClose(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_ReadTCOnClose", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setEstimateTextureRegion(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(estimateTextureRegion = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setEstimateTextureRegion(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_EstimateTextureRegion", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setGpuPaletteConversion(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(gpuPaletteConversion = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setGpuPaletteConversion(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "paltex", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setHalfPixelOffset(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(halfPixelOffset = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setHalfPixelOffset(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_HalfPixelOffset", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setNativeScaling(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(nativeScaling = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setNativeScaling(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_native_scaling", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setRoundSprite(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(roundSprite = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setRoundSprite(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_round_sprite_offset", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setBilinearUpscale(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(bilinearUpscale = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setBilinearUpscale(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_BilinearHack", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setTextureOffsetX(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(textureOffsetX = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setTextureOffsetX(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_TCOffsetX", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setTextureOffsetY(value: Int) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(textureOffsetY = value)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setTextureOffsetY(value)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_TCOffsetY", "int", value.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setAlignSprite(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(alignSprite = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setAlignSprite(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_align_sprite_X", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setMergeSprite(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(mergeSprite = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setMergeSprite(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_merge_pp_sprite", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setForceEvenSpritePosition(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(forceEvenSpritePosition = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setForceEvenSpritePosition(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_ForceEvenSpritePosition", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    fun setNativePaletteDraw(enabled: Boolean) {
+        viewModelScope.launch {
+            val newState = markPerformancePresetCustom(_uiState.value).copy(nativePaletteDraw = enabled)
+            persistRuntimeState(newState) {
+                preferences.setPerformancePreset(PerformancePresets.CUSTOM)
+                preferences.setNativePaletteDraw(enabled)
+            }
+            EmulatorBridge.setSetting("EmuCore/GS", "UserHacks_NativePaletteDraw", "bool", enabled.toString())
+            refreshManualHardwareFixes(newState)
+            updateCrashContext()
+        }
+    }
+
+    private fun markPerformancePresetCustom(state: EmulationUiState): EmulationUiState {
+        return if (state.performancePreset == PerformancePresets.CUSTOM) {
+            state
+        } else {
+            state.copy(performancePreset = PerformancePresets.CUSTOM)
+        }
+    }
+
+    private suspend fun refreshManualHardwareFixes(state: EmulationUiState = _uiState.value) {
+        val enabled = GsHackDefaults.shouldEnableManualHardwareFixes(
+            cpuSpriteRenderSize = state.cpuSpriteRenderSize,
+            cpuSpriteRenderLevel = state.cpuSpriteRenderLevel,
+            softwareClutRender = state.softwareClutRender,
+            gpuTargetClutMode = state.gpuTargetClutMode,
+            skipDrawStart = state.skipDrawStart,
+            skipDrawEnd = state.skipDrawEnd,
+            autoFlushHardware = state.autoFlushHardware,
+            cpuFramebufferConversion = state.cpuFramebufferConversion,
+            disableDepthConversion = state.disableDepthConversion,
+            disableSafeFeatures = state.disableSafeFeatures,
+            disableRenderFixes = state.disableRenderFixes,
+            preloadFrameData = state.preloadFrameData,
+            disablePartialInvalidation = state.disablePartialInvalidation,
+            textureInsideRt = state.textureInsideRt,
+            readTargetsOnClose = state.readTargetsOnClose,
+            estimateTextureRegion = state.estimateTextureRegion,
+            gpuPaletteConversion = state.gpuPaletteConversion,
+            halfPixelOffset = state.halfPixelOffset,
+            nativeScaling = state.nativeScaling,
+            roundSprite = state.roundSprite,
+            bilinearUpscale = state.bilinearUpscale,
+            textureOffsetX = state.textureOffsetX,
+            textureOffsetY = state.textureOffsetY,
+            alignSprite = state.alignSprite,
+            mergeSprite = state.mergeSprite,
+            forceEvenSpritePosition = state.forceEvenSpritePosition,
+            nativePaletteDraw = state.nativePaletteDraw
+        )
+        EmulatorBridge.setSetting("EmuCore/GS", "UserHacks", "bool", enabled.toString())
+    }
+
+    private fun applyOverlayLayoutSnapshot(snapshot: OverlayLayoutSnapshot) {
+        val overlayState = _uiState.value.withOverlayLayoutSnapshot(snapshot)
+        globalInterfaceSettings = globalInterfaceSettings.copy(
+            overlayScale = snapshot.overlayScale, overlayOpacity = snapshot.overlayOpacity,
+            hideOverlayOnGamepad = snapshot.hideOverlayOnGamepad,
+            leftStickSensitivity = snapshot.leftStickSensitivity, rightStickSensitivity = snapshot.rightStickSensitivity,
+            invertLeftStick = snapshot.invertLeftStick, invertRightStick = snapshot.invertRightStick,
+            invertLeftStickHorizontal = snapshot.invertLeftStickHorizontal,
+            invertRightStickHorizontal = snapshot.invertRightStickHorizontal
+        )
+        _uiState.value = applyInterfaceSettings(currentTouchControlsLayoutProfile?.let { overlayState.withTouchControlsLayout(it) } ?: overlayState)
+        syncGamepadAnalogSettings(_uiState.value)
+    }
+
+    private fun EmulationUiState.withOverlayLayoutSnapshot(snapshot: OverlayLayoutSnapshot): EmulationUiState {
+        return copy(
+            overlayScale = snapshot.overlayScale,
+            overlayOpacity = snapshot.overlayOpacity,
+            hideOverlayOnGamepad = snapshot.hideOverlayOnGamepad,
+            dpadOffset = snapshot.dpadOffset,
+            lstickOffset = snapshot.lstickOffset,
+            rstickOffset = snapshot.rstickOffset,
+            actionOffset = snapshot.actionOffset,
+            lbtnOffset = snapshot.lbtnOffset,
+            rbtnOffset = snapshot.rbtnOffset,
+            centerOffset = snapshot.centerOffset,
+            stickScale = snapshot.stickScale,
+            leftStickSensitivity = snapshot.leftStickSensitivity,
+            rightStickSensitivity = snapshot.rightStickSensitivity,
+            invertLeftStick = snapshot.invertLeftStick,
+            invertRightStick = snapshot.invertRightStick,
+            invertLeftStickHorizontal = snapshot.invertLeftStickHorizontal,
+            invertRightStickHorizontal = snapshot.invertRightStickHorizontal,
+            stickSurfaceMode = snapshot.stickSurfaceMode,
+            controlLayouts = snapshot.controlLayouts
+        )
+    }
+
+    private fun EmulationUiState.toTouchControlsLayoutProfile(): TouchControlsLayoutProfile {
+        return TouchControlsLayoutProfile(
+            dpadOffset = dpadOffset,
+            lstickOffset = lstickOffset,
+            rstickOffset = rstickOffset,
+            actionOffset = actionOffset,
+            lbtnOffset = lbtnOffset,
+            rbtnOffset = rbtnOffset,
+            centerOffset = centerOffset,
+            stickScale = stickScale,
+            controlLayouts = controlLayouts
+        )
+    }
+
+    private fun currentGameSubtitle(): String = buildList {
+        currentGameSerial.takeIf { it.isNotBlank() }?.let(::add)
+        currentGameCrc.takeIf { it.isNotBlank() }?.let(::add)
+    }.joinToString("  /  ")
+
+    private fun activePerGameKey(): String? = currentGamePath?.takeIf { it.isNotBlank() }
+
+    private fun resolvePerGameTitle(state: EmulationUiState): String {
+        return state.currentGameTitle
+            .takeIf { it.isNotBlank() && it != "PlayStation 2 BIOS" }
+            ?: currentGameTitle.takeIf { it.isNotBlank() && it != "PlayStation 2 BIOS" }
+            ?: activePerGameKey()?.let { DocumentPathResolver.getDisplayName(getApplication(), it).substringBeforeLast('.') }
+            ?: "Unknown Game"
+    }
+
+    private suspend fun persistGlobalTouchControlsLayout(state: EmulationUiState) {
+        preferences.saveTouchControlsLayout(state.toTouchControlsLayoutProfile())
+    }
+
+    /**
+     * Applies [transform] to the live state and persists the touch layout it produces.
+     *
+     * The read-modify-write runs inside [PerGameSettingsRepository.transaction] so the
+     * disk write is off the main thread and ordered after every earlier edit, which is
+     * what keeps rapid slider moves from overwriting each other.
+     */
+    private suspend fun persistTouchControlsLayout(transform: (EmulationUiState) -> EmulationUiState) {
+        val gameKey = activePerGameKey()
+        if (gameKey == null) {
+            val updatedState = transform(_uiState.value)
+            persistGlobalTouchControlsLayout(updatedState)
+            if (activePerGameKey() != gameKey) return
+            currentTouchControlsLayoutProfile = null
+            _uiState.update { current -> current.withTouchControlsLayout(updatedState.toTouchControlsLayoutProfile()) }
+            return
+        }
+
+        val layout = perGameSettingsRepository.transaction {
+            val updatedState = transform(_uiState.value)
+            val updatedLayout = updatedState.toTouchControlsLayoutProfile()
+            val existing = perGameSettingsRepository.get(gameKey)
+            perGameSettingsRepository.save(
+                existing.withTouchControlsLayout(
+                    gameKey = gameKey,
+                    gameTitle = resolvePerGameTitle(updatedState),
+                    gameSerial = currentGameSerial.takeIf { it.isNotBlank() },
+                    layout = updatedLayout
+                )
+            )
+            updatedLayout
+        }
+        if (activePerGameKey() == gameKey) {
+            currentTouchControlsLayoutProfile = layout
+            _uiState.update { current -> current.withTouchControlsLayout(layout).copy(gameSettingsProfileActive = true) }
+        }
+    }
+
+    private suspend fun resetTouchControlsLayoutForCurrentScope() {
+        val gameKey = activePerGameKey()
+        if (gameKey == null) {
+            currentTouchControlsLayoutProfile = null
+            currentCustomTouchControlsProfile = null
+            preferences.resetControlsLayout()
+            _uiState.value = _uiState.value
+                .withOverlayLayoutSnapshot(preferences.overlayLayoutSnapshot.first())
+                .copy(customTouchControls = preferences.customTouchControls.first())
+            return
+        }
+
+        // Reset to the built-in defaults for this game; dropping the override would
+        // silently inherit the customized global layout.
+        val resetLayout = TouchControlsLayoutProfile()
+        val existing = perGameSettingsRepository.transaction {
+            val profile = perGameSettingsRepository.get(gameKey)
+            perGameSettingsRepository.save(
+                profile.withTouchControlsLayout(
+                    gameKey = gameKey,
+                    gameTitle = resolvePerGameTitle(_uiState.value),
+                    gameSerial = currentGameSerial.takeIf { it.isNotBlank() },
+                    layout = resetLayout
+                )
+            )
+            profile
+        }
+        currentTouchControlsLayoutProfile = resetLayout
+        currentCustomTouchControlsProfile = existing?.customTouchControls
+        _uiState.value = _uiState.value
+            .withOverlayLayoutSnapshot(preferences.overlayLayoutSnapshot.first())
+            .withTouchControlsLayout(resetLayout)
+            .copy(
+                customTouchControls = currentCustomTouchControlsProfile
+                    ?: preferences.customTouchControls.first(),
+                gameSettingsProfileActive = true
+            )
+    }
+
+    private suspend fun persistRuntimeState(
+        updatedState: EmulationUiState,
+        explicitlyClaimedGsKeys: Set<String> = emptySet(),
+        shaderChainUpdate: ShaderChainUpdate? = null,
+        persistGlobal: suspend () -> Unit = {}
+    ): EmulationUiState {
+        val gameKey = activePerGameKey()
+        return if (gameKey != null) {
+            val finalState = perGameSettingsRepository.transaction {
+                val existingProfile = perGameSettingsRepository.get(gameKey)
+                perGameSettingsRepository.save(
+                    buildRuntimeProfile(
+                        gameKey = gameKey,
+                        updatedState = updatedState,
+                        existingProfile = existingProfile,
+                        explicitlyClaimedGsKeys = explicitlyClaimedGsKeys,
+                        shaderChainUpdate = shaderChainUpdate
+                    )
+                )
+                applyInterfaceSettings(updatedState.copy(gameSettingsProfileActive = true))
+            }
+            if (activePerGameKey() != gameKey) return _uiState.value
+            val published = _uiState.updateAndGet { current -> finalState.withCurrentSession(current) }
+            syncGamepadAnalogSettings(published)
+            syncNativePerformanceOverlayState(published)
+            published
+        } else {
+            persistGlobal()
+            if (activePerGameKey() != gameKey) return _uiState.value
+            val published = _uiState.updateAndGet { current -> updatedState.withCurrentSession(current) }
+            syncNativePerformanceOverlayState(published)
+            published
+        }
+    }
+
+    /**
+     * Merges [updatedState] over [existingProfile].
+     *
+     * Pure apart from the DataStore snapshots read by [toPerGameSettings], so it stays
+     * inside the caller's transaction and cannot read a profile newer than the one it
+     * writes back.
+     */
+    private suspend fun buildRuntimeProfile(
+        gameKey: String,
+        updatedState: EmulationUiState,
+        existingProfile: PerGameSettings?,
+        explicitlyClaimedGsKeys: Set<String>,
+        shaderChainUpdate: ShaderChainUpdate?
+    ): PerGameSettings {
+        val touchControlsLayout = existingProfile?.touchControlsLayout ?: currentTouchControlsLayoutProfile
+        val customTouchControls = existingProfile?.customTouchControls
+            ?: currentCustomTouchControlsProfile
+        val runtimeProfile = updatedState.toPerGameSettings(
+            preferences = preferences,
+            frameGenerationManager = frameGenerationManager,
+            gameKey = gameKey,
+            gameTitle = resolvePerGameTitle(updatedState),
+            gameSerial = currentGameSerial.takeIf { it.isNotBlank() }
+        )
+        val visualStyleOverride = existingProfile?.touchControlVisualStyle
+            ?: runtimeProfile.touchControlVisualStyle
+        val pressEffectOverride = existingProfile?.touchControlPressEffect
+            ?: runtimeProfile.touchControlPressEffect
+        val driverOverrideKeys = when {
+            existingProfile == null -> emptySet()
+            existingProfile.providedKeys == null -> PER_GAME_GPU_DRIVER_KEYS
+            else -> existingProfile.providedKeys.intersect(PER_GAME_GPU_DRIVER_KEYS)
+        }
+        val memoryCardOverrideKeys = when {
+            existingProfile == null -> emptySet()
+            existingProfile.providedKeys == null -> PER_GAME_MEMORY_CARD_KEYS
+            else -> existingProfile.providedKeys.intersect(PER_GAME_MEMORY_CARD_KEYS)
+        }
+        val dedicatedCardOverrideKeys = when {
+            existingProfile == null -> emptySet()
+            existingProfile.providedKeys == null -> PER_GAME_DEDICATED_CARD_KEYS
+            else -> existingProfile.providedKeys.intersect(PER_GAME_DEDICATED_CARD_KEYS)
+        }
+        val visualOverrideKeys = buildSet {
+            if (visualStyleOverride != null) add("touchControlVisualStyle")
+            if (pressEffectOverride != null) add("touchControlPressEffect")
+        }
+        val providedKeys = when {
+            runtimeProfile.providedKeys == null -> null
+            else -> mergePerGameGsProvidedKeys(
+                runtimeKeys = buildSet<String> {
+                    addAll(runtimeProfile.providedKeys)
+                    addAll(visualOverrideKeys)
+                    addAll(driverOverrideKeys)
+                    addAll(memoryCardOverrideKeys)
+                    addAll(dedicatedCardOverrideKeys)
+                    if (touchControlsLayout != null) add(PER_GAME_TOUCH_CONTROLS_LAYOUT_KEY)
+                    if (customTouchControls != null) add(PER_GAME_CUSTOM_TOUCH_CONTROLS_KEY)
+                },
+                existingKeys = if (existingProfile == null) emptySet() else existingProfile.providedKeys,
+                explicitlyClaimedGsKeys = explicitlyClaimedGsKeys
+            )
+        }
+        // Shader fields are absent from EmulationUiState, so an unrelated
+        // in-game change preserves the stored selection. A shader action
+        // passes its new override explicitly and claims the matching keys.
+        val resolvedShaderOverrideEnabled = if (shaderChainUpdate != null) {
+            shaderChainUpdate.overrideEnabled
+        } else {
+            existingProfile?.shaderChainOverrideEnabled
+        }
+        val resolvedShaderPreset = if (shaderChainUpdate != null) {
+            shaderChainUpdate.preset
+        } else {
+            existingProfile?.shaderChainPreset.orEmpty()
+        }
+        val finalProvidedKeys = if (shaderChainUpdate != null && providedKeys != null) {
+            val shaderKeys = setOf("shaderChainOverrideEnabled", "shaderChainPreset")
+            val base = providedKeys - shaderKeys
+            if (shaderChainUpdate.overrideEnabled != null) base + shaderKeys else base
+        } else {
+            providedKeys
+        }
+        // keyboardMouse is not part of EmulationUiState. Preserve both its
+        // value and its override marker so an unrelated in-game change
+        // (including a shader switch) cannot erase it.
+        val retainedProvidedKeys = if (existingProfile?.keyboardMouse != null) {
+            finalProvidedKeys?.plus("keyboardMouse")
+        } else {
+            finalProvidedKeys
+        }
+        // The profile was just read inside the same transaction, so this is the same
+        // value the previous code obtained with a second, redundant file read.
+        return runtimeProfile.copy(
+            touchControlsLayout = touchControlsLayout,
+            customTouchControls = customTouchControls,
+            touchControlVisualStyle = visualStyleOverride,
+            touchControlPressEffect = pressEffectOverride,
+            keyboardMouse = existingProfile?.keyboardMouse ?: runtimeProfile.keyboardMouse,
+            gpuDriverType = existingProfile?.gpuDriverType ?: runtimeProfile.gpuDriverType,
+            customDriverPath = existingProfile?.customDriverPath ?: runtimeProfile.customDriverPath,
+            memoryCardSlot1 = existingProfile?.memoryCardSlot1 ?: runtimeProfile.memoryCardSlot1,
+            memoryCardSlot2 = existingProfile?.memoryCardSlot2 ?: runtimeProfile.memoryCardSlot2,
+            dedicatedMemoryCards = existingProfile?.dedicatedMemoryCards ?: runtimeProfile.dedicatedMemoryCards,
+            mediatekAngleOpenGl = existingProfile?.mediatekAngleOpenGl ?: runtimeProfile.mediatekAngleOpenGl,
+            interfaceSettings = existingProfile?.interfaceSettings,
+            shaderChainOverrideEnabled = resolvedShaderOverrideEnabled,
+            shaderChainPreset = resolvedShaderPreset,
+            providedKeys = retainedProvidedKeys
+        )
+    }
+
+    private suspend fun syncCurrentGameProfileMetadata() {
+        val gameKey = activePerGameKey() ?: return
+        perGameSettingsRepository.transaction {
+            val profile = perGameSettingsRepository.get(gameKey) ?: return@transaction
+            val resolvedTitle = resolvePerGameTitle(_uiState.value)
+            val serial = currentGameSerial.takeIf { it.isNotBlank() }
+            if (profile.gameTitle != resolvedTitle || profile.gameSerial != serial) {
+                perGameSettingsRepository.save(
+                    profile.copy(
+                        gameTitle = resolvedTitle,
+                        gameSerial = serial
+                    )
+                )
+            }
+        }
+    }
+
+    private suspend fun resetCurrentGameProfile() {
+        val gameKey = activePerGameKey() ?: return
+        val previousProfile = perGameSettingsRepository.transaction {
+            val profile = perGameSettingsRepository.get(gameKey)
+            perGameSettingsRepository.delete(gameKey)
+            profile
+        }
+        currentInterfaceSettingsProfile = null
+        currentTouchControlsLayoutProfile = null
+        currentCustomTouchControlsProfile = null
+        GamepadManager.clearPerGameOverrides()
+        refreshKeyboardMouseOverride()
+        _uiState.value = _uiState.value.copy(
+            gameSettingsProfileActive = false,
+            ps2GunProfileActive = false
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            val settings = preferences.settingsSnapshot.first()
+            val overlaySnapshot = preferences.overlayLayoutSnapshot.first()
+            val interfaceSettings = preferences.readInterfaceSettings()
+            globalInterfaceSettings = interfaceSettings
+            val frameGeneration = frameGenerationManager.snapshot()
+            val liveRuntime = loadLiveRuntimeSnapshot()
+            val resetState = _uiState.value
+                .withLiveRuntimeSnapshot(liveRuntime)
+                .withOverlayLayoutSnapshot(overlaySnapshot)
+                .withInterfaceSettings(interfaceSettings)
+                .copy(
+                    customTouchControls = settings.customTouchControls,
+                    gameSettingsProfileActive = false,
+                    ps2GunProfileActive = false
+                )
+            if (resetState.autoSaveEnabled) {
+                lastAutoSavePlayTimeMs = resetState.activePlayTimeMs
+            }
+            _uiState.value = resetState
+            syncNativePerformanceOverlayState(resetState)
+            syncGamepadRuntimeSettings(resetState)
+            frameGenerationManager.applyToNative(frameGeneration)
+            val globalConfig = loadLaunchConfig()
+            applyRuntimeConfigToNative(
+                globalConfig.keepCurrentDriverAndCards(previousProfile)
+            )
+            refreshShaderBrowserSelection()
+            runCatching { EmulatorBridge.reloadPatches() }
+        }
+    }
+
+    private fun EmulationLaunchConfig.keepCurrentDriverAndCards(
+        profile: PerGameSettings?
+    ): EmulationLaunchConfig {
+        if (profile == null) return this
+        fun owns(key: String): Boolean = profile.providedKeys == null || key in profile.providedKeys
+        return copy(
+            gpuDriverType = if (owns("gpuDriverType")) profile.gpuDriverType else gpuDriverType,
+            customDriverPath = if (owns("customDriverPath")) {
+                GpuDriverManager(getApplication()).resolveUsableDriverPath(profile.customDriverPath)
+            } else {
+                customDriverPath
+            },
+            memoryCardSlot1 = profile.memoryCardSlot1 ?: memoryCardSlot1,
+            memoryCardSlot2 = profile.memoryCardSlot2 ?: memoryCardSlot2,
+            mediatekAngleOpenGl = if (owns("mediatekAngleOpenGl")) profile.mediatekAngleOpenGl else mediatekAngleOpenGl
+        )
+    }
+
+    private suspend fun applyRuntimeConfigToNative(
+        config: EmulationLaunchConfig,
+        renderer: Int = config.renderer,
+        enableEeRecompiler: Boolean = config.enableEeRecompiler,
+        enableIopRecompiler: Boolean = config.enableIopRecompiler,
+        enableVu0Recompiler: Boolean = config.enableVu0Recompiler,
+        enableVu1Recompiler: Boolean = config.enableVu1Recompiler,
+        enableFastmem: Boolean = config.enableFastmem,
+        enableMtvu: Boolean = config.mtvu,
+        enableIopThread: Boolean = config.enableIopThread,
+        enableVUAot: Boolean = config.enableVUAot,
+        autotestMode: Boolean = false,
+        vu0FamilyMaskOverride: Int? = null,
+        vu1FamilyMaskOverride: Int? = null
+    ) {
+        EmulatorBridge.applyRuntimeConfig(
+            biosPath = config.biosPath,
+            emulatorDataPath = config.emulatorDataPath,
+            memoryCardSlot1 = config.memoryCardSlot1,
+            memoryCardSlot2 = config.memoryCardSlot2,
+            renderer = renderer,
+            upscaleMultiplier = config.upscaleMultiplier,
+            gpuDriverType = config.gpuDriverType,
+            customDriverPath = config.customDriverPath,
+            gpuHardwareProfile = config.gpuHardwareProfile,
+            mediatekAngleOpenGl = config.mediatekAngleOpenGl,
+            aspectRatio = config.aspectRatio,
+            localMultiplayerMode = config.localMultiplayerMode,
+            displayCrop = config.displayCrop,
+            audioVolume = config.audioVolume,
+            audioFastForwardVolume = config.audioFastForwardVolume,
+            audioMuted = config.audioMuted,
+            audioInterpolation = config.audioInterpolation,
+            audioSyncMode = config.audioSyncMode,
+            audioLightweightSpu2 = config.audioLightweightSpu2,
+            audioBackend = config.audioBackend,
+            audioBufferMs = config.audioBufferMs,
+            audioOutputLatencyMs = config.audioOutputLatencyMs,
+            audioMinimalOutputLatency = config.audioMinimalOutputLatency,
+            enableEeRecompiler = enableEeRecompiler,
+            enableIopRecompiler = enableIopRecompiler,
+            enableVu0Recompiler = enableVu0Recompiler,
+            enableVu1Recompiler = enableVu1Recompiler,
+            eeFpuRoundMode = config.eeFpuRoundMode,
+            vu0RoundMode = config.vu0RoundMode,
+            vu1RoundMode = config.vu1RoundMode,
+            eeFpuClampingMode = config.eeFpuClampingMode,
+            vu0ClampingMode = config.vu0ClampingMode,
+            vu1ClampingMode = config.vu1ClampingMode,
+            enableGameFixes = config.enableGameFixes,
+            autoGsHardwareFixes = config.autoGsHardwareFixes,
+            eeTimingHack = config.eeTimingHack,
+            enableFastmem = enableFastmem,
+            waitLoopSpeedhack = config.waitLoopSpeedhack,
+            intcStatSpeedhack = config.intcStatSpeedhack,
+            vuFlagHack = config.vuFlagHack,
+            instantVu1 = config.instantVu1,
+            mtvu = enableMtvu,
+            enableIopThread = enableIopThread,
+            enableVUAot = enableVUAot,
+            enableThreadPinning = config.enableThreadPinning,
+            enableFastBoot = config.enableFastBoot,
+            fastCdvd = config.fastCdvd,
+            enableCheats = config.enableCheats,
+            hwDownloadMode = config.hwDownloadMode,
+            hwDownloadModeUserOverride = config.hwDownloadModeUserOverride,
+            eeCycleRate = config.eeCycleRate,
+            eeCycleSkip = config.eeCycleSkip,
+            frameSkip = config.frameSkip,
+            skipDuplicateFrames = config.skipDuplicateFrames,
+            lowLatencyMode = config.lowLatencyMode,
+            frameLimitEnabled = config.frameLimitEnabled,
+            vSyncEnabled = config.vSyncEnabled,
+            fastForwardSpeed = config.fastForwardSpeed,
+            targetFps = config.targetFps,
+            ntscFramerate = config.ntscFramerate,
+            palFramerate = config.palFramerate,
+            textureFiltering = config.textureFiltering,
+            trilinearFiltering = config.trilinearFiltering,
+            blendingAccuracy = config.blendingAccuracy,
+            blendingAccuracyUserOverride = config.blendingAccuracyUserOverride,
+            texturePreloading = config.texturePreloading,
+            shaderChainEnabled = config.shaderChainEnabled,
+            shaderChainPreset = config.shaderChainPreset,
+            enableFxaa = config.enableFxaa,
+            casMode = config.casMode,
+            sgsrMode = config.sgsrMode,
+            casSharpness = config.casSharpness,
+            tvShader = config.tvShader,
+            shadeBoostEnabled = config.shadeBoostEnabled,
+            shadeBoostBrightness = config.shadeBoostBrightness,
+            shadeBoostContrast = config.shadeBoostContrast,
+            shadeBoostSaturation = config.shadeBoostSaturation,
+            shadeBoostGamma = config.shadeBoostGamma,
+            deinterlaceMode = config.deinterlaceMode,
+            dithering = config.dithering,
+            anisotropicFiltering = config.anisotropicFiltering,
+            enableHwMipmapping = config.enableHwMipmapping,
+            hwRov = config.hwRov,
+            antiBlur = config.antiBlur,
+            widescreenPatches = config.widescreenPatches,
+            noInterlacingPatches = config.noInterlacingPatches,
+            cpuSpriteRenderSize = config.cpuSpriteRenderSize,
+            cpuSpriteRenderLevel = config.cpuSpriteRenderLevel,
+            softwareClutRender = config.softwareClutRender,
+            gpuTargetClutMode = config.gpuTargetClutMode,
+            skipDrawStart = config.skipDrawStart,
+            skipDrawEnd = config.skipDrawEnd,
+            autoFlushHardware = config.autoFlushHardware,
+            cpuFramebufferConversion = config.cpuFramebufferConversion,
+            disableDepthConversion = config.disableDepthConversion,
+            disableSafeFeatures = config.disableSafeFeatures,
+            disableRenderFixes = config.disableRenderFixes,
+            preloadFrameData = config.preloadFrameData,
+            disablePartialInvalidation = config.disablePartialInvalidation,
+            textureInsideRt = config.textureInsideRt,
+            readTargetsOnClose = config.readTargetsOnClose,
+            estimateTextureRegion = config.estimateTextureRegion,
+            gpuPaletteConversion = config.gpuPaletteConversion,
+            halfPixelOffset = config.halfPixelOffset,
+            nativeScaling = config.nativeScaling,
+            roundSprite = config.roundSprite,
+            bilinearUpscale = config.bilinearUpscale,
+            textureOffsetX = config.textureOffsetX,
+            textureOffsetY = config.textureOffsetY,
+            alignSprite = config.alignSprite,
+            mergeSprite = config.mergeSprite,
+            forceEvenSpritePosition = config.forceEvenSpritePosition,
+            nativePaletteDraw = config.nativePaletteDraw,
+            pressureModifierAmount = config.pressureModifierAmount,
+            autotestMode = autotestMode,
+            fpuCorrectAddSub = config.fpuCorrectAddSub,
+            dev9EthernetEnabled = config.dev9EthernetEnabled,
+            dev9EthernetDevice = config.dev9EthernetDevice,
+            dev9InterceptDhcp = config.dev9InterceptDhcp,
+            dev9Dns1Mode = config.dev9Dns1Mode,
+            dev9Dns1 = config.dev9Dns1,
+            dev9Dns2Mode = config.dev9Dns2Mode,
+            dev9Dns2 = config.dev9Dns2,
+            dev9LogDhcp = config.dev9LogDhcp,
+            dev9LogDns = config.dev9LogDns,
+            dev9LocalLinkMode = config.dev9LocalLinkMode,
+            dev9LocalLinkAddress = config.dev9LocalLinkAddress,
+            dev9LocalLinkPort = config.dev9LocalLinkPort,
+            dev9LocalLinkPeerId = config.dev9LocalLinkPeerId,
+            dev9LocalLinkRoomCode = config.dev9LocalLinkRoomCode,
+            vu0FamilyMaskOverride = vu0FamilyMaskOverride,
+            vu1FamilyMaskOverride = vu1FamilyMaskOverride
+        )
+    }
+
+    private suspend fun loadLaunchConfig(): EmulationLaunchConfig {
+        val profile = withContext(Dispatchers.IO) {
+            activePerGameKey()?.let(perGameSettingsRepository::get)
+        }
+        val ensuredAssignments = memoryCardRepository.ensureDefaultCardsAssigned()
+        val settings = preferences.settingsSnapshot.first()
+        // Optional light-gun USB peripheral for disc-based games. Arcade manifests
+        // still override these values with their own USB configuration.
+        EmulatorBridge.setSetting(
+            "USB1",
+            "Type",
+            "string",
+            if (settings.usbPort1Device == AppPreferences.USB_DEVICE_GUNCON2) "guncon2" else "None"
+        )
+        EmulatorBridge.setSetting(
+            "USB2",
+            "Type",
+            "string",
+            if (settings.usbPort2Device == AppPreferences.USB_DEVICE_GUNCON2) "guncon2" else "None"
+        )
+        val profileConfig = PerformanceProfiles.configFor(settings.performanceProfile)
+        val savedGpuDriverType = settings.gpuDriverType
+        val savedCustomDriverPath = settings.customDriverPath
+        val resolvedCustomDriverPath = if (savedGpuDriverType == 1) {
+            GpuDriverManager(getApplication()).resolveUsableDriverPath(savedCustomDriverPath)
+        } else {
+            null
+        }
+        val resolvedGpuDriverType = if (savedGpuDriverType == 1 && !resolvedCustomDriverPath.isNullOrBlank()) 1 else 0
+        if (savedGpuDriverType == 1 && resolvedGpuDriverType == 1 && resolvedCustomDriverPath != savedCustomDriverPath) {
+            preferences.setCustomDriverPath(resolvedCustomDriverPath)
+        }
+        val mergedConfig = EmulationLaunchConfig(
+            performanceProfile = settings.performanceProfile,
+            biosPath = settings.biosPath,
+            emulatorDataPath = settings.emulatorDataPath,
+            memoryCardSlot1 = ensuredAssignments.slot1,
+            memoryCardSlot2 = ensuredAssignments.slot2,
+            renderer = settings.renderer,
+            upscaleMultiplier = settings.upscaleMultiplier,
+            gpuDriverType = resolvedGpuDriverType,
+            customDriverPath = resolvedCustomDriverPath,
+            gpuHardwareProfile = settings.gpuHardwareProfile,
+            mediatekAngleOpenGl = settings.mediatekAngleOpenGl,
+            aspectRatio = settings.aspectRatio,
+            localMultiplayerMode = settings.localMultiplayerMode,
+            displayCrop = settings.displayCrop,
+            audioVolume = settings.audioVolume,
+            audioFastForwardVolume = settings.audioFastForwardVolume,
+            audioMuted = settings.audioMuted,
+            audioInterpolation = settings.audioInterpolation,
+            audioSyncMode = settings.audioSyncMode,
+            audioLightweightSpu2 = settings.audioLightweightSpu2,
+            audioBackend = settings.audioBackend,
+            audioBufferMs = settings.audioBufferMs,
+            audioOutputLatencyMs = settings.audioOutputLatencyMs,
+            audioMinimalOutputLatency = settings.audioMinimalOutputLatency,
+            enableEeRecompiler = settings.enableEeRecompiler,
+            enableIopRecompiler = settings.enableIopRecompiler,
+            enableVu0Recompiler = settings.enableVu0Recompiler,
+            enableVu1Recompiler = settings.enableVu1Recompiler,
+            enableFastmem = settings.enableFastmem,
+            eeFpuRoundMode = settings.eeFpuRoundMode,
+            vu0RoundMode = settings.vu0RoundMode,
+            vu1RoundMode = settings.vu1RoundMode,
+            eeFpuClampingMode = settings.eeFpuClampingMode,
+            vu0ClampingMode = settings.vu0ClampingMode,
+            vu1ClampingMode = settings.vu1ClampingMode,
+            enableGameFixes = settings.enableGameFixes,
+            autoGsHardwareFixes = settings.autoGsHardwareFixes,
+            eeTimingHack = settings.enableEeTimingHack,
+            waitLoopSpeedhack = settings.enableWaitLoopSpeedhack,
+            intcStatSpeedhack = settings.enableIntcStatSpeedhack,
+            vuFlagHack = settings.enableVuFlagHack,
+            instantVu1 = settings.enableInstantVu1,
+            mtvu = settings.enableMtvu,
+            enableIopThread = settings.enableIopThread,
+            enableVUAot = settings.enableVUAot,
+            enableThreadPinning = settings.enableThreadPinning,
+            fastCdvd = settings.enableFastCdvd,
+            enableFastBoot = settings.enableFastBoot,
+            enableCheats = settings.enableCheats,
+            hwDownloadMode = settings.hwDownloadMode,
+            hwDownloadModeUserOverride = settings.hwDownloadModeUserOverride,
+            eeCycleRate = settings.eeCycleRate,
+            eeCycleSkip = settings.eeCycleSkip,
+            frameSkip = settings.frameSkip,
+            skipDuplicateFrames = settings.skipDuplicateFrames,
+            lowLatencyMode = settings.lowLatencyMode,
+            frameLimitEnabled = settings.frameLimitEnabled,
+            vSyncEnabled = settings.vSyncEnabled,
+            fastForwardSpeed = settings.fastForwardSpeed,
+            targetFps = settings.targetFps,
+            ntscFramerate = settings.ntscFramerate,
+            palFramerate = settings.palFramerate,
+            textureFiltering = settings.textureFiltering,
+            trilinearFiltering = settings.trilinearFiltering,
+            blendingAccuracy = settings.blendingAccuracy,
+            blendingAccuracyUserOverride = settings.blendingAccuracyUserOverride,
+            texturePreloading = settings.texturePreloading,
+            shaderChainEnabled = settings.shaderChainEnabled,
+            shaderChainPreset = settings.shaderChainPreset,
+            enableFxaa = settings.enableFxaa,
+            casMode = settings.casMode,
+            sgsrMode = settings.sgsrMode,
+            casSharpness = settings.casSharpness,
+            tvShader = settings.tvShader,
+            shadeBoostEnabled = settings.shadeBoostEnabled,
+            shadeBoostBrightness = settings.shadeBoostBrightness,
+            shadeBoostContrast = settings.shadeBoostContrast,
+            shadeBoostSaturation = settings.shadeBoostSaturation,
+            shadeBoostGamma = settings.shadeBoostGamma,
+            deinterlaceMode = settings.deinterlaceMode,
+            dithering = settings.dithering,
+            anisotropicFiltering = settings.anisotropicFiltering,
+            enableHwMipmapping = settings.enableHwMipmapping,
+            hwRov = settings.hwRov,
+            antiBlur = settings.antiBlur,
+            widescreenPatches = settings.enableWidescreenPatches,
+            noInterlacingPatches = settings.enableNoInterlacingPatches,
+            cpuSpriteRenderSize = settings.cpuSpriteRenderSize,
+            cpuSpriteRenderLevel = settings.cpuSpriteRenderLevel,
+            softwareClutRender = settings.softwareClutRender,
+            gpuTargetClutMode = settings.gpuTargetClutMode,
+            skipDrawStart = settings.skipDrawStart,
+            skipDrawEnd = settings.skipDrawEnd,
+            autoFlushHardware = settings.autoFlushHardware,
+            cpuFramebufferConversion = settings.cpuFramebufferConversion,
+            disableDepthConversion = settings.disableDepthConversion,
+            disableSafeFeatures = settings.disableSafeFeatures,
+            disableRenderFixes = settings.disableRenderFixes,
+            preloadFrameData = settings.preloadFrameData,
+            disablePartialInvalidation = settings.disablePartialInvalidation,
+            textureInsideRt = settings.textureInsideRt,
+            readTargetsOnClose = settings.readTargetsOnClose,
+            estimateTextureRegion = settings.estimateTextureRegion,
+            gpuPaletteConversion = settings.gpuPaletteConversion,
+            halfPixelOffset = settings.halfPixelOffset,
+            nativeScaling = settings.nativeScaling,
+            roundSprite = settings.roundSprite,
+            bilinearUpscale = settings.bilinearUpscale,
+            textureOffsetX = settings.textureOffsetX,
+            textureOffsetY = settings.textureOffsetY,
+            alignSprite = settings.alignSprite,
+            mergeSprite = settings.mergeSprite,
+            forceEvenSpritePosition = settings.forceEvenSpritePosition,
+            nativePaletteDraw = settings.nativePaletteDraw,
+            pressureModifierAmount = settings.pressureModifierAmount,
+            fpuCorrectAddSub = profileConfig.fpuCorrectAddSub,
+            dev9EthernetEnabled = settings.dev9EthernetEnabled,
+            dev9EthernetDevice = settings.dev9EthernetDevice,
+            dev9InterceptDhcp = settings.dev9InterceptDhcp,
+            dev9Dns1Mode = settings.dev9Dns1Mode,
+            dev9Dns1 = settings.dev9Dns1,
+            dev9Dns2Mode = settings.dev9Dns2Mode,
+            dev9Dns2 = settings.dev9Dns2,
+            dev9LogDhcp = settings.dev9LogDhcp,
+            dev9LogDns = settings.dev9LogDns,
+            dev9LocalLinkMode = settings.dev9LocalLinkMode,
+            dev9LocalLinkAddress = settings.dev9LocalLinkAddress,
+            dev9LocalLinkPort = settings.dev9LocalLinkPort,
+            dev9LocalLinkPeerId = settings.dev9LocalLinkPeerId,
+            dev9LocalLinkRoomCode = settings.dev9LocalLinkRoomCode
+        ).applyProfile(profile)
+        val availableCardNames = memoryCardRepository.listCards().mapTo(HashSet()) { it.name }
+        val validatedMemoryCardSlot1 = validatePerGameMemoryCardName(
+            selected = mergedConfig.memoryCardSlot1,
+            fallback = ensuredAssignments.slot1,
+            availableCards = availableCardNames
+        )
+        val validatedMemoryCardSlot2 = validatePerGameMemoryCardName(
+            selected = mergedConfig.memoryCardSlot2,
+            fallback = ensuredAssignments.slot2,
+            availableCards = availableCardNames
+        ).takeUnless { it.equals(validatedMemoryCardSlot1, ignoreCase = true) }
+        val mergedConfigWithCards = mergedConfig.copy(
+            memoryCardSlot1 = validatedMemoryCardSlot1,
+            memoryCardSlot2 = validatedMemoryCardSlot2
+        )
+        val mergedDriverPath = if (mergedConfigWithCards.gpuDriverType == 1) {
+            GpuDriverManager(getApplication()).resolveUsableDriverPath(mergedConfigWithCards.customDriverPath)
+        } else {
+            null
+        }
+        return mergedConfigWithCards.copy(
+            gpuDriverType = if (mergedConfigWithCards.gpuDriverType == 1 && !mergedDriverPath.isNullOrBlank()) 1 else 0,
+            customDriverPath = mergedDriverPath
+        )
+    }
+
+    private suspend fun loadLiveRuntimeSnapshot(): LiveRuntimeSnapshot {
+        val profile = withContext(Dispatchers.IO) {
+            activePerGameKey()?.let(perGameSettingsRepository::get)
+        }
+        val settings = preferences.settingsSnapshot.first()
+        val frameGeneration = frameGenerationManager.snapshot()
+        return LiveRuntimeSnapshot(
+            showFps = settings.showFps,
+            fpsOverlayMode = settings.fpsOverlayMode,
+            confirmSaveLoadActions = settings.confirmSaveLoadActions,
+            backButtonExitsGame = settings.backButtonExitsGame,
+            renderer = settings.renderer,
+            frameGenerationReady = frameGeneration.isConfigured,
+            frameGenerationEnabled = frameGeneration.settings.enabled,
+            frameGenerationMultiplier = frameGeneration.settings.multiplier,
+            frameGenerationPerformance = frameGeneration.settings.performanceMode,
+            frameGenerationFlowScale = frameGeneration.settings.flowScalePercent,
+            frameGenerationTargetRate = frameGeneration.settings.targetRefreshRate,
+            upscale = settings.upscaleMultiplier,
+            aspectRatio = settings.aspectRatio,
+            localMultiplayerMode = settings.localMultiplayerMode,
+            displayCrop = settings.displayCrop,
+            performancePreset = settings.performancePreset,
+            enableInstantVu1 = settings.enableInstantVu1,
+            enableMtvu = settings.enableMtvu,
+            enableIopThread = settings.enableIopThread,
+            enableVUAot = settings.enableVUAot,
+            enableThreadPinning = settings.enableThreadPinning,
+            enableFastCdvd = settings.enableFastCdvd,
+            enableFastBoot = settings.enableFastBoot,
+            enableCheats = settings.enableCheats,
+            hwDownloadMode = settings.hwDownloadMode,
+            hwDownloadModeUserOverride = settings.hwDownloadModeUserOverride,
+            eeCycleRate = settings.eeCycleRate,
+            eeCycleSkip = settings.eeCycleSkip,
+            frameSkip = settings.frameSkip,
+            skipDuplicateFrames = settings.skipDuplicateFrames,
+            lowLatencyMode = settings.lowLatencyMode,
+            frameLimitEnabled = settings.frameLimitEnabled,
+            fastForwardSpeed = settings.fastForwardSpeed,
+            racingMode = settings.racingMode,
+            stickyButtons = settings.stickyButtons,
+            touchscreenRightStick = settings.touchscreenRightStick,
+            touchscreenRightStickSensitivity = settings.touchscreenRightStickSensitivity,
+            touchscreenLeftStick = settings.touchscreenLeftStick,
+            touchscreenLeftStickSensitivity = settings.touchscreenLeftStickSensitivity,
+            touchHaptics = settings.touchHaptics,
+            stickToggleTarget = settings.stickToggleTarget,
+            touchHapticsPreset = settings.touchHapticsPreset,
+            touchHapticsStrength = settings.touchHapticsStrength,
+            touchControlVisualStyle = settings.touchControlVisualStyle,
+            touchControlPressEffect = settings.touchControlPressEffect,
+            gyroMode = settings.gyroMode,
+            gyroSensitivity = settings.gyroSensitivity,
+            gyroSmoothing = settings.gyroSmoothing,
+            gyroInvertX = settings.gyroInvertX,
+            gyroInvertY = settings.gyroInvertY,
+            gyroStickTarget = settings.gyroStickTarget,
+            lightGunAim = settings.lightGunAim,
+            lightGunCursorEnabled = settings.lightGunCursorEnabled,
+            gamepadRightStickUpToR2 = settings.gamepadRightStickUpToR2,
+            gamepadRightStickDownToL2 = settings.gamepadRightStickDownToL2,
+            gamepadButtonHaptics = settings.gamepadButtonHaptics,
+            gamepadStickDeadzone = settings.gamepadStickDeadzone,
+            gamepadLeftStickSensitivity = settings.gamepadLeftStickSensitivity,
+            gamepadRightStickSensitivity = settings.gamepadRightStickSensitivity,
+            gamepadLeftStickNegativeDeadzone = settings.gamepadLeftStickNegativeDeadzone,
+            gamepadRightStickNegativeDeadzone = settings.gamepadRightStickNegativeDeadzone,
+            gamepadLeftStickAntiDeadzone = settings.gamepadLeftStickAntiDeadzone,
+            gamepadRightStickAntiDeadzone = settings.gamepadRightStickAntiDeadzone,
+            gamepadLeftStickCurve = settings.gamepadLeftStickCurve,
+            gamepadRightStickCurve = settings.gamepadRightStickCurve,
+            gamepadBindingsByPad = settings.gamepadBindingsByPad,
+            pressureModifierAmount = settings.pressureModifierAmount,
+            autoSaveOnExit = false,
+            autoLoadOnStart = false,
+            targetFps = settings.targetFps,
+            ntscFramerate = settings.ntscFramerate,
+            palFramerate = settings.palFramerate,
+            textureFiltering = settings.textureFiltering,
+            trilinearFiltering = settings.trilinearFiltering,
+            blendingAccuracy = settings.blendingAccuracy,
+            blendingAccuracyUserOverride = settings.blendingAccuracyUserOverride,
+            texturePreloading = settings.texturePreloading,
+            enableFxaa = settings.enableFxaa,
+            casMode = settings.casMode,
+            sgsrMode = settings.sgsrMode,
+            casSharpness = settings.casSharpness,
+            tvShader = settings.tvShader,
+            shadeBoostEnabled = settings.shadeBoostEnabled,
+            shadeBoostBrightness = settings.shadeBoostBrightness,
+            shadeBoostContrast = settings.shadeBoostContrast,
+            shadeBoostSaturation = settings.shadeBoostSaturation,
+            shadeBoostGamma = settings.shadeBoostGamma,
+            anisotropicFiltering = settings.anisotropicFiltering,
+            enableHwMipmapping = settings.enableHwMipmapping,
+            antiBlur = settings.antiBlur,
+            deinterlaceMode = settings.deinterlaceMode,
+            dithering = settings.dithering,
+            widescreenPatches = settings.enableWidescreenPatches,
+            noInterlacingPatches = settings.enableNoInterlacingPatches,
+            cpuSpriteRenderSize = settings.cpuSpriteRenderSize,
+            cpuSpriteRenderLevel = settings.cpuSpriteRenderLevel,
+            softwareClutRender = settings.softwareClutRender,
+            gpuTargetClutMode = settings.gpuTargetClutMode,
+            skipDrawStart = settings.skipDrawStart,
+            skipDrawEnd = settings.skipDrawEnd,
+            autoFlushHardware = settings.autoFlushHardware,
+            cpuFramebufferConversion = settings.cpuFramebufferConversion,
+            disableDepthConversion = settings.disableDepthConversion,
+            disableSafeFeatures = settings.disableSafeFeatures,
+            disableRenderFixes = settings.disableRenderFixes,
+            preloadFrameData = settings.preloadFrameData,
+            disablePartialInvalidation = settings.disablePartialInvalidation,
+            textureInsideRt = settings.textureInsideRt,
+            readTargetsOnClose = settings.readTargetsOnClose,
+            estimateTextureRegion = settings.estimateTextureRegion,
+            gpuPaletteConversion = settings.gpuPaletteConversion,
+            halfPixelOffset = settings.halfPixelOffset,
+            nativeScaling = settings.nativeScaling,
+            roundSprite = settings.roundSprite,
+            bilinearUpscale = settings.bilinearUpscale,
+            textureOffsetX = settings.textureOffsetX,
+            textureOffsetY = settings.textureOffsetY,
+            alignSprite = settings.alignSprite,
+            mergeSprite = settings.mergeSprite,
+            forceEvenSpritePosition = settings.forceEvenSpritePosition,
+            nativePaletteDraw = settings.nativePaletteDraw
+        ).applyProfile(profile)
+    }
+
+    fun refreshAvailableCheats() {
+        val serial = currentGameSerial.trim()
+        val crc = currentGameCrc.trim()
+        val title = currentGameTitle.trim().takeIf { it.isNotBlank() && it != "PlayStation 2 BIOS" }
+        val previousKey = _uiState.value.cheatsGameKey
+        val cheatsEnabled = _uiState.value.enableCheats
+        val keys = buildList {
+            previousKey?.takeIf { it.isNotBlank() }?.let(::add)
+            if (serial.isNotBlank() && crc.isNotBlank()) add("${serial}_$crc")
+            if (crc.isNotBlank()) add(crc)
+            if (serial.isNotBlank()) add(serial)
+            title?.let(::add)
+        }
+        if (keys.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val config = cheatRepository.getGameConfig(
+                gameKeys = keys,
+                serial = serial,
+                crc = crc.takeIf { it.isNotBlank() }
+            )
+            _uiState.value = _uiState.value.copy(
+                cheatsGameKey = config?.gameKey,
+                availableCheats = config?.blocks.orEmpty()
+            )
+            if (!cheatsEnabled) return@launch
+            if (config != null) {
+                syncCheatsForCurrentGame(config.gameKey)
+            } else if (previousKey != null) {
+                syncCheatsForCurrentGame(previousKey)
+            }
+            runCatching { EmulatorBridge.reloadPatches() }
+        }
+    }
+
+    private fun refreshCurrentGameCheats(
+        metadata: com.sbro.emucorex.core.GameMetadata,
+        cheatsEnabled: Boolean = _uiState.value.enableCheats
+    ) {
+        val serial = metadata.serial.orEmpty()
+        val crc = metadata.serialWithCrc.extractCrc()
+        val config = cheatRepository.getGameConfig(
+            gameKeys = cheatLookupKeys(metadata),
+            serial = serial,
+            crc = crc
+        )
+        _uiState.value = _uiState.value.copy(
+            cheatsGameKey = config?.gameKey,
+            availableCheats = config?.blocks.orEmpty()
+        )
+        if (config != null && cheatsEnabled) {
+            cheatRepository.syncActiveCheats(config.gameKey, serial, crc)
+        }
+    }
+
+    private fun syncCheatsForCurrentGame(gameKeyOverride: String? = null) {
+        val gameKey = gameKeyOverride ?: _uiState.value.cheatsGameKey ?: return
+        cheatRepository.syncActiveCheats(
+            gameKey = gameKey,
+            serial = currentGameSerial.takeIf { it.isNotBlank() },
+            crc = currentGameCrc.takeIf { it.isNotBlank() }
+        )
+    }
+
+    private fun cheatLookupKeys(metadata: com.sbro.emucorex.core.GameMetadata): List<String> {
+        val keys = linkedSetOf<String>()
+        metadata.serialWithCrc?.trim()?.takeIf { it.isNotBlank() }?.let(keys::add)
+        metadata.serialWithCrc.extractSerialAndCrcKey()?.let(keys::add)
+        metadata.serialWithCrc.extractCrc()?.let(keys::add)
+        metadata.serial?.trim()?.takeIf { it.isNotBlank() }?.let(keys::add)
+        metadata.title.trim().takeIf { it.isNotBlank() }?.let(keys::add)
+        return keys.toList()
+    }
+
+    fun setSlot(slot: Int) {
+        val state = _uiState.value
+        val normalized = normalizeManualSaveSlot(slot)
+        _uiState.value = if (normalized != state.currentSlot) {
+            // Do not show the previous slot's availability while its replacement loads.
+            state.copy(currentSlot = normalized, currentSlotLastModified = 0L, currentSlotPreviewPath = null)
+        } else {
+            state
+        }
+        refreshSaveStateMetadata()
+    }
+
+    private fun normalizeSaveSlot(slot: Int): Int = slot.coerceIn(AUTO_SAVE_SLOT, 10)
+
+    private fun normalizeManualSaveSlot(slot: Int): Int = slot.coerceIn(1, 10)
+
+    fun setAutoSaveEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(autoSaveEnabled = enabled)) {
+                preferences.setAutoSaveEnabled(enabled)
+            }
+        }
+    }
+
+    fun setAutoSaveIntervalMinutes(value: Int) {
+        viewModelScope.launch {
+            persistInterfaceSettings(_uiState.value.copy(autoSaveIntervalMinutes = value)) {
+                preferences.setAutoSaveIntervalMinutes(value)
+            }
+        }
+    }
+
+    fun setAutoSaveOnExit(enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val updated = _uiState.value.copy(autoSaveOnExit = enabled)
+            persistRuntimeState(updated)
+        }
+    }
+
+    fun setAutoLoadOnStart(enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val updated = _uiState.value.copy(autoLoadOnStart = enabled)
+            persistRuntimeState(updated)
+        }
+    }
+
+    private data class SaveStatePreviewMetadata(
+        val currentFile: File?,
+        val currentModified: Long,
+        val autoFile: File?,
+        val autoModified: Long
+    )
+
+    private fun refreshSaveStateMetadata() {
+        // Serialize refresh ownership on Main, including calls from save/load workers.
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            savePreviewJob?.cancel()
+            val path = currentGamePath
+            val slot = _uiState.value.currentSlot
+            val serial = currentGameSerial
+            val crc = currentGameCrc
+            fun isCurrentScope() = currentGamePath == path && _uiState.value.currentSlot == slot &&
+                currentGameSerial == serial && currentGameCrc == crc
+            if (path.isNullOrBlank()) {
+                _uiState.value = _uiState.value.copy(
+                    currentSlotLastModified = 0L,
+                    currentSlotPreviewPath = null,
+                    autoSaveLastModified = 0L,
+                    autoSavePreviewPath = null
+                )
+                return@launch
+            }
+
+            savePreviewJob = viewModelScope.launch preview@{
+                val metadata = withContext(Dispatchers.IO) {
+                    val currentFile = resolveSaveStateFile(path, slot)?.takeIf { it.exists() }
+                    val autoFile = resolveSaveStateFile(path, AUTO_SAVE_SLOT)?.takeIf { it.exists() }
+                    SaveStatePreviewMetadata(
+                        currentFile, currentFile?.lastModified() ?: 0L,
+                        autoFile, autoFile?.lastModified() ?: 0L
+                    )
+                }
+                if (!isCurrentScope()) return@preview
+                _uiState.value = _uiState.value.copy(
+                    currentSlotLastModified = metadata.currentModified,
+                    autoSaveLastModified = metadata.autoModified
+                )
+                val previews = withContext(Dispatchers.IO) {
+                    val currentPreview = metadata.currentFile?.let { file ->
+                        runCatching { saveStateRepository.getPreviewImagePath(file) }.getOrNull()
+                    }
+                    ensureActive()
+                    val autoPreview = metadata.autoFile?.let { file ->
+                        runCatching { saveStateRepository.getPreviewImagePath(file) }.getOrNull()
+                    }
+                    currentPreview to autoPreview
+                }
+                // Cancellation and scope checks keep an old game/slot from publishing late.
+                if (!isCurrentScope()) return@preview
+                _uiState.value = _uiState.value.copy(
+                    currentSlotPreviewPath = previews.first,
+                    autoSavePreviewPath = previews.second
+                )
+            }
+        }
+    }
+
+    private fun saveStateLastModified(gamePath: String, slot: Int): Long {
+        val file = resolveSaveStateFile(gamePath, slot) ?: return 0L
+        return file.takeIf { it.exists() }?.lastModified() ?: 0L
+    }
+
+    private suspend fun waitForSaveStateUpdate(gamePath: String, slot: Int, previousModified: Long): Boolean {
+        val statePath = runCatching { NativeApp.getSaveStatePathForFile(gamePath, slot) }.getOrNull()
+            ?: return false
+        val fallbackFile = File(statePath)
+        repeat(40) {
+            val file = resolveSaveStateFile(gamePath, slot) ?: fallbackFile
+            val modified = file.takeIf { it.exists() }?.lastModified() ?: 0L
+            if (modified > 0L && modified != previousModified) {
+                return true
+            }
+            delay(250.milliseconds)
+        }
+        // A file that already existed before this save (unchanged timestamp) is not
+        // proof of success; only a new or updated state counts.
+        val finalFile = resolveSaveStateFile(gamePath, slot) ?: fallbackFile
+        val finalModified = finalFile.takeIf { it.exists() }?.lastModified() ?: 0L
+        return finalModified > 0L && (previousModified <= 0L || finalModified > previousModified)
+    }
+
+    private fun resolveSaveStateFile(gamePath: String, slot: Int): File? {
+        val nativeFile = runCatching { NativeApp.getSaveStatePathForFile(gamePath, slot) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::File)
+        if (nativeFile?.exists() == true) return nativeFile
+        return findSaveStateFileForCurrentGame(slot) ?: nativeFile
+    }
+
+    private fun findSaveStateFileForCurrentGame(slot: Int): File? {
+        val targetSerial = currentGameSerial.normalizeSaveSerialKey() ?: return null
+        val targetCrc = currentGameCrc.trim().uppercase(Locale.ROOT)
+        val matches = EmulatorStorage.saveStatesDir(getApplication(), preferences.getEmulatorDataPathSync())
+            .listFiles()
+            .orEmpty()
+            .mapNotNull { file ->
+                if (!file.isFile) return@mapNotNull null
+                val parsed = SAVE_STATE_FILE_REGEX.matchEntire(file.name) ?: return@mapNotNull null
+                val fileSlot = parsed.groupValues[3].toIntOrNull() ?: return@mapNotNull null
+                if (fileSlot != slot) return@mapNotNull null
+                val fileSerial = parsed.groupValues[1].normalizeSaveSerialKey() ?: return@mapNotNull null
+                if (fileSerial != targetSerial) return@mapNotNull null
+                val fileCrc = parsed.groupValues[2].uppercase(Locale.ROOT)
+                file to fileCrc
+            }
+        if (matches.isEmpty()) return null
+        return matches
+            .filter { (_, fileCrc) -> targetCrc.isNotBlank() && fileCrc == targetCrc }
+            .map { it.first }
+            .maxByOrNull { it.lastModified() }
+            ?: matches
+                .map { it.first }
+                .maxByOrNull { it.lastModified() }
+    }
+
+    fun quickSave() {
+        val slot = _uiState.value.currentSlot
+        viewModelScope.launch(Dispatchers.IO) {
+            val path = currentGamePath
+            val previousModified = path?.let { saveStateLastModified(it, slot) } ?: 0L
+            _uiState.value = _uiState.value.copy(
+                isActionInProgress = true,
+                actionLabel = "saving"
+            )
+            val scheduled = lifecycleMutex.withLock {
+                if (isShuttingDown) {
+                    false
+                } else {
+                    try {
+                        EmulatorBridge.saveState(slot)
+                    } catch (_: Exception) { false }
+                }
+            }
+            val success = scheduled && path != null && waitForSaveStateUpdate(path, slot, previousModified)
+            _uiState.value = _uiState.value.copy(
+                isActionInProgress = false,
+                actionLabel = null,
+                toastMessage = if (success) "saved" else "save_failed"
+            )
+            if (success) {
+                refreshSaveStateMetadata()
+            }
+            AppAnalytics.logSaveStateAction(action = "save", automatic = false, success = success)
+            delay(2000.milliseconds)
+            if (_uiState.value.toastMessage == "saved" || _uiState.value.toastMessage == "save_failed") {
+                _uiState.value = _uiState.value.copy(toastMessage = null)
+            }
+        }
+    }
+
+    fun quickLoad() {
+        val slot = _uiState.value.currentSlot
+        viewModelScope.launch(Dispatchers.IO) {
+            if (isRetroAchievementsHardcoreRestricted()) {
+                showHardcoreBlockedToast()
+                return@launch
+            }
+
+            _uiState.value = _uiState.value.copy(
+                isActionInProgress = true,
+                actionLabel = "loading"
+            )
+            val success = lifecycleMutex.withLock {
+                if (isShuttingDown) {
+                    false
+                } else {
+                    try {
+                        EmulatorBridge.loadState(slot)
+                    } catch (_: Exception) { false }
+                }
+            }
+            AppAnalytics.logSaveStateAction(action = "load", automatic = false, success = success)
+            _uiState.value = _uiState.value.copy(
+                isActionInProgress = false,
+                actionLabel = null,
+                toastMessage = if (success) "loaded" else null
+            )
+            delay(2000.milliseconds)
+            _uiState.value = _uiState.value.copy(toastMessage = null)
+        }
+    }
+
+    fun loadAutoSave() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (isRetroAchievementsHardcoreRestricted()) {
+                showHardcoreBlockedToast()
+                return@launch
+            }
+
+            _uiState.value = _uiState.value.copy(
+                isActionInProgress = true,
+                actionLabel = "loading"
+            )
+            val success = lifecycleMutex.withLock {
+                if (isShuttingDown) {
+                    false
+                } else {
+                    try {
+                        EmulatorBridge.loadState(AUTO_SAVE_SLOT)
+                    } catch (_: Exception) { false }
+                }
+            }
+            AppAnalytics.logSaveStateAction(action = "load", automatic = true, success = success)
+            _uiState.value = _uiState.value.copy(
+                isActionInProgress = false,
+                actionLabel = null,
+                toastMessage = if (success) "loaded" else null
+            )
+            delay(2000.milliseconds)
+            _uiState.value = _uiState.value.copy(toastMessage = null)
+        }
+    }
+
+    private suspend fun tryAutoLoadOnStart(): Boolean {
+        val path = currentGamePath ?: return false
+        if (!_uiState.value.autoLoadOnStart || saveStateLastModified(path, AUTO_SAVE_SLOT) <= 0L) {
+            return false
+        }
+        if (isRetroAchievementsHardcoreRestricted()) {
+            showHardcoreBlockedToast()
+            return false
+        }
+
+        _uiState.value = _uiState.value.copy(
+            isActionInProgress = true,
+            actionLabel = "loading",
+            statusMessage = "status_loading_state"
+        )
+        val success = lifecycleMutex.withLock {
+            if (isShuttingDown || !_uiState.value.isRunning) {
+                false
+            } else {
+                try {
+                    EmulatorBridge.loadState(AUTO_SAVE_SLOT)
+                } catch (_: Exception) {
+                    false
+                }
+            }
+        }
+        AppAnalytics.logSaveStateAction(action = "load", automatic = true, success = success)
+        _uiState.value = _uiState.value.copy(
+            isActionInProgress = false,
+            actionLabel = null,
+            statusMessage = if (success) "status_running" else null,
+            toastMessage = if (success) "loaded" else "load_failed"
+        )
+        refreshSaveStateMetadata()
+        delay(2000.milliseconds)
+        if (_uiState.value.statusMessage == "status_running") {
+            _uiState.value = _uiState.value.copy(statusMessage = null)
+        }
+        if (_uiState.value.toastMessage == "loaded" || _uiState.value.toastMessage == "load_failed") {
+            _uiState.value = _uiState.value.copy(toastMessage = null)
+        }
+        return success
+    }
+
+    fun stopEmulation(onExit: (() -> Unit)? = null) {
+        cancelPendingStart = true
+        abortPendingShaderPreparation()
+        pausedForBackground = false
+        // Process scope: clearing the ViewModel must not cancel the exit autosave/shutdown.
+        EmulationExitCoordinator.launchTracked {
+            cleanupPendingShaderPreparation()
+            if (_uiState.value.autoSaveOnExit && currentGamePath != null) {
+                saveAutoSaveSlot(
+                    allowWhileMenu = true,
+                    allowPaused = true,
+                    showActionProgress = true
+                )
+            }
+            cachePendingPlayTime()
+            performShutdown()
+            syncCachedPlayTimeInBackground()
+            if (onExit != null) {
+                withContext(Dispatchers.Main) {
+                    // The route may already be gone (system back during exit); never navigate twice.
+                    if (!viewModelCleared) onExit.invoke()
+                }
+            }
+        }
+    }
+
+    fun onHostBackgrounded() {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            hostInBackground = true
+            val state = _uiState.value
+            if (!state.isRunning || state.isStarting || isShuttingDown) {
+                return@launch
+            }
+            if (state.isPaused || state.showMenu) {
+                synchronizePauseState()
+                return@launch
+            }
+            pausedForBackground = true
+            _uiState.update { it.copy(isPaused = true) }
+            DiscordIntegration.setPaused(true)
+            updateCrashContext(launchState = "paused")
+            synchronizePauseState()
+            viewModelScope.launch(Dispatchers.IO) { syncPendingPlayTime(forceCloud = false) }
+        }
+    }
+
+    fun onHostForegrounded() {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            val wasInBackground = hostInBackground
+            hostInBackground = false
+            val state = _uiState.value
+            if ((!wasInBackground && !pausedForBackground) || !state.isRunning || state.isStarting || isShuttingDown) {
+                return@launch
+            }
+            if (pausedForBackground && !state.showMenu) {
+                pausedForBackground = false
+                _uiState.update { it.copy(isPaused = false) }
+                DiscordIntegration.setPaused(false)
+                updateCrashContext(launchState = "running")
+            }
+            synchronizePauseState()
+        }
+    }
+
+    private suspend fun performShutdown() {
+        lifecycleMutex.withLock {
+            if (!_uiState.value.isRunning && !_uiState.value.isStarting) return
+            if (isShuttingDown) return
+            val analyticsState = _uiState.value
+            val completedRunningSession = analyticsState.isRunning
+            isShuttingDown = true
+            pausedForBackground = false
+            fastForwardRequested = false
+            try {
+                try {
+                    EmulatorBridge.setTurboModeEnabled(false)
+                } catch (_: Exception) { }
+                try {
+                    EmulatorBridge.resetKeyStatus()
+                } catch (_: Exception) { }
+                try {
+                    GamepadManager.clearPerGameOverrides()
+                } catch (_: Exception) { }
+                try {
+                    _keyboardMouseOverride.value = null
+                    KeyboardMouseManager.setPerGameOverride(null)
+                } catch (_: Exception) { }
+                try {
+                    EmulatorBridge.shutdown()
+                    var waitTime = 0
+                    while (EmulatorBridge.isVmActive() && waitTime < 2000) {
+                        delay(50.milliseconds)
+                        waitTime += 50
+                    }
+                    DocumentPathResolver.releasePreparedLaunchHandles()
+                } catch (_: Exception) { }
+                _uiState.value = _uiState.value.copy(
+                    isRunning = false,
+                    isStarting = false,
+                    isPaused = false,
+                    showMenu = false,
+                    isActionInProgress = false,
+                    actionLabel = null,
+                    transportMode = EmulationTransportMode.None,
+                    statusMessage = null
+                )
+                _performanceState.value = EmulationPerformanceState(fps = "0")
+                syncNativePerformanceOverlayState(_uiState.value)
+                clearCrashContext()
+                if (completedRunningSession) {
+                    AppAnalytics.logEmulationEnded(
+                        activePlayTimeMs = analyticsState.activePlayTimeMs,
+                        renderer = analyticsState.renderer,
+                        audioBackend = currentAnalyticsAudioBackend
+                    )
+                }
+            } finally {
+                isShuttingDown = false
+            }
+        }
+    }
+
+    private fun updateCrashContext(
+        launchState: String? = null,
+        launchPath: String? = null
+    ) {
+        val state = _uiState.value
+        NativeApp.setCrashContextString("emu_launch_state", launchState ?: when {
+            state.isStarting -> "starting"
+            state.isPaused -> "paused"
+            state.isRunning -> "running"
+            else -> "idle"
+        })
+        NativeApp.setCrashContextString("emu_game_title", currentGameTitle)
+        NativeApp.setCrashContextString("emu_game_serial", currentGameSerial)
+        NativeApp.setCrashContextString("emu_game_source", currentGameSource)
+        NativeApp.setCrashContextString("emu_game_path_hint", launchPath?.let { File(it).name }.orEmpty())
+        NativeApp.setCrashContextInt("emu_renderer", state.renderer)
+        NativeApp.setCrashContextString("emu_renderer_name", when (state.renderer) {
+            12 -> "OpenGL"
+            13 -> "Software"
+            14 -> "Vulkan"
+            else -> "Unknown(${state.renderer})"
+        })
+        NativeApp.setCrashContextString("emu_upscale", state.upscale.toString())
+        NativeApp.setCrashContextInt("emu_aspect_ratio", state.aspectRatio)
+        NativeApp.setCrashContextInt("emu_local_multiplayer_mode", state.localMultiplayerMode)
+        NativeApp.setCrashContextInt("emu_crop_left", state.displayCrop.left)
+        NativeApp.setCrashContextInt("emu_crop_top", state.displayCrop.top)
+        NativeApp.setCrashContextInt("emu_crop_right", state.displayCrop.right)
+        NativeApp.setCrashContextInt("emu_crop_bottom", state.displayCrop.bottom)
+        NativeApp.setCrashContextBool("emu_mtvu", state.enableMtvu)
+        NativeApp.setCrashContextBool("emu_enableIopThread", state.enableIopThread)
+        NativeApp.setCrashContextBool("emu_enableVUAot", state.enableVUAot)
+        NativeApp.setCrashContextBool("emu_thread_pinning", state.enableThreadPinning)
+        NativeApp.setCrashContextBool("emu_fast_cdvd", state.enableFastCdvd)
+        NativeApp.setCrashContextBool("emu_enable_cheats", state.enableCheats)
+        NativeApp.setCrashContextInt("emu_hw_download_mode", state.hwDownloadMode)
+        NativeApp.setCrashContextInt("emu_frame_skip", state.frameSkip)
+        NativeApp.setCrashContextBool("emu_skip_duplicate_frames", state.skipDuplicateFrames)
+        NativeApp.setCrashContextBool("emu_low_latency_mode", state.lowLatencyMode)
+        NativeApp.setCrashContextBool("emu_frame_limit_enabled", state.frameLimitEnabled)
+        NativeApp.setCrashContextInt("emu_target_fps", state.targetFps)
+        NativeApp.setCrashContextInt("emu_texture_filtering", state.textureFiltering)
+        NativeApp.setCrashContextString("emu_device_model", Build.MODEL.orEmpty())
+        NativeApp.setCrashContextString("emu_soc_model", if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MODEL else "")
+        NativeApp.setCrashContextBool("emu_running", state.isRunning)
+        NativeApp.setCrashContextBool("emu_paused", state.isPaused)
+    }
+
+    private fun clearCrashContext() {
+        DiscordIntegration.clearGame()
+        currentGameTitle = ""
+        currentGamePath = null
+        RetroAchievementsStateManager.setActiveGame(null)
+        currentTouchControlsLayoutProfile = null
+        currentCustomTouchControlsProfile = null
+        currentGameSerial = ""
+        currentGameCoverArtPath = null
+        currentGameCrc = ""
+        // The sidebar can still be drawing its exit animation after shutdown.
+        // Keep its game identity until navigation disposes the screen; the next
+        // launch replaces it while the menu is hidden.
+        _uiState.value = _uiState.value.copy(
+            ps2GunProfileActive = false,
+            gameSettingsProfileActive = false
+        )
+        currentGameSource = ""
+        NativeApp.setCrashContextString("emu_launch_state", "idle")
+        NativeApp.setCrashContextString("emu_game_title", "")
+        NativeApp.setCrashContextString("emu_game_serial", "")
+        NativeApp.setCrashContextString("emu_game_source", "")
+        NativeApp.setCrashContextString("emu_game_path_hint", "")
+        NativeApp.setCrashContextBool("emu_running", false)
+        NativeApp.setCrashContextBool("emu_paused", false)
+    }
+
+    fun onPadInput(padIndex: Int, keyCode: Int, range: Int = 0, pressed: Boolean) {
+        try {
+            EmulatorBridge.setPadButton(padIndex, keyCode, range, pressed)
+        } catch (_: Exception) { }
+    }
+
+    override fun onCleared() {
+        viewModelCleared = true
+        abortPendingShaderPreparation()
+        DiscordIntegration.clearGame()
+        androidGamePerformance.update(AndroidGamePhase.Idle)
+        if (NativeApp.hasNativeCore) {
+            NativeApp.setPerformanceMetricsEnabled(visible = false, detailed = false, gpuTiming = false)
+        }
+        fastForwardRequested = false
+        // stopEmulation already runs autosave, play-time sync and shutdown in the process scope.
+        if (EmulationExitCoordinator.inFlight?.isActive == true) return
+        val wasRunning = _uiState.value.isRunning
+        EmulationExitCoordinator.launchTracked {
+            runCatching { cachePendingPlayTime() }
+            if (wasRunning) {
+                runCatching {
+                    EmulatorBridge.resetKeyStatus()
+                    EmulatorBridge.setTurboModeEnabled(false)
+                    EmulatorBridge.shutdown()
+                }
+            }
+        }
+    }
+}
+
+private fun String?.extractCrc(): String? {
+    val raw = this?.trim().orEmpty()
+    if (raw.isBlank()) return null
+    val parenthesized = raw.substringAfter('(', "").substringBefore(')').trim()
+    if (parenthesized.matches(Regex("[0-9A-Fa-f]{8}"))) return parenthesized.uppercase()
+    return Regex("([0-9A-Fa-f]{8})(?!.*[0-9A-Fa-f]{8})")
+        .find(raw)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.uppercase()
+}
+
+private fun String?.extractSerialAndCrcKey(): String? {
+    val raw = this?.trim().orEmpty()
+    if (raw.isBlank()) return null
+    val crc = raw.extractCrc()
+    val serial = raw.substringBefore('(')
+        .replace(Regex("_[0-9A-Fa-f]{8}$"), "")
+        .trim()
+    return if (serial.isNotBlank() && !crc.isNullOrBlank()) "${serial}_$crc" else null
+}
+
+private fun String?.normalizeSaveSerialKey(): String? {
+    if (this.isNullOrBlank()) return null
+    val cleanSerial = trim().uppercase(Locale.ROOT)
+    val splitRegex = Regex("([A-Z]{4})[^A-Z0-9]*([0-9]{3})[^A-Z0-9]*([0-9]{2})")
+    val compactRegex = Regex("([A-Z]{4})[^A-Z0-9]*([0-9]{5})")
+    splitRegex.find(cleanSerial)?.let { match ->
+        return "${match.groupValues[1]}-${match.groupValues[2]}${match.groupValues[3]}"
+    }
+    compactRegex.find(cleanSerial)?.let { match ->
+        return "${match.groupValues[1]}-${match.groupValues[2]}"
+    }
+    return cleanSerial.replace(Regex("[^A-Z0-9_-]"), "").takeIf { it.isNotBlank() }
+}

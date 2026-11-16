@@ -11,7 +11,9 @@ final-release/
 all-artifacts/
 *.keystore
 *.jks
-emucorex_repo/app/src/main/cpp/
+emucorex_repo/app/src/main/cpp/pcsx2/
+emucorex_repo/app/src/main/cpp/ARM_ANDROID/
+emucorex_repo/app/src/main/cpp/PCSX2
 emucorex_repo/app/src/main/assets/
 emucorex_repo/Screenshot/
 emucorex_repo/app/build/

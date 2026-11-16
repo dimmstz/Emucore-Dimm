@@ -1,0 +1,1066 @@
+package com.sbro.emucorex.ui.home
+
+import android.app.Activity
+import android.app.Application
+import android.net.Uri
+import com.dimm.emustation.R
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.sbro.emucorex.core.BiosValidator
+import com.sbro.emucorex.core.CoreBinaryFingerprint
+import com.sbro.emucorex.core.DeviceGpuInfoProvider
+import com.sbro.emucorex.core.EmulatorBridge
+import com.sbro.emucorex.core.HardwareWarningPolicy
+import com.sbro.emucorex.core.SetupValidator
+import com.sbro.emucorex.core.ProProductOffer
+import com.sbro.emucorex.core.ProPurchaseManager
+import com.sbro.emucorex.core.ProPurchaseTier
+import com.sbro.emucorex.core.StorageAccess
+import com.sbro.emucorex.data.AppPreferences
+import com.sbro.emucorex.data.HomeBackgroundRepository
+import com.sbro.emucorex.data.HomeBackgroundPreset
+import com.sbro.emucorex.data.HomeBackgroundType
+import com.sbro.emucorex.data.CoverArtRepository
+import com.sbro.emucorex.data.CoreMaintenanceRepository
+import com.sbro.emucorex.data.CoreUpdateResetAction
+import com.sbro.emucorex.data.CustomGameCoverRepository
+import com.sbro.emucorex.data.GameItem
+import com.sbro.emucorex.data.GameLibraryCacheRepository
+import com.sbro.emucorex.data.GameLibraryCacheSnapshot
+import com.sbro.emucorex.data.GameRepository
+import com.sbro.emucorex.data.GameSerialFormat
+import com.sbro.emucorex.data.RecentGameEntry
+import com.sbro.emucorex.data.decideCoreUpdateResetAction
+import com.sbro.emucorex.data.pcsx2.Pcsx2CompatibilityRepository
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import androidx.core.net.toUri
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import java.text.Normalizer
+import kotlin.time.Duration.Companion.milliseconds
+
+private const val STARTUP_PATH_CHECK_ATTEMPTS = 4
+private const val STARTUP_PATH_CHECK_DELAY_MS = 200L
+
+enum class HomeLibraryViewMode {
+    GRID, LIST, SHELF
+}
+
+data class HomeUiState(
+    val games: List<GameItem> = emptyList(),
+    val librarySections: List<HomeLibrarySection> = emptyList(),
+    val recentGames: List<GameItem> = emptyList(),
+    val hiddenGames: List<GameItem> = emptyList(),
+    val visibilityMessageResId: Int? = null,
+    val serialMessageResId: Int? = null,
+    val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
+    val isBootstrapping: Boolean = true,
+    val gameFolderSet: Boolean = false,
+    val biosConfigured: Boolean = false,
+    val biosValid: Boolean = false,
+    val setupComplete: Boolean = false,
+    val showRecentGames: Boolean = true,
+    val showHomeSearch: Boolean = false,
+    val homeGridScale: Float = AppPreferences.DEFAULT_HOME_GRID_SCALE,
+    val homeBackgroundType: HomeBackgroundType = HomeBackgroundType.NONE,
+    val homeBackgroundPreset: HomeBackgroundPreset = HomeBackgroundPreset.OLYMPUS,
+    val homeBackgroundRevision: Int = 0,
+    val homeBackgroundDim: Int = AppPreferences.DEFAULT_HOME_BACKGROUND_DIM,
+    val searchQuery: String = "",
+    val sortOption: HomeSortOption = HomeSortOption.TITLE_ASC,
+    val libraryViewMode: HomeLibraryViewMode = HomeLibraryViewMode.GRID,
+    val lastStandardLibraryViewMode: HomeLibraryViewMode = HomeLibraryViewMode.GRID,
+    val isCoverArtDisabled: Boolean = true,
+    val showWelcomeDialog: Boolean = false,
+    val showHardwareWarning: Boolean = false,
+    val hardwareWarningGpu: String = "",
+    val isProUnlocked: Boolean = false,
+    val proPrice: String? = null,
+    val proProducts: List<ProProductOffer> = emptyList(),
+    val ownedProProductIds: Set<String> = emptySet(),
+    val isProPurchaseStatusVerified: Boolean = false,
+    val isProProductLoading: Boolean = false,
+    val isProProductAvailable: Boolean = false,
+    val isProPurchaseInProgress: Boolean = false,
+    val proPurchaseMessageResId: Int? = null
+)
+
+private data class DeferredLibraryScan(
+    val rootPaths: List<String>,
+    val isInitialLoad: Boolean,
+    val showRefreshIndicator: Boolean
+)
+
+class HomeViewModel(application: Application) : AndroidViewModel(application) {
+
+    companion object {
+        private const val AUTO_REFRESH_INTERVAL_MS = 15 * 60 * 1000L
+    }
+
+    private val repository = GameRepository()
+    private val libraryCacheRepository = GameLibraryCacheRepository(application)
+    private val customGameCoverRepository = CustomGameCoverRepository(application)
+    private val preferences = AppPreferences(application)
+    private val homeBackgroundRepository = HomeBackgroundRepository(application)
+    private val proPurchaseManager = ProPurchaseManager.getInstance(application)
+    private var allGames: List<GameItem> = emptyList()
+    private var hiddenGamePaths: Set<String> = emptySet()
+    private var visibilityInitialized = false
+    private var recentEntries: List<RecentGameEntry> = emptyList()
+    private var coverSyncJob: Job? = null
+    private var searchJob: Job? = null
+    private var biosInitialized = false
+    private var libraryInitialized = false
+    private var currentLibraryRoot: String? = null
+    private var currentLibraryPaths: List<String> = emptyList()
+    private var preferEnglishGameTitles = false
+    private var titlesPreferenceInitialized = false
+    private var coverArtStyleInitialized = false
+    private var coverBaseUrlInitialized = false
+    private var coverCacheRevisionInitialized = false
+    private var customCoversRevisionInitialized = false
+    private var currentCoverArtStyle = AppPreferences.COVER_ART_STYLE_3D
+    private var currentCoverDownloadBaseUrl: String? = null
+    private val scanMutex = Mutex()
+    private var deferredLibraryScan: DeferredLibraryScan? = null
+    private var deferredWorkJob: Job? = null
+    private var deferredCoverSync = false
+
+    private val _uiState = MutableStateFlow(HomeUiState())
+    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    val gameSerialEditingEnabled: StateFlow<Boolean> = preferences.gameSerialEditingEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    init {
+        viewModelScope.launch {
+            preferences.hiddenGamePaths.distinctUntilChanged().collect { paths ->
+                hiddenGamePaths = paths
+                visibilityInitialized = true
+                publishVisibleGames()
+                updateBootstrapState()
+            }
+        }
+        viewModelScope.launch {
+            preferences.homeGridScale.collect { scale ->
+                _uiState.value = _uiState.value.copy(homeGridScale = scale)
+            }
+        }
+        viewModelScope.launch {
+            preferences.homeBackgroundType.collect { type ->
+                val availableType = if (
+                    type == HomeBackgroundType.BUILT_IN ||
+                    homeBackgroundRepository.existingFile(type) != null
+                ) {
+                    type
+                } else {
+                    HomeBackgroundType.NONE
+                }
+                _uiState.value = _uiState.value.copy(homeBackgroundType = availableType)
+            }
+        }
+        viewModelScope.launch {
+            preferences.homeBackgroundPreset.collect { preset ->
+                _uiState.value = _uiState.value.copy(homeBackgroundPreset = preset)
+            }
+        }
+        viewModelScope.launch {
+            preferences.homeBackgroundRevision.collect { revision ->
+                _uiState.value = _uiState.value.copy(homeBackgroundRevision = revision)
+            }
+        }
+        viewModelScope.launch {
+            preferences.homeBackgroundDim.collect { dim ->
+                _uiState.value = _uiState.value.copy(homeBackgroundDim = dim)
+            }
+        }
+        viewModelScope.launch {
+            preferences.welcomeDialogShown.distinctUntilChanged().collect { shown ->
+                _uiState.value = _uiState.value.copy(showWelcomeDialog = !shown)
+            }
+        }
+        viewModelScope.launch {
+            combine(
+                preferences.hardwareWarningShown.distinctUntilChanged(),
+                DeviceGpuInfoProvider.snapshot
+            ) { shown, snapshot -> shown to snapshot }
+                .collect { (shown, snapshot) ->
+                    val resolved = snapshot ?: return@collect
+                    val shouldShow = HardwareWarningPolicy.shouldShow(resolved.tier, shown)
+                    _uiState.value = _uiState.value.copy(
+                        showHardwareWarning = shouldShow,
+                        hardwareWarningGpu = resolved.model?.displayName.orEmpty()
+                    )
+                }
+        }
+        viewModelScope.launch {
+            val context = getApplication<Application>()
+            val currentFingerprint = withContext(Dispatchers.IO) {
+                CoreBinaryFingerprint.current(context)
+            }
+            val storedFingerprint = preferences.lastCoreBinaryFingerprint.first()
+            val hadExistingInstall = preferences.welcomeDialogShown.first()
+            when (decideCoreUpdateResetAction(storedFingerprint, currentFingerprint, hadExistingInstall)) {
+                CoreUpdateResetAction.STORE_SILENTLY ->
+                    preferences.setLastCoreBinaryFingerprint(currentFingerprint)
+                CoreUpdateResetAction.RESET_AUTOMATICALLY -> {
+                    withContext(Dispatchers.IO) {
+                        CoreMaintenanceRepository(context).resetGeneratedCoreState()
+                        preferences.setLastCoreBinaryFingerprint(currentFingerprint)
+                    }
+                    android.widget.Toast.makeText(
+                        context,
+                        R.string.core_update_reset_done,
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+                CoreUpdateResetAction.NONE -> Unit
+            }
+        }
+        viewModelScope.launch {
+            proPurchaseManager.state.collect { proState ->
+                _uiState.value = _uiState.value.copy(
+                    isProUnlocked = proState.isProUnlocked,
+                    proPrice = proState.productPrice,
+                    proProducts = proState.products,
+                    ownedProProductIds = proState.ownedProductIds,
+                    isProPurchaseStatusVerified = proState.isPurchaseStatusVerified,
+                    isProProductLoading = proState.isProductLoading,
+                    isProProductAvailable = proState.isProductAvailable,
+                    isProPurchaseInProgress = proState.isPurchaseInProgress,
+                    proPurchaseMessageResId = proState.messageResId
+                )
+            }
+        }
+        viewModelScope.launch {
+            preferences.cleanupLegacyClampingPreferencesIfNeeded()
+            preferences.gamePaths.distinctUntilChanged().collect { paths ->
+                val context = getApplication<Application>()
+                val effectivePaths = filterAccessibleGamePaths(context, paths)
+                val libraryKey = libraryKey(effectivePaths)
+                if (currentLibraryRoot != libraryKey) {
+                    allGames = emptyList()
+                }
+                currentLibraryPaths = effectivePaths
+                currentLibraryRoot = libraryKey
+                if (effectivePaths.isNotEmpty()) {
+                    val cacheSnapshot = resolveCacheSnapshot(libraryKey)
+                    val hasCachedGames = cacheSnapshot.games.isNotEmpty()
+                    if (hasCachedGames) {
+                        allGames = cacheSnapshot.games
+                        currentLibraryRoot = libraryKey
+                        libraryInitialized = true
+                        _uiState.value = _uiState.value.copy(
+                            gameFolderSet = true,
+                            isLoading = false,
+                            isRefreshing = false
+                        )
+                        publishVisibleGames()
+                        updateBootstrapState()
+                    } else {
+                        libraryInitialized = false
+                        updateBootstrapState()
+                        _uiState.value = _uiState.value.copy(
+                            gameFolderSet = true,
+                            isLoading = true,
+                            isRefreshing = false
+                        )
+                    }
+                    requestLibraryScan(effectivePaths, isInitialLoad = true)
+                } else {
+                    allGames = emptyList()
+                    currentLibraryRoot = null
+                    currentLibraryPaths = emptyList()
+                    libraryInitialized = true
+                    _uiState.value = _uiState.value.copy(
+                        gameFolderSet = false,
+                        isLoading = false,
+                        isRefreshing = false
+                    )
+                    publishVisibleGames()
+                    updateBootstrapState()
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferences.biosPath.distinctUntilChanged().collect { path ->
+                val biosValid = hasUsableBiosWithRetry(getApplication(), path)
+                _uiState.value = _uiState.value.copy(
+                    biosConfigured = path != null,
+                    biosValid = biosValid
+                )
+                biosInitialized = true
+                updateBootstrapState()
+            }
+        }
+        viewModelScope.launch {
+            preferences.onboardingCompleted.distinctUntilChanged().collect { completed ->
+                _uiState.value = _uiState.value.copy(setupComplete = completed)
+            }
+        }
+        viewModelScope.launch {
+            preferences.preferEnglishGameTitles.distinctUntilChanged().collect { enabled ->
+                val shouldRefreshLibrary = titlesPreferenceInitialized && preferEnglishGameTitles != enabled
+                preferEnglishGameTitles = enabled
+                titlesPreferenceInitialized = true
+                if (!shouldRefreshLibrary) return@collect
+                if (currentLibraryPaths.isEmpty()) return@collect
+                allGames = emptyList()
+                requestLibraryScan(currentLibraryPaths)
+            }
+        }
+        viewModelScope.launch {
+            preferences.recentGames.distinctUntilChanged().collect { entries ->
+                recentEntries = entries
+                publishVisibleGames()
+            }
+        }
+        viewModelScope.launch {
+            preferences.showRecentGames.distinctUntilChanged().collect { enabled ->
+                _uiState.value = _uiState.value.copy(showRecentGames = enabled)
+                publishVisibleGames()
+            }
+        }
+        viewModelScope.launch {
+            preferences.showHomeSearch.distinctUntilChanged().collect { enabled ->
+                _uiState.value = _uiState.value.copy(showHomeSearch = enabled)
+            }
+        }
+        viewModelScope.launch {
+            preferences.homeLibrarySortOption.distinctUntilChanged().collect { value ->
+                _uiState.value = _uiState.value.copy(sortOption = HomeSortOption.fromPreferenceValue(value))
+                publishVisibleGames()
+            }
+        }
+        viewModelScope.launch {
+            preferences.homeLibraryViewMode.distinctUntilChanged().collect { mode ->
+                val resolvedMode = when (mode) {
+                    1 -> HomeLibraryViewMode.LIST
+                    2 -> HomeLibraryViewMode.SHELF
+                    else -> HomeLibraryViewMode.GRID
+                }
+                val lastStandardMode = when (resolvedMode) {
+                    HomeLibraryViewMode.SHELF -> _uiState.value.lastStandardLibraryViewMode
+                    else -> resolvedMode
+                }
+                _uiState.value = _uiState.value.copy(
+                    libraryViewMode = resolvedMode,
+                    lastStandardLibraryViewMode = lastStandardMode
+                )
+            }
+        }
+        viewModelScope.launch {
+            preferences.coverArtStyle.distinctUntilChanged().collect { style ->
+                _uiState.value = _uiState.value.copy(
+                    isCoverArtDisabled = style == AppPreferences.COVER_ART_STYLE_DISABLED
+                )
+                val shouldRefreshLibrary = coverArtStyleInitialized && currentCoverArtStyle != style
+                currentCoverArtStyle = style
+                coverArtStyleInitialized = true
+                if (shouldRefreshLibrary) {
+                    handleCoverSourceChanged()
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferences.coverDownloadBaseUrl.distinctUntilChanged().collect { baseUrl ->
+                val shouldRefreshLibrary = coverBaseUrlInitialized && currentCoverDownloadBaseUrl != baseUrl
+                currentCoverDownloadBaseUrl = baseUrl
+                coverBaseUrlInitialized = true
+                if (shouldRefreshLibrary) {
+                    handleCoverSourceChanged()
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferences.coverCacheRevision.collect {
+                if (coverCacheRevisionInitialized) {
+                    handleCoverCacheCleared()
+                } else {
+                    coverCacheRevisionInitialized = true
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferences.customCoversRevision.collect {
+                if (customCoversRevisionInitialized) handleCustomCoversReset()
+                else customCoversRevisionInitialized = true
+            }
+        }
+    }
+
+    fun onFolderSelected(uri: Uri) {
+        val context = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            StorageAccess.takePersistableReadPermission(context, uri)
+            val rawPath = uri.toString()
+            preferences.addGamePath(rawPath)
+        }
+    }
+
+    fun onBiosFolderSelected(uri: Uri) {
+        val context = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val previousPath = preferences.biosPath.first()
+            StorageAccess.takePersistableReadPermission(context, uri)
+            preferences.setBiosPath(uri.toString())
+            if (previousPath != uri.toString()) {
+                StorageAccess.releasePersistedPermission(context, previousPath)
+            }
+        }
+    }
+
+    private fun showStoragePermissionError(application: Application) {
+        android.widget.Toast.makeText(
+            application,
+            com.dimm.emustation.R.string.error_storage_permission_not_persisted,
+            android.widget.Toast.LENGTH_LONG
+        ).show()
+    }
+
+    fun refreshGames() {
+        viewModelScope.launch {
+            if (_uiState.value.isLoading || _uiState.value.isRefreshing) return@launch
+            val paths = preferences.gamePaths.first()
+            if (paths.isEmpty()) return@launch
+            requestLibraryScan(paths, showRefreshIndicator = true)
+        }
+    }
+
+    suspend fun setCustomCover(game: GameItem, sourceUri: Uri): Boolean = withContext(Dispatchers.IO) {
+        scanMutex.withLock {
+            val customCoverPath = customGameCoverRepository.saveCustomCover(game.path, sourceUri)
+                ?: return@withLock false
+            synchronized(this@HomeViewModel) {
+                // Reset may have removed the file after its save completed.
+                if (customGameCoverRepository.findCustomCoverPath(game.path) != customCoverPath)
+                    return@withLock false
+                allGames = allGames.map { current ->
+                    if (current.path == game.path) current.copy(coverArtPath = customCoverPath) else current
+                }
+            }
+            publishVisibleGames()
+            currentLibraryRoot?.let { libraryCacheRepository.save(it, allGames, preferEnglishGameTitles) }
+            true
+        }
+    }
+
+    suspend fun resetCustomCover(game: GameItem): Boolean = withContext(Dispatchers.IO) {
+        val result = customGameCoverRepository.removeCustomCover(game.path)
+        preferences.notifyCustomCoversReset()
+        result
+    }
+
+    private suspend fun handleCustomCoversReset() = withContext(Dispatchers.IO) {
+        scanMutex.withLock {
+            coverSyncJob?.cancel()
+            val context = getApplication<Application>()
+            val replacements = allGames.filter { customGameCoverRepository.isCustomCoverPath(it.coverArtPath) }
+                .associate { game ->
+                    game.path to (game.coverArtPath to repository.findCoverForGame(game.path, context, game.serial, game.title))
+                }
+            synchronized(this@HomeViewModel) {
+                allGames = allGames.map { game ->
+                    val replacement = replacements[game.path]
+                    if (replacement != null && game.coverArtPath == replacement.first &&
+                        customGameCoverRepository.findCustomCoverPath(game.path) == null) {
+                        game.copy(coverArtPath = replacement.second)
+                    } else game
+                }
+            }
+            publishVisibleGames()
+            currentLibraryRoot?.let { libraryCacheRepository.save(it, allGames, preferEnglishGameTitles) }
+            syncMissingCovers()
+        }
+    }
+
+    fun clearSerialMessage() {
+        _uiState.value = _uiState.value.copy(serialMessageResId = null)
+    }
+
+    /**
+     * Saves (or clears) the manual serial override for [game] and refreshes its library metadata,
+     * cover and GameDB compatibility from the resulting serial.
+     */
+    fun updateGameSerial(game: GameItem, serial: String?) {
+        viewModelScope.launch {
+            val context = getApplication<Application>()
+            val updated = withContext(Dispatchers.IO) {
+                val requested = serial?.let(GameSerialFormat::normalize)
+                val detected = EmulatorBridge.getGameMetadata(game.path)
+                val detectedSerial = detected.serial
+                val override = requested?.takeIf { !it.equals(detectedSerial, ignoreCase = true) }
+                preferences.setGameSerialOverride(game.path, override)
+
+                val effectiveSerial = override ?: detectedSerial
+                val cleanTitle = EmulatorBridge.cleanGameDisplayTitle(detected.title, game.fileName)
+                val compatibility = Pcsx2CompatibilityRepository(context).findBest(effectiveSerial, cleanTitle)
+                val resolvedSerial = effectiveSerial ?: compatibility?.serial
+                val coverRepository = CoverArtRepository(context)
+                val customCoverRepository = CustomGameCoverRepository(context)
+                game.copy(
+                    title = compatibility?.title ?: cleanTitle,
+                    serial = resolvedSerial,
+                    pcsx2Compatibility = compatibility,
+                    coverArtPath = customCoverRepository.findCustomCoverPath(game.path)
+                        ?: coverRepository.findCachedCoverPath(resolvedSerial)
+                        ?: game.coverArtPath?.takeIf {
+                            !coverRepository.isManagedCoverCachePath(it) && !it.startsWith("http")
+                        }
+                )
+            }
+            synchronized(this@HomeViewModel) {
+                allGames = allGames.map { current ->
+                    if (current.path == game.path) updated else current
+                }
+            }
+            publishVisibleGames()
+            _uiState.value = _uiState.value.copy(serialMessageResId = R.string.game_serial_dialog_saved)
+            currentLibraryRoot?.let { rootPath ->
+                libraryCacheRepository.save(rootPath, allGames, preferEnglishGameTitles)
+            }
+            syncMissingCovers()
+        }
+    }
+
+    fun updateSearchQuery(query: String) {
+        _uiState.value = _uiState.value.copy(searchQuery = query)
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            delay(180.milliseconds)
+            publishVisibleGames()
+        }
+    }
+
+    fun updateSortOption(option: HomeSortOption) {
+        viewModelScope.launch {
+            preferences.setHomeLibrarySortOption(option.name)
+        }
+    }
+
+    fun toggleLibraryViewMode() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val targetMode = when (state.libraryViewMode) {
+                HomeLibraryViewMode.GRID -> HomeLibraryViewMode.LIST
+                HomeLibraryViewMode.LIST -> HomeLibraryViewMode.GRID
+                HomeLibraryViewMode.SHELF -> state.lastStandardLibraryViewMode
+            }
+            preferences.setHomeLibraryViewMode(targetMode.toPreferenceValue())
+        }
+    }
+
+    fun toggleShelfMode() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val targetMode = if (state.libraryViewMode == HomeLibraryViewMode.SHELF) {
+                state.lastStandardLibraryViewMode
+            } else {
+                HomeLibraryViewMode.SHELF
+            }
+            preferences.setHomeLibraryViewMode(targetMode.toPreferenceValue())
+        }
+    }
+
+    fun enable3dCoverArt() {
+        viewModelScope.launch {
+            preferences.setCoverArtStyle(AppPreferences.COVER_ART_STYLE_3D)
+        }
+    }
+
+    private fun scanGames(
+        paths: List<String>,
+        isInitialLoad: Boolean = false,
+        showRefreshIndicator: Boolean = false
+    ) {
+        val rootPath = libraryKey(paths)
+        viewModelScope.launch(Dispatchers.IO) {
+            scanMutex.withLock {
+                try {
+                    if (shouldDeferLibraryWork(paths, isInitialLoad, showRefreshIndicator)) return@withLock
+                    val cacheSnapshot = resolveCacheSnapshot(rootPath)
+                    val cachedGames = cacheSnapshot.games
+                    val showFullScreenLoader = false
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = showFullScreenLoader,
+                        isRefreshing = showRefreshIndicator && !showFullScreenLoader
+                    )
+                    publishCachedGamesIfAvailable(rootPath, cachedGames)
+                    if (shouldSkipAutoRescan(isInitialLoad, cacheSnapshot)) {
+                        libraryInitialized = true
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            isRefreshing = false
+                        )
+                        updateBootstrapState()
+                        syncMissingCovers()
+                        return@withLock
+                    }
+                    val context = getApplication<Application>()
+                    val cachedByPath = cachedGames.associateBy { it.path }
+                    val scannedGames = paths.flatMap { path ->
+                        if (path.startsWith("content://")) {
+                            repository.scanDirectoryFromUri(
+                                path.toUri(), context, cachedByPath,
+                                shouldAbort = { EmulatorBridge.isVmActive() }
+                            )
+                        } else {
+                            repository.scanDirectory(
+                                path, context, cachedByPath,
+                                shouldAbort = { EmulatorBridge.isVmActive() }
+                            )
+                        }
+                    }.distinctBy { it.path }.sortedBy { it.title.lowercase() }
+                    if (EmulatorBridge.isVmActive()) {
+                        queueDeferredLibraryWork(
+                            rootPaths = paths,
+                            isInitialLoad = false,
+                            showRefreshIndicator = showRefreshIndicator
+                        )
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            isRefreshing = false
+                        )
+                        return@withLock
+                    }
+                    allGames = scannedGames
+                    currentLibraryRoot = rootPath
+                    currentLibraryPaths = paths
+                    libraryInitialized = true
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        isRefreshing = false
+                    )
+                    publishVisibleGames()
+                    updateBootstrapState()
+                    libraryCacheRepository.save(rootPath, allGames, preferEnglishGameTitles)
+                    syncMissingCovers()
+                } catch (_: Exception) {
+                    completeLibraryScanWithFallback(rootPath)
+                }
+            }
+        }
+    }
+
+    private fun completeLibraryScanWithFallback(rootPath: String) {
+        currentLibraryRoot = rootPath
+        libraryInitialized = true
+        _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            isRefreshing = false
+        )
+        publishVisibleGames()
+        updateBootstrapState()
+    }
+
+    private fun requestLibraryScan(
+        rootPaths: List<String>,
+        isInitialLoad: Boolean = false,
+        showRefreshIndicator: Boolean = false
+    ) {
+        val normalized = rootPaths.map(String::trim).filter(String::isNotBlank).distinct()
+        if (normalized.isEmpty()) return
+        if (shouldDeferLibraryWork(normalized, isInitialLoad, showRefreshIndicator)) return
+        scanGames(normalized, isInitialLoad, showRefreshIndicator)
+    }
+
+    private fun shouldDeferLibraryWork(
+        rootPaths: List<String>,
+        isInitialLoad: Boolean,
+        showRefreshIndicator: Boolean
+    ): Boolean {
+        if (!EmulatorBridge.isVmActive()) return false
+        val rootPath = libraryKey(rootPaths)
+        val cacheSnapshot = resolveCacheSnapshot(rootPath)
+        publishCachedGamesIfAvailable(rootPath, cacheSnapshot.games)
+        queueDeferredLibraryWork(rootPaths, isInitialLoad, showRefreshIndicator)
+        _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            isRefreshing = false
+        )
+        updateBootstrapState()
+        return true
+    }
+
+    private fun queueDeferredLibraryWork(
+        rootPaths: List<String>,
+        isInitialLoad: Boolean,
+        showRefreshIndicator: Boolean
+    ) {
+        val existing = deferredLibraryScan
+        deferredLibraryScan = DeferredLibraryScan(
+            rootPaths = rootPaths,
+            isInitialLoad = isInitialLoad || existing?.isInitialLoad == true,
+            showRefreshIndicator = showRefreshIndicator || existing?.showRefreshIndicator == true
+        )
+        startDeferredWorkMonitor()
+    }
+
+    private fun startDeferredWorkMonitor() {
+        if (deferredWorkJob?.isActive == true) return
+        deferredWorkJob = viewModelScope.launch {
+            try {
+                while (true) {
+                    if (EmulatorBridge.isVmActive()) {
+                        delay(1500.milliseconds)
+                        continue
+                    }
+
+                    val pendingScan = deferredLibraryScan
+                    if (pendingScan != null) {
+                        deferredLibraryScan = null
+                        requestLibraryScan(
+                            rootPaths = pendingScan.rootPaths,
+                            isInitialLoad = pendingScan.isInitialLoad,
+                            showRefreshIndicator = pendingScan.showRefreshIndicator
+                        )
+                        return@launch
+                    }
+
+                    if (deferredCoverSync) {
+                        deferredCoverSync = false
+                        syncMissingCovers()
+                        return@launch
+                    }
+
+                    return@launch
+                }
+            } finally {
+                deferredWorkJob = null
+                if (!EmulatorBridge.isVmActive() && (deferredLibraryScan != null || deferredCoverSync)) {
+                    startDeferredWorkMonitor()
+                }
+            }
+        }
+    }
+
+    private fun resolveCacheSnapshot(rootPath: String): GameLibraryCacheSnapshot {
+        val inMemoryGames = allGames.takeIf { currentLibraryRoot == rootPath && it.isNotEmpty() }
+        return if (inMemoryGames != null) {
+            GameLibraryCacheSnapshot(inMemoryGames, System.currentTimeMillis())
+        } else {
+            libraryCacheRepository.loadSnapshot(rootPath, preferEnglishGameTitles)
+        }
+    }
+
+    private fun libraryKey(paths: List<String>): String =
+        GameLibraryCacheRepository.libraryKey(paths)
+
+    private fun shouldSkipAutoRescan(isInitialLoad: Boolean, cacheSnapshot: GameLibraryCacheSnapshot): Boolean {
+        if (!isInitialLoad) return false
+        if (cacheSnapshot.games.isEmpty()) return false
+        val coverRepository = CoverArtRepository(getApplication())
+        if (currentCoverArtStyle != AppPreferences.COVER_ART_STYLE_DISABLED &&
+            cacheSnapshot.games.any {
+                it.serial.isNullOrBlank() || it.coverArtPath.isNullOrBlank() ||
+                    coverRepository.isMissingManagedCover(it.coverArtPath) ||
+                    customGameCoverRepository.isMissingCustomCover(it.coverArtPath)
+            }
+        ) {
+            return false
+        }
+        val cacheAge = System.currentTimeMillis() - cacheSnapshot.savedAt
+        return cacheAge in 0 until AUTO_REFRESH_INTERVAL_MS
+    }
+
+    private fun publishCachedGamesIfAvailable(rootPath: String, cachedGames: List<GameItem>) {
+        if (cachedGames.isEmpty()) return
+        if (currentLibraryRoot == rootPath && allGames.isNotEmpty()) return
+        allGames = cachedGames
+        currentLibraryRoot = rootPath
+        libraryInitialized = true
+        publishVisibleGames()
+        updateBootstrapState()
+    }
+
+    private fun publishVisibleGames() {
+        val state = _uiState.value
+        val query = normalizeSearchToken(state.searchQuery)
+        val filtered = allGames.filter { game ->
+            game.path !in hiddenGamePaths && !BiosValidator.isLikelyBiosLibraryEntry(
+                fileName = game.fileName,
+                title = game.title,
+                serial = game.serial,
+                fileSize = game.fileSize
+            ) && (
+            query.isBlank() ||
+                normalizeSearchToken(game.title).contains(query) ||
+                normalizeSearchToken(game.fileName).contains(query) ||
+                normalizeSearchToken(game.serial).contains(query)
+            )
+        }
+        val sections = buildHomeLibrarySections(filtered, state.sortOption)
+        val gamesByPath = filtered.associateBy { it.path }
+        val recentGames = recentEntries.mapNotNull { entry ->
+            gamesByPath[entry.path]
+        }.filter { game ->
+            query.isBlank() ||
+                normalizeSearchToken(game.title).contains(query) ||
+                normalizeSearchToken(game.fileName).contains(query) ||
+                normalizeSearchToken(game.serial).contains(query)
+        }.takeIf { state.showRecentGames }.orEmpty()
+        _uiState.value = _uiState.value.copy(
+            games = sections.flatMap { it.games },
+            librarySections = sections,
+            recentGames = recentGames,
+            hiddenGames = allGames.filter { it.path in hiddenGamePaths }.distinctBy { it.path }
+                .sortedWith(compareBy<GameItem> { normalizeSortToken(it.title) }.thenBy { it.path })
+        )
+    }
+
+    fun setGameHidden(game: GameItem, hidden: Boolean) = updateVisibility {
+        preferences.setGameHidden(game.path, hidden)
+    }
+
+    fun showAllHiddenGames() {
+        val paths = _uiState.value.hiddenGames.map { it.path }.toSet()
+        updateVisibility { preferences.showHiddenGames(paths) }
+    }
+
+    private fun updateVisibility(update: suspend () -> Unit) {
+        viewModelScope.launch {
+            try { update() }
+            catch (error: CancellationException) { throw error }
+            catch (_: Exception) {
+                _uiState.value = _uiState.value.copy(visibilityMessageResId = R.string.home_hidden_update_failed)
+            }
+        }
+    }
+
+    fun clearVisibilityMessage() {
+        _uiState.value = _uiState.value.copy(visibilityMessageResId = null)
+    }
+
+        fun dismissWelcomeDialog() {
+        viewModelScope.launch { preferences.setWelcomeDialogShown(true) }
+    }
+
+    fun dismissHardwareWarning() {
+        viewModelScope.launch { preferences.setHardwareWarningShown(true) }
+    }
+
+    fun purchasePro(
+        activity: Activity,
+        tier: ProPurchaseTier = ProPurchaseTier.BASE
+    ) {
+        proPurchaseManager.purchase(activity, tier)
+    }
+
+    fun clearProPurchaseMessage() {
+        proPurchaseManager.clearMessage()
+    }
+
+    /**
+     * Configured paths can be temporarily unreachable while FUSE/removable
+     * storage finishes mounting at boot. Retry before treating a folder as
+     * missing so Home does not ask for a folder that is already configured.
+     */
+    private suspend fun filterAccessibleGamePaths(
+        context: Application,
+        paths: List<String>
+    ): List<String> {
+        if (paths.isEmpty()) return paths
+        return buildList {
+            for (path in paths) {
+                if (isGameFolderAccessibleWithRetry(context, path)) add(path)
+            }
+        }
+    }
+
+    private suspend fun isGameFolderAccessibleWithRetry(
+        context: Application,
+        path: String
+    ): Boolean {
+        repeat(STARTUP_PATH_CHECK_ATTEMPTS) { attempt ->
+            val accessible = withContext(Dispatchers.IO) {
+                SetupValidator.isGameFolderAccessible(context, path)
+            }
+            if (accessible) return true
+            if (attempt < STARTUP_PATH_CHECK_ATTEMPTS - 1) {
+                delay(STARTUP_PATH_CHECK_DELAY_MS shl attempt)
+            }
+        }
+        return false
+    }
+
+    private suspend fun hasUsableBiosWithRetry(
+        context: Application,
+        path: String?
+    ): Boolean {
+        if (path.isNullOrBlank()) return false
+        repeat(STARTUP_PATH_CHECK_ATTEMPTS) { attempt ->
+            val usable = withContext(Dispatchers.IO) {
+                BiosValidator.hasUsableBiosFiles(context, path)
+            }
+            if (usable) return true
+            if (attempt < STARTUP_PATH_CHECK_ATTEMPTS - 1) {
+                delay(STARTUP_PATH_CHECK_DELAY_MS shl attempt)
+            }
+        }
+        return false
+    }
+
+    private fun updateBootstrapState() {
+        _uiState.value = _uiState.value.copy(
+            isBootstrapping = !(biosInitialized && libraryInitialized && visibilityInitialized)
+        )
+    }
+
+    private fun syncMissingCovers() {
+        if (EmulatorBridge.isVmActive()) {
+            deferredCoverSync = true
+            startDeferredWorkMonitor()
+            return
+        }
+        coverSyncJob?.cancel()
+        val context = getApplication<Application>()
+        coverSyncJob = viewModelScope.launch(Dispatchers.IO) {
+            val coverRepository = CoverArtRepository(context)
+            var removedStalePaths = false
+            synchronized(this@HomeViewModel) {
+                allGames = allGames.map { game ->
+                    if (coverRepository.isMissingManagedCover(game.coverArtPath) ||
+                        customGameCoverRepository.isMissingCustomCover(game.coverArtPath)) {
+                        removedStalePaths = true
+                        game.copy(coverArtPath = null)
+                    } else {
+                        game
+                    }
+                }
+            }
+            if (removedStalePaths) publishVisibleGames()
+            val gamesToProcess = allGames.filter { it.coverArtPath == null || it.coverArtPath.startsWith("http") }
+            if (gamesToProcess.isEmpty()) {
+                if (removedStalePaths) {
+                    currentLibraryRoot?.let { rootPath ->
+                        libraryCacheRepository.save(rootPath, allGames, preferEnglishGameTitles)
+                    }
+                }
+                return@launch
+            }
+            val semaphore = kotlinx.coroutines.sync.Semaphore(3)
+
+            val shouldReschedule = AtomicBoolean(false)
+            coroutineScope {
+                gamesToProcess.forEach { game ->
+                    launch {
+                        semaphore.withPermit {
+                            if (EmulatorBridge.isVmActive()) {
+                                shouldReschedule.set(true)
+                                return@withPermit
+                            }
+                            val downloadedCover = repository.downloadCoverForGame(game, context)
+                            if (downloadedCover != null && downloadedCover != game.coverArtPath) {
+                                synchronized(this@HomeViewModel) {
+                                    allGames = allGames.map {
+                                        if (it.path == game.path && !customGameCoverRepository.isCustomCoverPath(it.coverArtPath))
+                                            it.copy(coverArtPath = downloadedCover) else it
+                                    }
+                                }
+                                publishVisibleGames()
+                            }
+                        }
+                    }
+                }
+            }
+            if (shouldReschedule.get()) {
+                deferredCoverSync = true
+                startDeferredWorkMonitor()
+            }
+            currentLibraryRoot?.let { rootPath ->
+                libraryCacheRepository.save(rootPath, allGames, preferEnglishGameTitles)
+            }
+        }
+    }
+
+    private fun handleCoverSourceChanged() {
+        val rootPath = currentLibraryRoot ?: return
+        val context = getApplication<Application>()
+        val coverRepository = CoverArtRepository(context)
+        val customCoverRepository = CustomGameCoverRepository(context)
+        val cachePrefix = java.io.File(context.cacheDir, "game-covers").absolutePath
+
+        synchronized(this) {
+            allGames = allGames.map { game ->
+                val currentPath = game.coverArtPath
+                if (customCoverRepository.isCustomCoverPath(currentPath)) {
+                    return@map game
+                }
+                if (currentPath != null && currentPath.startsWith(cachePrefix, ignoreCase = true)) {
+                    game.copy(coverArtPath = coverRepository.findCachedCoverPath(game.serial))
+                } else {
+                    game
+                }
+            }
+        }
+        publishVisibleGames()
+        libraryCacheRepository.save(rootPath, allGames, preferEnglishGameTitles)
+
+        requestLibraryScan(currentLibraryPaths)
+    }
+
+    private fun handleCoverCacheCleared() {
+        if (EmulatorBridge.isVmActive()) {
+            deferredCoverSync = true
+            startDeferredWorkMonitor()
+            return
+        }
+        val rootPath = currentLibraryRoot ?: return
+        val coverRepository = CoverArtRepository(getApplication())
+        synchronized(this) {
+            allGames = allGames.map { game ->
+                if (coverRepository.isManagedCoverCachePath(game.coverArtPath)) {
+                    game.copy(coverArtPath = null)
+                } else {
+                    game
+                }
+            }
+        }
+        publishVisibleGames()
+        libraryCacheRepository.save(rootPath, allGames, preferEnglishGameTitles)
+        syncMissingCovers()
+    }
+
+    private fun normalizeSearchToken(value: String?): String {
+        if (value.isNullOrBlank()) return ""
+        val normalized = Normalizer.normalize(value, Normalizer.Form.NFD)
+        return normalized
+            .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+            .lowercase(Locale.ROOT)
+            .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+            .trim()
+    }
+
+    private fun normalizeSortToken(value: String?): String {
+        if (value.isNullOrBlank()) return ""
+        val normalized = Normalizer.normalize(value, Normalizer.Form.NFD)
+        return normalized
+            .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+            .lowercase(Locale.ROOT)
+            .trim()
+    }
+}
+
+private fun HomeLibraryViewMode.toPreferenceValue(): Int = when (this) {
+    HomeLibraryViewMode.GRID -> 0
+    HomeLibraryViewMode.LIST -> 1
+    HomeLibraryViewMode.SHELF -> 2
+}

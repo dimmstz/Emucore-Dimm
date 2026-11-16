@@ -5,7 +5,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.sbro.emucorex.R
+import com.dimm.emustation.R
 import com.sbro.emucorex.ui.theme.EmuCoreXTheme
 import org.junit.Assert.assertTrue
 import org.junit.Rule

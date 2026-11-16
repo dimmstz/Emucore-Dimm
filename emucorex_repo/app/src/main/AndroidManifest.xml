@@ -65,7 +65,7 @@
     </queries>
 
     <application
-        android:name=".EmuCoreXApp"
+        android:name="com.sbro.emucorex.EmuCoreXApp"
         android:allowBackup="true"
         android:appCategory="game"
         android:isGame="true"
@@ -88,7 +88,7 @@
             android:value="false" />
 
         <activity
-            android:name=".MainActivity"
+            android:name="com.sbro.emucorex.MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@style/Theme.EmuCoreX.Splash">
@@ -104,7 +104,7 @@
         </activity>
 
         <activity
-            android:name=".TvActivity"
+            android:name="com.sbro.emucorex.TvActivity"
             android:banner="@drawable/tv_banner"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="true"
@@ -134,7 +134,7 @@
         </activity>
 
         <activity
-            android:name=".discord.DiscordAuthActivity"
+            android:name="com.sbro.emucorex.discord.DiscordAuthActivity"
             android:process=":discord"
             android:enabled="${discordSdkAvailable}"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
@@ -142,7 +142,7 @@
             android:exported="false" />
 
         <service
-            android:name=".discord.DiscordService"
+            android:name="com.sbro.emucorex.discord.DiscordService"
             android:process=":discord"
             android:enabled="${discordSdkAvailable}"
             android:exported="false" />
@@ -157,7 +157,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:roundIcon="@mipmap/ic_launcher_round"
-            android:targetActivity=".MainActivity">
+            android:targetActivity="com.sbro.emucorex.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -170,7 +170,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_pro"
             android:roundIcon="@mipmap/ic_launcher_pro_round"
-            android:targetActivity=".MainActivity">
+            android:targetActivity="com.sbro.emucorex.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -188,7 +188,7 @@
         </provider>
 
         <receiver
-            android:name=".core.utils.RetroAchievementsHostOverrideReceiver"
+            android:name="com.sbro.emucorex.core.utils.RetroAchievementsHostOverrideReceiver"
             android:exported="true"
             tools:ignore="ExportedReceiver">
             <intent-filter>
@@ -198,7 +198,7 @@
         </receiver>
 
         <receiver
-            android:name=".data.TextureDownloadActionReceiver"
+            android:name="com.sbro.emucorex.data.TextureDownloadActionReceiver"
             android:exported="false" />
 
         <service

@@ -1,0 +1,5429 @@
+package com.sbro.emucorex.ui.settings
+
+import android.graphics.Color
+import android.os.Build
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Gamepad
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Save
+import com.sbro.emucorex.core.EmulatorBridge
+import com.sbro.emucorex.core.GamepadManager
+import com.sbro.emucorex.core.GpuDriverCompatibility
+import com.sbro.emucorex.core.GpuDriverManager
+import com.sbro.emucorex.core.GpuDriverVendor
+import com.sbro.emucorex.core.FrameGenerationManager
+import com.sbro.emucorex.core.GpuHardwareProfiles
+import com.sbro.emucorex.core.RendererDefaults
+import androidx.compose.material.icons.rounded.Tune
+import com.sbro.emucorex.ui.common.AppAlertDialog as AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.graphics.drawable.toDrawable
+import com.dimm.emustation.R
+import com.sbro.emucorex.core.buildUpscaleOptions
+import com.sbro.emucorex.core.formatUpscaleLabel
+import com.sbro.emucorex.core.upscaleKeyToMultiplier
+import com.sbro.emucorex.core.upscaleMultiplierValue
+import com.sbro.emucorex.data.AppPreferences
+import com.sbro.emucorex.data.GameLibraryCacheRepository
+import com.sbro.emucorex.data.GameItem
+import com.sbro.emucorex.data.GamepadBindingRules
+import com.sbro.emucorex.data.GameRepository
+import com.sbro.emucorex.data.MemoryCardInfo
+import com.sbro.emucorex.data.MemoryCardRepository
+import com.sbro.emucorex.data.PerGameInterfaceSettings
+import com.sbro.emucorex.data.PerGameSettings
+import com.sbro.emucorex.data.PerGameSettingsRepository
+import com.sbro.emucorex.data.PerformanceOverlayMetrics
+import com.sbro.emucorex.data.RetroArchShaderPreset
+import com.sbro.emucorex.data.RetroArchShaderRepository
+import com.sbro.emucorex.data.SettingsSnapshot
+import com.sbro.emucorex.data.TouchControlPressEffect
+import com.sbro.emucorex.data.TouchControlVisualStyle
+import com.sbro.emucorex.data.toInterfaceSettings
+import com.sbro.emucorex.data.withOnlyOverridesComparedWith
+import com.sbro.emucorex.ui.common.GameCoverArt
+import com.sbro.emucorex.ui.common.ManagerGameSelector
+import com.sbro.emucorex.ui.common.GameCoverAspectRatio
+import com.sbro.emucorex.ui.common.ScreenTopBar
+import com.sbro.emucorex.ui.common.gameCoverContentScale
+import com.sbro.emucorex.ui.common.gameCoverShape
+import com.sbro.emucorex.ui.common.gamepadActionLabel
+import com.sbro.emucorex.ui.common.appScreenTopPadding
+import com.sbro.emucorex.ui.common.SettingHelpButton
+import com.sbro.emucorex.ui.common.SettingsStyledDialog
+import com.sbro.emucorex.ui.common.StickyTabHeader
+import com.sbro.emucorex.ui.common.gamepadFocusableCard
+import com.sbro.emucorex.ui.common.premiumFilterChipColors
+import com.sbro.emucorex.ui.common.rememberStickyTabHeaderPinned
+import com.sbro.emucorex.ui.common.stickyTabTopInset
+import com.sbro.emucorex.ui.common.tvGamepadFocusableCard
+import com.sbro.emucorex.ui.common.tvFocusGroup
+import com.sbro.emucorex.ui.common.navigationBarsHorizontalPaddingValues
+import com.sbro.emucorex.ui.emulation.readInterfaceSettings
+import com.sbro.emucorex.ui.theme.ScreenHorizontalPadding
+import com.sbro.emucorex.ui.theme.neon.LocalNeonTheme
+import com.sbro.emucorex.ui.theme.neon.NeonSystemBanner
+import org.json.JSONObject
+import java.text.DateFormat
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import com.sbro.emucorex.ui.theme.neon.neonChipShape
+import com.sbro.emucorex.ui.theme.neon.neonShape
+
+private enum class GameSettingsManagerTab {
+    Graphics,
+    System,
+    Controls,
+    Fixes,
+    MemoryCards
+}
+
+private val GameSettingsSectionContentPadding = 16.dp
+private const val SHADER_PRESET_USE_GLOBAL = "__emucorex_use_global_shader__"
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun PerGameSettingsManagerScreen(
+    initialGamePath: String? = null,
+    onOpenGpuDriverManager: (String) -> Unit,
+    onOpenControlsLayoutEditor: (GameItem) -> Unit,
+    onBackClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val repository = remember(context) { PerGameSettingsRepository(context) }
+    val shaderRepository = remember(context) { RetroArchShaderRepository(context) }
+    val preferences = remember(context) { AppPreferences(context) }
+    val libraryCacheRepository = remember(context) { GameLibraryCacheRepository(context) }
+    val settingsSnapshot by preferences.settingsSnapshot.collectAsState(initial = SettingsSnapshot())
+    val autoSaveEnabled by preferences.autoSaveEnabled.collectAsState(initial = false)
+    val autoSaveIntervalMinutes by preferences.autoSaveIntervalMinutes.collectAsState(initial = 1)
+    val rootPaths by preferences.gamePaths.collectAsState(initial = emptyList())
+    val preferEnglishTitles by preferences.preferEnglishGameTitles.collectAsState(initial = false)
+    val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val profileMutationMutex = remember { Mutex() }
+    var profiles by remember { mutableStateOf(emptyList<PerGameSettings>()) }
+    var shaderPresets by remember { mutableStateOf(emptyList<RetroArchShaderPreset>()) }
+    var libraryGames by remember { mutableStateOf(emptyList<GameItem>()) }
+    var selectedGamePath by rememberSaveable { mutableStateOf(initialGamePath) }
+    var selectedTab by rememberSaveable { mutableStateOf(GameSettingsManagerTab.Graphics) }
+    var isOpeningControlsEditor by remember { mutableStateOf(false) }
+    var isOpeningGpuDriverManager by remember { mutableStateOf(false) }
+    var showTopBarMenu by remember { mutableStateOf(false) }
+    val pendingDeleteProfile = remember { mutableStateOf<PerGameSettings?>(null) }
+    val showResetAllDialog = remember { mutableStateOf(false) }
+    val topInset = appScreenTopPadding()
+    val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val horizontalSystemBarPadding = navigationBarsHorizontalPaddingValues()
+    val listState = rememberLazyListState()
+    val stickyTabInset = stickyTabTopInset()
+    val tabsPinned = rememberStickyTabHeaderPinned(listState, "game-settings-tabs")
+    val exportSuccess = stringResource(R.string.game_settings_manager_export_success)
+    val exportFailure = stringResource(R.string.game_settings_manager_export_failure)
+    val importSuccess = stringResource(R.string.game_settings_manager_import_success)
+    val importFailure = stringResource(R.string.game_settings_manager_import_failure)
+    val controlsLayoutSaveFailure = stringResource(R.string.controls_editor_save_failed)
+    val profileBadge = stringResource(R.string.game_settings_manager_profile_active_short)
+
+    fun refreshProfiles() {
+        scope.launch {
+            profiles = profileMutationMutex.withLock {
+                withContext(Dispatchers.IO) { repository.getAll() }
+            }
+        }
+    }
+
+    suspend fun persistDraft(draft: PerGameSettings): List<PerGameSettings> {
+        return profileMutationMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val global = preferences.settingsSnapshot.first().toPerGameSettings(
+                    GameItem(path = draft.gameKey, title = draft.gameTitle, fileName = draft.gameTitle,
+                        fileSize = 0L, lastModified = 0L, serial = draft.gameSerial)
+                )
+                val generation = FrameGenerationManager(context).snapshot().settings
+                val defaults = global.copy(
+                    frameGenerationEnabled = generation.enabled,
+                    frameGenerationMultiplier = generation.multiplier,
+                    frameGenerationPerformance = generation.performanceMode,
+                    frameGenerationFlowScale = generation.flowScalePercent,
+                    frameGenerationTargetRate = generation.targetRefreshRate,
+                    interfaceSettings = preferences.readInterfaceSettings()
+                )
+                val existing = repository.get(draft.gameKey)
+                val retainedGsKeys = if (existing == null) emptySet() else
+                    existing.providedKeys?.intersect(setOf("hwDownloadMode", "blendingAccuracy"))
+                        ?: setOf("hwDownloadMode", "blendingAccuracy")
+                repository.save(
+                    draft.copy(
+                        touchControlsLayout = existing?.touchControlsLayout,
+                        customTouchControls = existing?.customTouchControls
+                    ).withOnlyOverridesComparedWith(defaults, retainedGsKeys)
+                )
+                repository.getAll()
+            }
+        }
+    }
+
+    fun toast(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
+    LaunchedEffect(repository) {
+        profiles = withContext(Dispatchers.IO) {
+            repository.getAll()
+        }
+    }
+
+    LaunchedEffect(shaderRepository) {
+        shaderPresets = withContext(Dispatchers.IO) {
+            shaderRepository.listPresets()
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, repository) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isOpeningControlsEditor = false
+                isOpeningGpuDriverManager = false
+                refreshProfiles()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(rootPaths, preferEnglishTitles) {
+        libraryGames = withContext(Dispatchers.IO) {
+            rootPaths.takeIf { it.isNotEmpty() }
+                ?.let { libraryCacheRepository.loadSnapshot(GameLibraryCacheRepository.libraryKey(it), preferEnglishTitles).games }
+                .orEmpty()
+        }
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val success = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(repository.exportJson().toString(2).toByteArray())
+                    } != null
+                }.getOrDefault(false)
+            }
+            toast(if (success) exportSuccess else exportFailure)
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val success = withContext(Dispatchers.IO) {
+                runCatching {
+                    val json = context.contentResolver.openInputStream(uri)?.use { input ->
+                        JSONObject(input.readBytes().decodeToString())
+                    } ?: return@runCatching false
+                    repository.importJson(json)
+                    true
+                }.getOrDefault(false)
+            }
+            if (success) refreshProfiles()
+            toast(if (success) importSuccess else importFailure)
+        }
+    }
+
+    val availableGames = remember(libraryGames, profiles) {
+        val libraryByPath = libraryGames.associateBy { it.path }
+        val profileOnlyGames = profiles
+            .filterNot { it.gameKey in libraryByPath }
+            .map { profile ->
+                GameItem(
+                    path = profile.gameKey,
+                    title = profile.gameTitle,
+                    fileName = profile.gameTitle,
+                    fileSize = 0L,
+                    lastModified = profile.updatedAt,
+                    serial = profile.gameSerial
+                )
+            }
+        (libraryGames + profileOnlyGames).sortedBy { it.title.lowercase() }
+    }
+    val profileGameKeys = remember(profiles) {
+        profiles.mapTo(HashSet()) { it.gameKey }
+    }
+    val selectedGame = remember(availableGames, selectedGamePath) {
+        selectedGamePath?.let { path -> availableGames.firstOrNull { it.path == path } }
+    }
+    val selectedProfile = remember(profiles, selectedGamePath) {
+        selectedGamePath?.let { path -> profiles.firstOrNull { it.gameKey == path } }
+    }
+
+    LaunchedEffect(initialGamePath, availableGames, profiles) {
+        val requestedGame = initialGamePath?.let { path -> availableGames.firstOrNull { it.path == path } }
+        when {
+            requestedGame != null && selectedGamePath != requestedGame.path -> {
+                selectedGamePath = requestedGame.path
+            }
+            selectedGamePath == null || availableGames.none { it.path == selectedGamePath } -> {
+                selectedGamePath = profiles.firstOrNull()?.gameKey ?: availableGames.firstOrNull()?.path
+            }
+        }
+    }
+
+    val neonThemeActive = LocalNeonTheme.current
+    LaunchedEffect(selectedTab) {
+        listState.scrollToItem(0)
+    }
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontalSystemBarPadding)
+            .padding(top = stickyTabInset),
+        contentPadding = PaddingValues(
+            start = ScreenHorizontalPadding,
+            end = ScreenHorizontalPadding,
+            bottom = 24.dp + bottomInset
+        ),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            ScreenTopBar(
+                title = stringResource(R.string.game_settings_manager_title),
+                onBackClick = onBackClick,
+                modifier = Modifier.padding(
+                    top = (topInset - stickyTabInset).coerceAtLeast(0.dp)
+                ),
+                actions = {
+                    Box {
+                        IconButton(onClick = { showTopBarMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Rounded.MoreVert,
+                                contentDescription = stringResource(R.string.settings_more_options),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showTopBarMenu,
+                            onDismissRequest = { showTopBarMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.game_settings_manager_export_title)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Save,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    showTopBarMenu = false
+                                    exportLauncher.launch("emucorex-game-settings.json")
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.game_settings_manager_import_title)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.FolderOpen,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    showTopBarMenu = false
+                                    importLauncher.launch(arrayOf("application/json", "*/*"))
+                                }
+                            )
+                            selectedProfile?.let { profile ->
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.delete)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.DeleteOutline,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    },
+                                    onClick = {
+                                        showTopBarMenu = false
+                                        pendingDeleteProfile.value = profile
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.game_settings_manager_reset_all_title)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Restore,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                onClick = {
+                                    showTopBarMenu = false
+                                    showResetAllDialog.value = true
+                                }
+                            )
+                        }
+                    }
+                }
+            )
+        }
+
+        if (neonThemeActive) {
+            item {
+                NeonSystemBanner()
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.game_settings_manager_choose_game),
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = selectedGame?.let { game ->
+                            listOfNotNull(game.title, game.serial?.takeIf { it.isNotBlank() }).joinToString("  /  ")
+                        } ?: stringResource(R.string.game_settings_manager_no_games),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                selectedGame?.let { game ->
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                profiles = withContext(Dispatchers.IO) {
+                                    repository.delete(game.path)
+                                    repository.getAll()
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Restore,
+                            contentDescription = stringResource(R.string.game_settings_manager_reset_game_title),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        if (availableGames.isNotEmpty()) {
+            item {
+                ManagerGameSelector(
+                    games = availableGames,
+                    selectedPath = selectedGamePath,
+                    onSelected = { game -> selectedGamePath = game.path },
+                    horizontalContentPadding = ScreenHorizontalPadding,
+                    fullBleedPadding = ScreenHorizontalPadding,
+                    extraBadge = { game -> if (game.path in profileGameKeys) profileBadge else null }
+                )
+            }
+
+            stickyHeader(key = "game-settings-tabs") {
+                StickyTabHeader(
+                    showDivider = tabsPinned,
+                    modifier = Modifier.gameManagerFullBleed()
+                ) {
+                    GameSettingsManagerTabRow(
+                        selectedTab = selectedTab,
+                        onSelected = { selectedTab = it }
+                    )
+                }
+            }
+
+            selectedGame?.let { game ->
+                item {
+                    val storedProfile = profiles.firstOrNull { it.gameKey == game.path }
+                    val frameGenerationForDefault = remember(context, settingsSnapshot) {
+                        FrameGenerationManager(context).snapshot()
+                    }
+                    val defaultProfile = remember(settingsSnapshot, game, frameGenerationForDefault, autoSaveEnabled, autoSaveIntervalMinutes) {
+                        settingsSnapshot.toPerGameSettings(game).copy(
+                            frameGenerationEnabled = frameGenerationForDefault.settings.enabled,
+                            frameGenerationMultiplier = frameGenerationForDefault.settings.multiplier,
+                            frameGenerationPerformance = frameGenerationForDefault.settings.performanceMode,
+                            frameGenerationFlowScale = frameGenerationForDefault.settings.flowScalePercent,
+                            frameGenerationTargetRate = frameGenerationForDefault.settings.targetRefreshRate,
+                            interfaceSettings = settingsSnapshot.toInterfaceSettings(autoSaveEnabled, autoSaveIntervalMinutes)
+                        )
+                    }
+                    val editableProfile = remember(storedProfile, defaultProfile) {
+                        (storedProfile ?: defaultProfile).resolveAgainst(defaultProfile)
+                    }
+                    var draft by remember(game.path, editableProfile) { mutableStateOf(editableProfile) }
+                    var hasUserChange by remember(game.path, editableProfile) { mutableStateOf(false) }
+                    val maxUpscaleMultiplier = remember(draft.renderer) {
+                        EmulatorBridge.getMaxUpscaleMultiplier(normalizeManagerRenderer(draft.renderer))
+                    }
+                    val foreignDedicatedCardNames = remember(profiles, game.path) {
+                        profiles.asSequence()
+                            .filter { it.gameKey != game.path }
+                            .flatMap { it.dedicatedMemoryCards.asSequence() }
+                            .map { it.lowercase() }
+                            .toSet()
+                    }
+
+                    LaunchedEffect(draft) {
+                        if (hasUserChange) {
+                            profiles = persistDraft(draft)
+                        } else {
+                            hasUserChange = true
+                        }
+                    }
+
+                    GameSettingsManagerEditorPanel(
+                        game = game,
+                        draft = draft,
+                        defaultProfile = defaultProfile,
+                        foreignDedicatedCardNames = foreignDedicatedCardNames,
+                        selectedTab = selectedTab,
+                        maxUpscaleMultiplier = maxUpscaleMultiplier,
+                        shaderPresets = shaderPresets,
+                        onRemoveShaderPresets = { paths ->
+                            var removalCommitted = false
+                            val removed = com.sbro.emucorex.data.RemovedShaderPresetPaths(paths)
+                            try {
+                                profileMutationMutex.withLock {
+                                    withContext(Dispatchers.IO) {
+                                        shaderRepository.removePresets(paths).getOrThrow()
+                                        removalCommitted = true
+                                        com.sbro.emucorex.data.ShaderPresetSelectionCleanup.clearRemovedSelections(
+                                            preferences, repository, paths
+                                        )
+                                    }
+                                }
+                                true
+                            } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                            catch (_: Exception) { false }
+                            finally {
+                                if (removalCommitted) withContext(kotlinx.coroutines.NonCancellable) {
+                                    if (removed.contains(draft.shaderChainPreset)) draft = draft.copy(
+                                        shaderChainOverrideEnabled = draft.shaderChainOverrideEnabled?.let { false },
+                                        shaderChainPreset = ""
+                                    )
+                                    val runtimePreset = withContext(Dispatchers.IO) {
+                                        EmulatorBridge.getSetting("EmuCore/GS", "ShaderChainPreset", "string")
+                                    }
+                                    if (removed.contains(runtimePreset)) runCatching {
+                                        EmulatorBridge.setSetting("EmuCore/GS", "ShaderChainEnabled", "bool", "false")
+                                        EmulatorBridge.setSetting("EmuCore/GS", "ShaderChainPreset", "string", "")
+                                    }
+                                    shaderPresets = runCatching {
+                                        withContext(Dispatchers.IO) { shaderRepository.listPresets() }
+                                    }.getOrElse { shaderPresets.filterNot { removed.contains(it.absolutePath) } }
+                                    profiles = runCatching {
+                                        profileMutationMutex.withLock { withContext(Dispatchers.IO) { repository.getAll() } }
+                                    }.getOrDefault(profiles)
+                                }
+                            }
+                        },
+                        onOpenGpuDriverManager = {
+                            if (isOpeningGpuDriverManager) return@GameSettingsManagerEditorPanel
+                            isOpeningGpuDriverManager = true
+                            scope.launch {
+                                val savedProfiles = runCatching { persistDraft(draft) }.getOrNull()
+                                if (savedProfiles != null) {
+                                    profiles = savedProfiles
+                                    onOpenGpuDriverManager(game.path)
+                                } else {
+                                    isOpeningGpuDriverManager = false
+                                }
+                            }
+                        },
+                        onOpenControlsLayoutEditor = {
+                            if (isOpeningControlsEditor) return@GameSettingsManagerEditorPanel
+                            isOpeningControlsEditor = true
+                            scope.launch {
+                                val savedProfiles = runCatching { persistDraft(draft) }.getOrNull()
+                                if (savedProfiles != null) {
+                                    profiles = savedProfiles
+                                    onOpenControlsLayoutEditor(game)
+                                } else {
+                                    isOpeningControlsEditor = false
+                                    toast(controlsLayoutSaveFailure)
+                                }
+                            }
+                        },
+                        onDraftChange = { draft = it }
+                    )
+                }
+            }
+        } else {
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = neonShape(20.dp),
+                    tonalElevation = 1.dp,
+                    shadowElevation = 3.dp,
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(22.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.game_settings_manager_empty_title),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = stringResource(R.string.game_settings_manager_empty_desc),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    pendingDeleteProfile.value?.let { profile ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteProfile.value = null },
+            title = { Text(stringResource(R.string.game_settings_manager_delete_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.game_settings_manager_delete_desc,
+                        profile.gameTitle
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            profiles = withContext(Dispatchers.IO) {
+                                repository.delete(profile.gameKey)
+                                repository.getAll()
+                            }
+                            pendingDeleteProfile.value = null
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteProfile.value = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showResetAllDialog.value) {
+        AlertDialog(
+            onDismissRequest = { showResetAllDialog.value = false },
+            title = { Text(stringResource(R.string.game_settings_manager_reset_all_title)) },
+            text = { Text(stringResource(R.string.game_settings_manager_reset_all_desc)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            profiles = withContext(Dispatchers.IO) {
+                                repository.deleteAll()
+                                repository.getAll()
+                            }
+                            showResetAllDialog.value = false
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.game_settings_manager_reset_all_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetAllDialog.value = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun GamePickerCard(
+    game: GameItem,
+    selected: Boolean,
+    hasProfile: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .width(280.dp)
+            .height(96.dp),
+        shape = neonShape(22.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            width = if (selected) 2.dp else 1.dp,
+            color = if (selected) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.78f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+            }
+        ),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            GameCoverArt(
+                coverPath = game.coverArtPath,
+                fallbackTitle = game.title,
+                modifier = Modifier
+                    .height(72.dp)
+                    .aspectRatio(GameCoverAspectRatio)
+                    .clip(gameCoverShape(game.coverArtPath, neonShape(16.dp))),
+                contentScale = gameCoverContentScale(game.coverArtPath, ContentScale.Crop)
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = game.title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                game.serial?.takeIf { it.isNotBlank() }?.let { serial ->
+                    Text(
+                        text = serial,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (hasProfile) {
+                    Text(
+                        text = stringResource(R.string.game_settings_manager_profile_active_short),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GameSettingsManagerTabRow(
+    selectedTab: GameSettingsManagerTab,
+    onSelected: (GameSettingsManagerTab) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .tvFocusGroup(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(
+            start = ScreenHorizontalPadding,
+            end = ScreenHorizontalPadding
+        )
+    ) {
+        items(GameSettingsManagerTab.entries.toList(), key = { it.name }) { tab ->
+            val interactionSource = remember { MutableInteractionSource() }
+            FilterChip(
+                modifier = Modifier.tvGamepadFocusableCard(
+                    shape = neonShape(16.dp),
+                    interactionSource = interactionSource,
+                    addFocusTarget = false
+                ),
+                shape = neonChipShape(),
+                selected = selectedTab == tab,
+                onClick = { onSelected(tab) },
+                interactionSource = interactionSource,
+                colors = premiumFilterChipColors(),
+                label = {
+                    Text(
+                        text = when (tab) {
+                            GameSettingsManagerTab.Graphics -> stringResource(R.string.settings_graphics_tab)
+                            GameSettingsManagerTab.System -> stringResource(R.string.game_settings_manager_tab_system)
+                            GameSettingsManagerTab.Controls -> stringResource(R.string.settings_controls_tab)
+                            GameSettingsManagerTab.Fixes -> stringResource(R.string.settings_fixes_tab)
+                            GameSettingsManagerTab.MemoryCards -> stringResource(R.string.game_settings_manager_tab_memory_cards)
+                        }
+                    )
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun GameSettingsManagerEditorPanel(
+    game: GameItem,
+    draft: PerGameSettings,
+    defaultProfile: PerGameSettings,
+    foreignDedicatedCardNames: Set<String>,
+    selectedTab: GameSettingsManagerTab,
+    maxUpscaleMultiplier: Int,
+    shaderPresets: List<RetroArchShaderPreset>,
+    onRemoveShaderPresets: suspend (Set<String>) -> Boolean,
+    onOpenGpuDriverManager: () -> Unit,
+    onOpenControlsLayoutEditor: () -> Unit,
+    onDraftChange: (PerGameSettings) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = selectedTab.title(),
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    text = stringResource(R.string.game_settings_manager_editor_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (selectedTab == GameSettingsManagerTab.Controls) {
+            ManagerActionButton(
+                modifier = Modifier.fillMaxWidth(),
+                icon = Icons.Rounded.Tune,
+                title = stringResource(R.string.game_settings_edit_controls),
+                onClick = onOpenControlsLayoutEditor
+            )
+            Text(
+                text = stringResource(R.string.game_settings_edit_controls_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
+        GameSettingsTabContent(
+            draft = draft,
+            defaultProfile = defaultProfile,
+            foreignDedicatedCardNames = foreignDedicatedCardNames,
+            selectedTab = selectedTab,
+            maxUpscaleMultiplier = maxUpscaleMultiplier,
+            shaderPresets = shaderPresets,
+            onRemoveShaderPresets = onRemoveShaderPresets,
+            onOpenGpuDriverManager = onOpenGpuDriverManager,
+            onDraftChange = onDraftChange
+        )
+    }
+}
+
+@Composable
+private fun GameSettingsTabContent(
+    draft: PerGameSettings,
+    defaultProfile: PerGameSettings,
+    foreignDedicatedCardNames: Set<String>,
+    selectedTab: GameSettingsManagerTab,
+    maxUpscaleMultiplier: Int,
+    shaderPresets: List<RetroArchShaderPreset>,
+    onRemoveShaderPresets: suspend (Set<String>) -> Boolean,
+    onOpenGpuDriverManager: () -> Unit,
+    onDraftChange: (PerGameSettings) -> Unit
+) {
+    val nativeUpscaleLabel = stringResource(R.string.settings_upscale_native)
+    val context = LocalContext.current
+    val preferences = remember(context) { AppPreferences(context) }
+    val settingsSnapshot by preferences.settingsSnapshot.collectAsState(initial = SettingsSnapshot())
+    val globalKeyboardMouseSettings by preferences.keyboardMouseSettings.collectAsState(
+        initial = com.sbro.emucorex.data.KeyboardMouseSettings()
+    )
+    val memoryCardRepository = remember(context, preferences) { MemoryCardRepository(context, preferences) }
+    var memoryCards by remember { mutableStateOf(emptyList<MemoryCardInfo>()) }
+    LaunchedEffect(memoryCardRepository) {
+        memoryCards = withContext(Dispatchers.IO) { memoryCardRepository.listCards() }
+    }
+    val scope = rememberCoroutineScope()
+    var isCreatingCard by remember { mutableStateOf(false) }
+    val createCardLabel = stringResource(R.string.per_game_memory_card_create)
+    val createCardFailedMessage = stringResource(R.string.memory_card_create_failed)
+    val canCreateDedicatedCard = remember(draft.dedicatedMemoryCards, memoryCards) {
+        draft.dedicatedMemoryCards.none { dedicated ->
+            memoryCards.any { it.name.equals(dedicated, ignoreCase = true) }
+        }
+    }
+
+    fun createDedicatedCard(assign: (String) -> Unit) {
+        if (isCreatingCard) return
+        scope.launch {
+            isCreatingCard = true
+            val baseName = draft.gameSerial?.takeIf { it.isNotBlank() } ?: draft.gameTitle
+            val created = withContext(Dispatchers.IO) { memoryCardRepository.ensureGameCard(baseName) }
+            if (created != null) {
+                memoryCards = withContext(Dispatchers.IO) { memoryCardRepository.listCards() }
+                assign(created)
+            } else {
+                Toast.makeText(context, createCardFailedMessage, Toast.LENGTH_SHORT).show()
+            }
+            isCreatingCard = false
+        }
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        when (selectedTab) {
+            GameSettingsManagerTab.Graphics -> {
+                EditorSection(title = stringResource(R.string.game_settings_manager_section_profile)) {
+                    SelectionRow(
+                        title = stringResource(R.string.settings_renderer),
+                        options = listOf(
+                            12 to stringResource(R.string.settings_renderer_opengl),
+                            14 to stringResource(R.string.settings_renderer_vulkan),
+                            13 to stringResource(R.string.settings_renderer_software)
+                        ),
+                        selectedValue = normalizeManagerRenderer(draft.renderer),
+                        onSelected = { onDraftChange(draft.copy(renderer = it)) },
+                        helpText = stringResource(R.string.settings_help_renderer),
+                        onResetToDefault = { onDraftChange(draft.copy(renderer = normalizeManagerRenderer(defaultProfile.renderer))) }
+                    )
+                    GpuBackendProfileControls(
+                        draft = draft,
+                        defaultProfile = defaultProfile,
+                        onOpenGpuDriverManager = onOpenGpuDriverManager,
+                        onDraftChange = onDraftChange
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_upscale),
+                        options = buildUpscaleOptions(nativeUpscaleLabel, maxUpscaleMultiplier),
+                        selectedValue = upscaleMultiplierValue(draft.upscaleMultiplier),
+                        onSelected = { onDraftChange(draft.copy(upscaleMultiplier = upscaleKeyToMultiplier(it))) },
+                        helpText = stringResource(R.string.settings_help_upscale),
+                        onResetToDefault = { onDraftChange(draft.copy(upscaleMultiplier = defaultProfile.upscaleMultiplier)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_aspect_ratio),
+                        options = listOf(
+                            1 to stringResource(R.string.settings_aspect_ratio_auto),
+                            2 to stringResource(R.string.settings_aspect_ratio_43),
+                            3 to stringResource(R.string.settings_aspect_ratio_169),
+                            4 to stringResource(R.string.settings_aspect_ratio_107),
+                            5 to stringResource(R.string.settings_aspect_ratio_219),
+                            6 to stringResource(R.string.settings_aspect_ratio_209),
+                            7 to stringResource(R.string.settings_aspect_ratio_1959),
+                            0 to stringResource(R.string.emulation_aspect_stretch)
+                        ),
+                        selectedValue = draft.aspectRatio,
+                        onSelected = { onDraftChange(draft.copy(aspectRatio = it)) },
+                        helpText = stringResource(R.string.settings_help_aspect_ratio),
+                        onResetToDefault = { onDraftChange(draft.copy(aspectRatio = defaultProfile.aspectRatio)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.emulation_local_multiplayer_title),
+                        options = localMultiplayerOptions(),
+                        selectedValue = draft.localMultiplayerMode,
+                        onSelected = { onDraftChange(draft.copy(localMultiplayerMode = it)) },
+                        helpText = stringResource(R.string.emulation_local_multiplayer_help),
+                        onResetToDefault = {
+                            onDraftChange(draft.copy(localMultiplayerMode = defaultProfile.localMultiplayerMode))
+                        }
+                    )
+                }
+                EditorSection(title = stringResource(R.string.game_settings_manager_section_graphics)) {
+                    SelectionRow(
+                        title = stringResource(R.string.settings_bilinear_filtering),
+                        options = bilinearFilteringOptions(),
+                        selectedValue = draft.textureFiltering,
+                        onSelected = { onDraftChange(draft.copy(textureFiltering = it)) },
+                        helpText = stringResource(R.string.settings_help_bilinear_filtering),
+                        onResetToDefault = { onDraftChange(draft.copy(textureFiltering = defaultProfile.textureFiltering)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_trilinear_filtering),
+                        options = trilinearFilteringOptions(),
+                        selectedValue = draft.trilinearFiltering,
+                        onSelected = { onDraftChange(draft.copy(trilinearFiltering = it)) },
+                        helpText = stringResource(R.string.settings_help_trilinear_filtering),
+                        onResetToDefault = { onDraftChange(draft.copy(trilinearFiltering = defaultProfile.trilinearFiltering)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_hw_download_mode),
+                        options = hwDownloadModeOptions(),
+                        selectedValue = draft.hwDownloadMode,
+                        onSelected = { onDraftChange(draft.copy(hwDownloadMode = it)) },
+                        helpText = stringResource(R.string.settings_help_hw_download_mode),
+                        onResetToDefault = { onDraftChange(draft.copy(hwDownloadMode = defaultProfile.hwDownloadMode)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_blending_accuracy),
+                        options = blendingAccuracyOptions(),
+                        selectedValue = draft.blendingAccuracy,
+                        onSelected = { onDraftChange(draft.copy(blendingAccuracy = it)) },
+                        helpText = stringResource(R.string.settings_help_blending_accuracy),
+                        onResetToDefault = { onDraftChange(draft.copy(blendingAccuracy = defaultProfile.blendingAccuracy)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_texture_preloading),
+                        options = texturePreloadingOptions(),
+                        selectedValue = draft.texturePreloading,
+                        onSelected = { onDraftChange(draft.copy(texturePreloading = it)) },
+                        helpText = stringResource(R.string.settings_help_texture_preloading),
+                        onResetToDefault = { onDraftChange(draft.copy(texturePreloading = defaultProfile.texturePreloading)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_anisotropic_filtering),
+                        options = anisotropicFilteringOptions(),
+                        selectedValue = draft.anisotropicFiltering,
+                        onSelected = { onDraftChange(draft.copy(anisotropicFiltering = it)) },
+                        helpText = stringResource(R.string.settings_help_anisotropic_filtering),
+                        onResetToDefault = { onDraftChange(draft.copy(anisotropicFiltering = defaultProfile.anisotropicFiltering)) }
+                    )
+                    val globalShaderPresetName = shaderPresets
+                        .firstOrNull { it.absolutePath == settingsSnapshot.shaderChainPreset }
+                        ?.label
+                        ?.substringAfterLast('/')
+                        ?: stringResource(R.string.settings_shader_preset_none)
+                    val globalScopeLabel = stringResource(R.string.controls_editor_global_scope)
+                    val globalValueLabel = stringResource(
+                        R.string.emulation_shaders_global_value,
+                        globalShaderPresetName
+                    )
+                    val useGlobalShaderLabel = "$globalScopeLabel · $globalValueLabel"
+                    ShaderPresetSelector(
+                        title = stringResource(R.string.settings_shader_preset),
+                        presets = shaderPresets,
+                        onRemove = onRemoveShaderPresets,
+                        selectedPath = when (draft.shaderChainOverrideEnabled) {
+                            null -> SHADER_PRESET_USE_GLOBAL
+                            false -> ""
+                            true -> draft.shaderChainPreset
+                        },
+                        onSelect = { selectedPath ->
+                            onDraftChange(
+                                when (selectedPath) {
+                                    SHADER_PRESET_USE_GLOBAL -> draft.copy(
+                                        shaderChainOverrideEnabled = null,
+                                        shaderChainPreset = ""
+                                    )
+                                    "" -> draft.copy(
+                                        shaderChainOverrideEnabled = false,
+                                        shaderChainPreset = ""
+                                    )
+                                    else -> draft.copy(
+                                        shaderChainOverrideEnabled = true,
+                                        shaderChainPreset = selectedPath
+                                    )
+                                }
+                            )
+                        },
+                        helpText = stringResource(R.string.settings_help_shader_preset),
+                        leadingOptions = listOf(
+                            SHADER_PRESET_USE_GLOBAL to useGlobalShaderLabel
+                        ),
+                        cardHorizontalPadding = 0.dp
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_fxaa),
+                        checked = draft.enableFxaa,
+                        onCheckedChange = { onDraftChange(draft.copy(enableFxaa = it)) },
+                        helpText = stringResource(R.string.settings_help_fxaa),
+                        onResetToDefault = { onDraftChange(draft.copy(enableFxaa = defaultProfile.enableFxaa)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_sgsr),
+                        options = sgsrModeOptions(),
+                        selectedValue = draft.sgsrMode,
+                        onSelected = { onDraftChange(draft.copy(sgsrMode = it)) },
+                        helpText = stringResource(R.string.settings_help_sgsr),
+                        onResetToDefault = { onDraftChange(draft.copy(sgsrMode = defaultProfile.sgsrMode)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_cas),
+                        options = casModeOptions(),
+                        selectedValue = draft.casMode,
+                        onSelected = { onDraftChange(draft.copy(casMode = it)) },
+                        helpText = stringResource(R.string.settings_help_cas),
+                        onResetToDefault = { onDraftChange(draft.copy(casMode = defaultProfile.casMode)) }
+                    )
+                    if (draft.casMode != 0) {
+                        SliderRow(
+                            title = stringResource(R.string.settings_cas_sharpness),
+                            value = draft.casSharpness.toFloat(),
+                            valueLabel = stringResource(R.string.settings_cas_sharpness_value, draft.casSharpness),
+                            range = 0f..100f,
+                            steps = 99,
+                            onValueChange = { onDraftChange(draft.copy(casSharpness = it.toInt())) },
+                            helpText = stringResource(R.string.settings_help_cas_sharpness),
+                            onResetToDefault = { onDraftChange(draft.copy(casSharpness = defaultProfile.casSharpness)) }
+                        )
+                    }
+                    SelectionRow(
+                        title = stringResource(R.string.settings_tv_shader),
+                        options = tvShaderOptions(),
+                        selectedValue = draft.tvShader,
+                        onSelected = { onDraftChange(draft.copy(tvShader = it)) },
+                        helpText = stringResource(R.string.settings_help_tv_shader),
+                        onResetToDefault = { onDraftChange(draft.copy(tvShader = defaultProfile.tvShader)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_hw_mipmapping),
+                        checked = draft.enableHwMipmapping,
+                        onCheckedChange = { onDraftChange(draft.copy(enableHwMipmapping = it)) },
+                        helpText = stringResource(R.string.settings_help_hw_mipmapping),
+                        onResetToDefault = { onDraftChange(draft.copy(enableHwMipmapping = defaultProfile.enableHwMipmapping)) }
+                    )
+                }
+                EditorSection(title = stringResource(R.string.game_settings_manager_section_screen)) {
+                    ShadeBoostRows(
+                        draft = draft,
+                        defaultProfile = defaultProfile,
+                        onDraftChange = onDraftChange
+                    )
+                }
+            }
+            GameSettingsManagerTab.MemoryCards -> {
+                EditorSection(title = stringResource(R.string.per_game_memory_cards_title)) {
+                    Text(
+                        text = stringResource(R.string.per_game_memory_cards_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    MemoryCardSlotSelectionRow(
+                        title = stringResource(R.string.memory_card_slot_1),
+                        cards = memoryCards,
+                        selectedCardName = draft.memoryCardSlot1,
+                        excludedCardName = draft.memoryCardSlot2,
+                        hiddenCardNames = foreignDedicatedCardNames,
+                        createCardLabel = createCardLabel,
+                        showCreateCardOption = canCreateDedicatedCard,
+                        helpText = stringResource(R.string.settings_help_per_game_memory_cards),
+                        onCreateDedicatedCard = {
+                            createDedicatedCard { name ->
+                                if (name.equals(draft.memoryCardSlot2, ignoreCase = true)) {
+                                    return@createDedicatedCard
+                                }
+                                onDraftChange(
+                                    draft.copy(
+                                        memoryCardSlot1 = name,
+                                        dedicatedMemoryCards = (draft.dedicatedMemoryCards + name)
+                                            .distinctBy { it.lowercase() }
+                                    )
+                                )
+                            }
+                        },
+                        onSelected = { onDraftChange(draft.copy(memoryCardSlot1 = it)) }
+                    )
+                    MemoryCardSlotSelectionRow(
+                        title = stringResource(R.string.memory_card_slot_2),
+                        cards = memoryCards,
+                        selectedCardName = draft.memoryCardSlot2,
+                        excludedCardName = draft.memoryCardSlot1,
+                        hiddenCardNames = foreignDedicatedCardNames,
+                        createCardLabel = createCardLabel,
+                        showCreateCardOption = canCreateDedicatedCard,
+                        helpText = stringResource(R.string.settings_help_per_game_memory_cards),
+                        onCreateDedicatedCard = {
+                            createDedicatedCard { name ->
+                                if (name.equals(draft.memoryCardSlot1, ignoreCase = true)) {
+                                    return@createDedicatedCard
+                                }
+                                onDraftChange(
+                                    draft.copy(
+                                        memoryCardSlot2 = name,
+                                        dedicatedMemoryCards = (draft.dedicatedMemoryCards + name)
+                                            .distinctBy { it.lowercase() }
+                                    )
+                                )
+                            }
+                        },
+                        onSelected = { onDraftChange(draft.copy(memoryCardSlot2 = it)) }
+                    )
+                }
+            }
+            GameSettingsManagerTab.System -> {
+                EditorSection(title = stringResource(R.string.game_settings_manager_section_runtime)) {
+                    PerGameInterfaceSettingsEditor(draft, defaultProfile, controls = false, onDraftChange = onDraftChange)
+                    ToggleRow(
+                        title = stringResource(R.string.settings_show_fps),
+                        checked = draft.showFps,
+                        onCheckedChange = { onDraftChange(draft.copy(showFps = it)) },
+                        helpText = stringResource(R.string.settings_help_show_fps),
+                        onResetToDefault = { onDraftChange(draft.copy(showFps = defaultProfile.showFps)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_fast_boot),
+                        checked = draft.enableFastBoot,
+                        onCheckedChange = { onDraftChange(draft.copy(enableFastBoot = it)) },
+                        helpText = stringResource(R.string.settings_help_fast_boot),
+                        onResetToDefault = { onDraftChange(draft.copy(enableFastBoot = defaultProfile.enableFastBoot)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.emulation_auto_save_on_exit),
+                        checked = draft.autoSaveOnExit,
+                        onCheckedChange = { onDraftChange(draft.copy(autoSaveOnExit = it)) },
+                        helpText = stringResource(R.string.emulation_auto_save_on_exit_desc),
+                        onResetToDefault = { onDraftChange(draft.copy(autoSaveOnExit = defaultProfile.autoSaveOnExit)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.emulation_auto_load_on_start),
+                        checked = draft.autoLoadOnStart,
+                        onCheckedChange = { onDraftChange(draft.copy(autoLoadOnStart = it)) },
+                        helpText = stringResource(R.string.emulation_auto_load_on_start_desc),
+                        onResetToDefault = { onDraftChange(draft.copy(autoLoadOnStart = defaultProfile.autoLoadOnStart)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_fps_overlay_mode),
+                        options = listOf(
+                            AppPreferences.FPS_OVERLAY_MODE_SIMPLE to stringResource(R.string.settings_fps_overlay_mode_simple),
+                            AppPreferences.FPS_OVERLAY_MODE_DETAILED to stringResource(R.string.settings_fps_overlay_mode_detailed)
+                        ),
+                        selectedValue = draft.fpsOverlayMode,
+                        onSelected = { onDraftChange(draft.copy(fpsOverlayMode = it)) },
+                        helpText = stringResource(R.string.settings_help_fps_overlay_mode),
+                        onResetToDefault = { onDraftChange(draft.copy(fpsOverlayMode = defaultProfile.fpsOverlayMode)) }
+                    )
+                    HardcoreOverrideRow(draft.achievementsHardcore) { onDraftChange(draft.copy(achievementsHardcore = it)) }
+                    ToggleRow(
+                        title = stringResource(R.string.settings_frame_limiter),
+                        checked = draft.frameLimitEnabled,
+                        onCheckedChange = { onDraftChange(draft.copy(frameLimitEnabled = it)) },
+                        helpText = stringResource(R.string.settings_help_frame_limiter),
+                        onResetToDefault = { onDraftChange(draft.copy(frameLimitEnabled = defaultProfile.frameLimitEnabled)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_ee_cycle_rate),
+                        options = eeCycleRateOptions(),
+                        selectedValue = draft.eeCycleRate,
+                        onSelected = { onDraftChange(draft.copy(eeCycleRate = it)) },
+                        helpText = stringResource(R.string.settings_help_ee_cycle_rate),
+                        onResetToDefault = { onDraftChange(draft.copy(eeCycleRate = defaultProfile.eeCycleRate)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_ee_cycle_skip),
+                        options = eeCycleSkipOptions(),
+                        selectedValue = draft.eeCycleSkip,
+                        onSelected = { onDraftChange(draft.copy(eeCycleSkip = it)) },
+                        helpText = stringResource(R.string.settings_help_ee_cycle_skip),
+                        onResetToDefault = { onDraftChange(draft.copy(eeCycleSkip = defaultProfile.eeCycleSkip)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_ee_fpu_round_mode),
+                        options = floatRoundModeOptions(),
+                        selectedValue = draft.eeFpuRoundMode,
+                        onSelected = { onDraftChange(draft.copy(eeFpuRoundMode = it)) },
+                        helpText = stringResource(R.string.settings_help_ee_fpu_round_mode),
+                        onResetToDefault = { onDraftChange(draft.copy(eeFpuRoundMode = defaultProfile.eeFpuRoundMode)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_vu0_round_mode),
+                        options = floatRoundModeOptions(),
+                        selectedValue = draft.vu0RoundMode,
+                        onSelected = { onDraftChange(draft.copy(vu0RoundMode = it)) },
+                        helpText = stringResource(R.string.settings_help_vu0_round_mode),
+                        onResetToDefault = { onDraftChange(draft.copy(vu0RoundMode = defaultProfile.vu0RoundMode)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_vu1_round_mode),
+                        options = floatRoundModeOptions(),
+                        selectedValue = draft.vu1RoundMode,
+                        onSelected = { onDraftChange(draft.copy(vu1RoundMode = it)) },
+                        helpText = stringResource(R.string.settings_help_vu1_round_mode),
+                        onResetToDefault = { onDraftChange(draft.copy(vu1RoundMode = defaultProfile.vu1RoundMode)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_ee_fpu_clamping),
+                        options = eeFpuClampingModeOptions(),
+                        selectedValue = draft.eeFpuClampingMode,
+                        onSelected = { onDraftChange(draft.copy(eeFpuClampingMode = it)) },
+                        helpText = stringResource(R.string.settings_help_ee_fpu_clamping),
+                        onResetToDefault = { onDraftChange(draft.copy(eeFpuClampingMode = defaultProfile.eeFpuClampingMode)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_vu0_clamping),
+                        options = vuClampingModeOptions(),
+                        selectedValue = draft.vu0ClampingMode,
+                        onSelected = { onDraftChange(draft.copy(vu0ClampingMode = it)) },
+                        helpText = stringResource(R.string.settings_help_vu0_clamping),
+                        onResetToDefault = { onDraftChange(draft.copy(vu0ClampingMode = defaultProfile.vu0ClampingMode)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_vu1_clamping),
+                        options = vuClampingModeOptions(),
+                        selectedValue = draft.vu1ClampingMode,
+                        onSelected = { onDraftChange(draft.copy(vu1ClampingMode = it)) },
+                        helpText = stringResource(R.string.settings_help_vu1_clamping),
+                        onResetToDefault = { onDraftChange(draft.copy(vu1ClampingMode = defaultProfile.vu1ClampingMode)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_game_fixes),
+                        checked = draft.enableGameFixes,
+                        onCheckedChange = { onDraftChange(draft.copy(enableGameFixes = it)) },
+                        helpText = stringResource(R.string.settings_help_game_fixes),
+                        onResetToDefault = { onDraftChange(draft.copy(enableGameFixes = defaultProfile.enableGameFixes)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_auto_gs_hw_fixes),
+                        checked = draft.autoGsHardwareFixes,
+                        onCheckedChange = { onDraftChange(draft.copy(autoGsHardwareFixes = it)) },
+                        helpText = stringResource(R.string.settings_help_auto_gs_hw_fixes),
+                        onResetToDefault = { onDraftChange(draft.copy(autoGsHardwareFixes = defaultProfile.autoGsHardwareFixes)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_ee_timing_hack),
+                        checked = draft.enableEeTimingHack,
+                        onCheckedChange = { onDraftChange(draft.copy(enableEeTimingHack = it)) },
+                        helpText = stringResource(R.string.settings_help_ee_timing_hack),
+                        onResetToDefault = {
+                            onDraftChange(draft.copy(enableEeTimingHack = defaultProfile.enableEeTimingHack))
+                        }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_target_fps_mode),
+                        options = listOf(
+                            0 to stringResource(R.string.settings_target_fps_auto),
+                            1 to stringResource(R.string.settings_target_fps_manual)
+                        ),
+                        selectedValue = if (draft.targetFps <= 0) 0 else 1,
+                        onSelected = { mode ->
+                            onDraftChange(
+                                draft.copy(
+                                    targetFps = if (mode == 0) 0 else resolveManualTargetFps(draft.targetFps, defaultProfile.targetFps)
+                                )
+                            )
+                        },
+                        helpText = stringResource(R.string.settings_help_target_fps),
+                        onResetToDefault = { onDraftChange(draft.copy(targetFps = defaultProfile.targetFps)) }
+                    )
+                    if (draft.targetFps > 0) {
+                        SliderRow(
+                            title = stringResource(R.string.settings_target_fps),
+                            value = draft.targetFps.toFloat(),
+                            valueLabel = draft.targetFps.toString(),
+                            range = 20f..120f,
+                            steps = 99,
+                            onValueChange = { onDraftChange(draft.copy(targetFps = it.toInt())) },
+                            helpText = stringResource(R.string.settings_help_target_fps),
+                            onResetToDefault = { onDraftChange(draft.copy(targetFps = defaultProfile.targetFps)) }
+                        )
+                    }
+                    SliderRow(
+                        title = stringResource(R.string.settings_ntsc_framerate),
+                        value = draft.ntscFramerate,
+                        valueLabel = formatFramerateHz(draft.ntscFramerate),
+                        range = 20f..120f,
+                        steps = 199,
+                        onValueChange = { onDraftChange(draft.copy(ntscFramerate = it)) },
+                        valueLabelForValue = { formatFramerateHz(it) },
+                        helpText = stringResource(R.string.settings_help_ntsc_framerate),
+                        onResetToDefault = { onDraftChange(draft.copy(ntscFramerate = defaultProfile.ntscFramerate)) }
+                    )
+                    SliderRow(
+                        title = stringResource(R.string.settings_pal_framerate),
+                        value = draft.palFramerate,
+                        valueLabel = formatFramerateHz(draft.palFramerate),
+                        range = 20f..120f,
+                        steps = 199,
+                        onValueChange = { onDraftChange(draft.copy(palFramerate = it)) },
+                        valueLabelForValue = { formatFramerateHz(it) },
+                        helpText = stringResource(R.string.settings_help_pal_framerate),
+                        onResetToDefault = { onDraftChange(draft.copy(palFramerate = defaultProfile.palFramerate)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_instant_vu1),
+                        checked = draft.enableInstantVu1,
+                        onCheckedChange = { onDraftChange(draft.copy(enableInstantVu1 = it)) },
+                        helpText = stringResource(R.string.settings_help_instant_vu1),
+                        onResetToDefault = { onDraftChange(draft.copy(enableInstantVu1 = defaultProfile.enableInstantVu1)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_mtvu),
+                        checked = draft.enableMtvu,
+                        onCheckedChange = { onDraftChange(draft.copy(enableMtvu = it)) },
+                        helpText = stringResource(R.string.settings_help_mtvu),
+                        onResetToDefault = { onDraftChange(draft.copy(enableMtvu = defaultProfile.enableMtvu)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_iop_thread),
+                        checked = draft.enableIopThread,
+                        onCheckedChange = { onDraftChange(draft.copy(enableIopThread = it)) },
+                        helpText = stringResource(R.string.settings_help_iop_thread),
+                        onResetToDefault = { onDraftChange(draft.copy(enableIopThread = defaultProfile.enableIopThread)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_vu_aot),
+                        checked = draft.enableVUAot,
+                        onCheckedChange = { onDraftChange(draft.copy(enableVUAot = it)) },
+                        helpText = stringResource(R.string.settings_help_vu_aot),
+                        onResetToDefault = { onDraftChange(draft.copy(enableVUAot = defaultProfile.enableVUAot)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_fast_cdvd),
+                        checked = draft.enableFastCdvd,
+                        onCheckedChange = { onDraftChange(draft.copy(enableFastCdvd = it)) },
+                        helpText = stringResource(R.string.settings_help_fast_cdvd),
+                        onResetToDefault = { onDraftChange(draft.copy(enableFastCdvd = defaultProfile.enableFastCdvd)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_low_latency_mode),
+                        checked = draft.lowLatencyMode,
+                        onCheckedChange = { onDraftChange(draft.copy(lowLatencyMode = it)) },
+                        helpText = stringResource(R.string.settings_help_low_latency_mode),
+                        onResetToDefault = { onDraftChange(draft.copy(lowLatencyMode = defaultProfile.lowLatencyMode)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_skip_duplicate_frames),
+                        checked = draft.skipDuplicateFrames,
+                        onCheckedChange = { onDraftChange(draft.copy(skipDuplicateFrames = it)) },
+                        helpText = stringResource(R.string.settings_help_skip_duplicate_frames),
+                        onResetToDefault = { onDraftChange(draft.copy(skipDuplicateFrames = defaultProfile.skipDuplicateFrames)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_frame_skip),
+                        options = listOf(
+                            0 to stringResource(R.string.settings_frame_skip_off),
+                            1 to "1",
+                            2 to "2",
+                            3 to "3",
+                            4 to "4"
+                        ),
+                        selectedValue = draft.frameSkip,
+                        onSelected = { onDraftChange(draft.copy(frameSkip = it)) },
+                        helpText = stringResource(R.string.settings_help_frame_skip),
+                        onResetToDefault = { onDraftChange(draft.copy(frameSkip = defaultProfile.frameSkip)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_enable_cheats),
+                        checked = draft.enableCheats,
+                        onCheckedChange = { onDraftChange(draft.copy(enableCheats = it)) },
+                        helpText = stringResource(R.string.settings_help_cheats),
+                        onResetToDefault = { onDraftChange(draft.copy(enableCheats = defaultProfile.enableCheats)) }
+                    )
+                }
+            }
+            GameSettingsManagerTab.Controls -> {
+                EditorSection(title = stringResource(R.string.settings_customization_touch_controls_section)) {
+                    PerGameInterfaceSettingsEditor(draft, defaultProfile, controls = true, onDraftChange = onDraftChange)
+                    SelectionRow(
+                        title = stringResource(R.string.settings_customization_touch_controls_style),
+                        options = listOf(
+                            -1 to stringResource(R.string.settings_use_global),
+                            TouchControlVisualStyle.CLASSIC.preferenceValue to stringResource(R.string.settings_customization_touch_style_classic),
+                            TouchControlVisualStyle.LEGACY.preferenceValue to stringResource(R.string.settings_customization_touch_style_glass),
+                            TouchControlVisualStyle.MODERN.preferenceValue to stringResource(R.string.settings_customization_touch_style_neon),
+                            TouchControlVisualStyle.ARCADE.preferenceValue to stringResource(R.string.settings_customization_touch_style_arcade),
+                            TouchControlVisualStyle.MINIMAL.preferenceValue to stringResource(R.string.settings_customization_touch_style_minimal)
+                        ),
+                        selectedValue = draft.touchControlVisualStyle?.preferenceValue ?: -1,
+                        onSelected = { value ->
+                            onDraftChange(
+                                draft.copy(
+                                    touchControlVisualStyle = value.takeIf { it >= 0 }
+                                        ?.let { TouchControlVisualStyle.fromPreference(it) }
+                                )
+                            )
+                        },
+                        helpText = stringResource(R.string.settings_customization_touch_controls_help),
+                        onResetToDefault = { onDraftChange(draft.copy(touchControlVisualStyle = null)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_customization_touch_press_effect),
+                        options = listOf(
+                            -1 to stringResource(R.string.settings_use_global),
+                            TouchControlPressEffect.GROW.preferenceValue to stringResource(R.string.settings_customization_touch_press_effect_grow),
+                            TouchControlPressEffect.SHRINK.preferenceValue to stringResource(R.string.settings_customization_touch_press_effect_shrink),
+                            TouchControlPressEffect.SPRING.preferenceValue to stringResource(R.string.settings_customization_touch_press_effect_spring),
+                            TouchControlPressEffect.GLOW.preferenceValue to stringResource(R.string.settings_customization_touch_press_effect_glow)
+                        ),
+                        selectedValue = draft.touchControlPressEffect?.preferenceValue ?: -1,
+                        onSelected = { value ->
+                            onDraftChange(
+                                draft.copy(
+                                    touchControlPressEffect = value.takeIf { it >= 0 }
+                                        ?.let { TouchControlPressEffect.fromPreference(it) }
+                                )
+                            )
+                        },
+                        helpText = stringResource(R.string.settings_customization_touch_press_effect_help),
+                        onResetToDefault = { onDraftChange(draft.copy(touchControlPressEffect = null)) }
+                    )
+                }
+                EditorSection(title = stringResource(R.string.settings_controls_tab)) {
+                    ToggleRow(
+                        title = stringResource(R.string.settings_racing_mode),
+                        checked = draft.racingMode,
+                        onCheckedChange = { onDraftChange(draft.copy(racingMode = it)) },
+                        helpText = stringResource(R.string.settings_help_racing_mode),
+                        onResetToDefault = { onDraftChange(draft.copy(racingMode = defaultProfile.racingMode)) }
+                    )
+                    StickyButtonsSelector(
+                        selected = draft.stickyButtons,
+                        onSelectionChange = { onDraftChange(draft.copy(stickyButtons = it)) },
+                        modifier = Modifier.sectionContentFullBleed(GameSettingsSectionContentPadding),
+                        helpText = stringResource(R.string.settings_help_sticky_buttons),
+                        onResetToDefault = {
+                            onDraftChange(draft.copy(stickyButtons = defaultProfile.stickyButtons))
+                        }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_stick_toggle_target),
+                        options = listOf(
+                            AppPreferences.STICK_TOGGLE_RIGHT to stringResource(R.string.settings_stick_toggle_right),
+                            AppPreferences.STICK_TOGGLE_LEFT to stringResource(R.string.settings_stick_toggle_left)
+                        ),
+                        selectedValue = draft.stickToggleTarget,
+                        onSelected = { onDraftChange(draft.copy(stickToggleTarget = it)) },
+                        helpText = stringResource(R.string.settings_help_stick_toggle_target),
+                        onResetToDefault = { onDraftChange(draft.copy(stickToggleTarget = defaultProfile.stickToggleTarget)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_touchscreen_left_stick),
+                        checked = draft.touchscreenLeftStick,
+                        onCheckedChange = { onDraftChange(draft.copy(touchscreenLeftStick = it)) },
+                        helpText = stringResource(R.string.settings_help_touchscreen_left_stick),
+                        onResetToDefault = { onDraftChange(draft.copy(touchscreenLeftStick = defaultProfile.touchscreenLeftStick)) }
+                    )
+                    if (draft.touchscreenLeftStick) {
+                        SliderRow(
+                            title = stringResource(R.string.settings_touchscreen_left_stick_sensitivity),
+                            value = draft.touchscreenLeftStickSensitivity.toFloat(),
+                            valueLabel = "${draft.touchscreenLeftStickSensitivity}%",
+                            range = AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN.toFloat()..
+                                AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX.toFloat(),
+                            steps = AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX -
+                                AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN - 1,
+                            onValueChange = {
+                                onDraftChange(draft.copy(touchscreenLeftStickSensitivity = it.roundToInt()))
+                            },
+                            helpText = stringResource(R.string.settings_help_touchscreen_left_stick_sensitivity),
+                            onResetToDefault = {
+                                onDraftChange(
+                                    draft.copy(
+                                        touchscreenLeftStickSensitivity = defaultProfile.touchscreenLeftStickSensitivity
+                                    )
+                                )
+                            }
+                        )
+                    }
+                    ToggleRow(
+                        title = stringResource(R.string.settings_touchscreen_right_stick),
+                        checked = draft.touchscreenRightStick,
+                        onCheckedChange = { onDraftChange(draft.copy(touchscreenRightStick = it)) },
+                        helpText = stringResource(R.string.settings_help_touchscreen_right_stick),
+                        onResetToDefault = { onDraftChange(draft.copy(touchscreenRightStick = defaultProfile.touchscreenRightStick)) }
+                    )
+                    if (draft.touchscreenRightStick) {
+                        SliderRow(
+                            title = stringResource(R.string.settings_touchscreen_right_stick_sensitivity),
+                            value = draft.touchscreenRightStickSensitivity.toFloat(),
+                            valueLabel = "${draft.touchscreenRightStickSensitivity}%",
+                            range = AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN.toFloat()..
+                                AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX.toFloat(),
+                            steps = AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX -
+                                AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN - 1,
+                            onValueChange = {
+                                onDraftChange(draft.copy(touchscreenRightStickSensitivity = it.roundToInt()))
+                            },
+                            helpText = stringResource(R.string.settings_help_touchscreen_right_stick_sensitivity),
+                            onResetToDefault = {
+                                onDraftChange(
+                                    draft.copy(
+                                        touchscreenRightStickSensitivity = defaultProfile.touchscreenRightStickSensitivity
+                                    )
+                                )
+                            }
+                        )
+                    }
+                    ToggleRow(
+                        title = stringResource(R.string.settings_touch_haptics),
+                        checked = draft.touchHaptics,
+                        onCheckedChange = { onDraftChange(draft.copy(touchHaptics = it)) },
+                        helpText = stringResource(R.string.settings_help_touch_haptics),
+                        onResetToDefault = { onDraftChange(draft.copy(touchHaptics = defaultProfile.touchHaptics)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_touch_haptics_preset),
+                        options = touchHapticsPresetOptions(),
+                        selectedValue = draft.touchHapticsPreset,
+                        onSelected = { onDraftChange(draft.copy(touchHapticsPreset = it)) },
+                        helpText = stringResource(R.string.settings_help_touch_haptics_preset),
+                        onResetToDefault = { onDraftChange(draft.copy(touchHapticsPreset = defaultProfile.touchHapticsPreset)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_gyro_mode),
+                        options = gyroModeOptions(),
+                        selectedValue = draft.gyroMode,
+                        onSelected = { onDraftChange(draft.copy(gyroMode = it)) },
+                        helpText = stringResource(R.string.settings_help_gyro_mode),
+                        onResetToDefault = { onDraftChange(draft.copy(gyroMode = defaultProfile.gyroMode)) }
+                    )
+                    if (draft.gyroMode == AppPreferences.GYRO_MODE_AIM) {
+                        SelectionRow(
+                            title = stringResource(R.string.settings_gyro_stick),
+                            options = gyroStickOptions(),
+                            selectedValue = draft.gyroStickTarget
+                                ?: defaultProfile.gyroStickTarget
+                                ?: AppPreferences.DEFAULT_GYRO_STICK_TARGET,
+                            onSelected = { onDraftChange(draft.copy(gyroStickTarget = it)) },
+                            onResetToDefault = {
+                                onDraftChange(draft.copy(gyroStickTarget = defaultProfile.gyroStickTarget))
+                            }
+                        )
+                    }
+                    SelectionRow(
+                        title = stringResource(R.string.settings_light_gun_aim),
+                        options = lightGunAimOptions(),
+                        selectedValue = draft.lightGunAim
+                            ?: defaultProfile.lightGunAim
+                            ?: AppPreferences.DEFAULT_LIGHT_GUN_AIM,
+                        onSelected = { onDraftChange(draft.copy(lightGunAim = it)) },
+                        onResetToDefault = {
+                            onDraftChange(draft.copy(lightGunAim = defaultProfile.lightGunAim))
+                        }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_light_gun_cursor),
+                        checked = draft.lightGunCursorEnabled
+                            ?: defaultProfile.lightGunCursorEnabled
+                            ?: true,
+                        onCheckedChange = { onDraftChange(draft.copy(lightGunCursorEnabled = it)) },
+                        helpText = stringResource(R.string.settings_help_light_gun_cursor),
+                        onResetToDefault = {
+                            onDraftChange(
+                                draft.copy(
+                                    lightGunCursorEnabled = defaultProfile.lightGunCursorEnabled
+                                )
+                            )
+                        }
+                    )
+                    if (draft.gyroMode != AppPreferences.GYRO_MODE_OFF) {
+                        SliderRow(stringResource(R.string.settings_gyro_sensitivity), draft.gyroSensitivity.toFloat(), "${draft.gyroSensitivity}%", 25f..300f, 10, { onDraftChange(draft.copy(gyroSensitivity = it.roundToInt())) }, helpText = stringResource(R.string.settings_help_gyro_sensitivity), onResetToDefault = { onDraftChange(draft.copy(gyroSensitivity = defaultProfile.gyroSensitivity)) })
+                        SliderRow(stringResource(R.string.settings_gyro_smoothing), draft.gyroSmoothing.toFloat(), "${draft.gyroSmoothing}%", 0f..90f, 8, { onDraftChange(draft.copy(gyroSmoothing = it.roundToInt())) }, helpText = stringResource(R.string.settings_help_gyro_smoothing), onResetToDefault = { onDraftChange(draft.copy(gyroSmoothing = defaultProfile.gyroSmoothing)) })
+                        ToggleRow(stringResource(R.string.settings_gyro_invert_x), draft.gyroInvertX, { onDraftChange(draft.copy(gyroInvertX = it)) }, onResetToDefault = { onDraftChange(draft.copy(gyroInvertX = defaultProfile.gyroInvertX)) })
+                        if (draft.gyroMode == AppPreferences.GYRO_MODE_AIM ||
+                            draft.gyroMode == AppPreferences.GYRO_MODE_LIGHT_GUN) {
+                            ToggleRow(stringResource(R.string.settings_gyro_invert_y), draft.gyroInvertY, { onDraftChange(draft.copy(gyroInvertY = it)) }, onResetToDefault = { onDraftChange(draft.copy(gyroInvertY = defaultProfile.gyroInvertY)) })
+                        }
+                    }
+                    ToggleRow(
+                        title = stringResource(R.string.settings_gamepad_right_stick_up_to_r2),
+                        checked = draft.gamepadRightStickUpToR2,
+                        onCheckedChange = { onDraftChange(draft.copy(gamepadRightStickUpToR2 = it)) },
+                        helpText = stringResource(R.string.settings_help_gamepad_right_stick_up_to_r2),
+                        onResetToDefault = { onDraftChange(draft.copy(gamepadRightStickUpToR2 = defaultProfile.gamepadRightStickUpToR2)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_gamepad_right_stick_down_to_l2),
+                        checked = draft.gamepadRightStickDownToL2,
+                        onCheckedChange = { onDraftChange(draft.copy(gamepadRightStickDownToL2 = it)) },
+                        helpText = stringResource(R.string.settings_help_gamepad_right_stick_down_to_l2),
+                        onResetToDefault = { onDraftChange(draft.copy(gamepadRightStickDownToL2 = defaultProfile.gamepadRightStickDownToL2)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_gamepad_button_haptics),
+                        checked = draft.gamepadButtonHaptics,
+                        onCheckedChange = { onDraftChange(draft.copy(gamepadButtonHaptics = it)) },
+                        helpText = stringResource(R.string.settings_help_gamepad_button_haptics),
+                        onResetToDefault = { onDraftChange(draft.copy(gamepadButtonHaptics = defaultProfile.gamepadButtonHaptics)) }
+                    )
+                    SliderRow(
+                        title = stringResource(R.string.settings_gamepad_stick_deadzone),
+                        value = draft.gamepadStickDeadzone.toFloat(),
+                        valueLabel = "${draft.gamepadStickDeadzone}%",
+                        range = 0f..35f,
+                        steps = 34,
+                        onValueChange = { onDraftChange(draft.copy(gamepadStickDeadzone = it.roundToInt())) },
+                        helpText = stringResource(R.string.settings_help_gamepad_stick_deadzone),
+                        onResetToDefault = { onDraftChange(draft.copy(gamepadStickDeadzone = defaultProfile.gamepadStickDeadzone)) }
+                    )
+                    SliderRow(
+                        title = stringResource(R.string.settings_gamepad_left_stick_sensitivity),
+                        value = draft.gamepadLeftStickSensitivity.toFloat(),
+                        valueLabel = "${draft.gamepadLeftStickSensitivity}%",
+                        range = 50f..200f,
+                        steps = 149,
+                        onValueChange = { onDraftChange(draft.copy(gamepadLeftStickSensitivity = it.roundToInt())) },
+                        helpText = stringResource(R.string.settings_help_gamepad_left_stick_sensitivity),
+                        onResetToDefault = { onDraftChange(draft.copy(gamepadLeftStickSensitivity = defaultProfile.gamepadLeftStickSensitivity)) }
+                    )
+                    SliderRow(
+                        title = stringResource(R.string.settings_gamepad_right_stick_sensitivity),
+                        value = draft.gamepadRightStickSensitivity.toFloat(),
+                        valueLabel = "${draft.gamepadRightStickSensitivity}%",
+                        range = 50f..200f,
+                        steps = 149,
+                        onValueChange = { onDraftChange(draft.copy(gamepadRightStickSensitivity = it.roundToInt())) },
+                        helpText = stringResource(R.string.settings_help_gamepad_right_stick_sensitivity),
+                        onResetToDefault = { onDraftChange(draft.copy(gamepadRightStickSensitivity = defaultProfile.gamepadRightStickSensitivity)) }
+                    )
+                    SliderRow(
+                        title = stringResource(R.string.settings_gamepad_left_stick_negative_deadzone),
+                        value = draft.gamepadLeftStickNegativeDeadzone.toFloat(),
+                        valueLabel = "${draft.gamepadLeftStickNegativeDeadzone}%",
+                        range = 0f..AppPreferences.GAMEPAD_STICK_NEGATIVE_DEADZONE_MAX.toFloat(),
+                        steps = AppPreferences.GAMEPAD_STICK_NEGATIVE_DEADZONE_MAX - 1,
+                        onValueChange = { onDraftChange(draft.copy(gamepadLeftStickNegativeDeadzone = it.roundToInt())) },
+                        helpText = stringResource(R.string.settings_help_gamepad_stick_negative_deadzone),
+                        onResetToDefault = { onDraftChange(draft.copy(gamepadLeftStickNegativeDeadzone = defaultProfile.gamepadLeftStickNegativeDeadzone)) }
+                    )
+                    SliderRow(
+                        title = stringResource(R.string.settings_gamepad_right_stick_negative_deadzone),
+                        value = draft.gamepadRightStickNegativeDeadzone.toFloat(),
+                        valueLabel = "${draft.gamepadRightStickNegativeDeadzone}%",
+                        range = 0f..AppPreferences.GAMEPAD_STICK_NEGATIVE_DEADZONE_MAX.toFloat(),
+                        steps = AppPreferences.GAMEPAD_STICK_NEGATIVE_DEADZONE_MAX - 1,
+                        onValueChange = { onDraftChange(draft.copy(gamepadRightStickNegativeDeadzone = it.roundToInt())) },
+                        helpText = stringResource(R.string.settings_help_gamepad_stick_negative_deadzone),
+                        onResetToDefault = { onDraftChange(draft.copy(gamepadRightStickNegativeDeadzone = defaultProfile.gamepadRightStickNegativeDeadzone)) }
+                    )
+                    SliderRow(
+                        title = stringResource(R.string.settings_gamepad_left_stick_anti_deadzone),
+                        value = draft.gamepadLeftStickAntiDeadzone.toFloat(),
+                        valueLabel = "${draft.gamepadLeftStickAntiDeadzone}%",
+                        range = 0f..AppPreferences.GAMEPAD_STICK_ANTI_DEADZONE_MAX.toFloat(),
+                        steps = AppPreferences.GAMEPAD_STICK_ANTI_DEADZONE_MAX - 1,
+                        onValueChange = { onDraftChange(draft.copy(gamepadLeftStickAntiDeadzone = it.roundToInt())) },
+                        helpText = stringResource(R.string.settings_help_gamepad_stick_anti_deadzone),
+                        onResetToDefault = { onDraftChange(draft.copy(gamepadLeftStickAntiDeadzone = defaultProfile.gamepadLeftStickAntiDeadzone)) }
+                    )
+                    SliderRow(
+                        title = stringResource(R.string.settings_gamepad_right_stick_anti_deadzone),
+                        value = draft.gamepadRightStickAntiDeadzone.toFloat(),
+                        valueLabel = "${draft.gamepadRightStickAntiDeadzone}%",
+                        range = 0f..AppPreferences.GAMEPAD_STICK_ANTI_DEADZONE_MAX.toFloat(),
+                        steps = AppPreferences.GAMEPAD_STICK_ANTI_DEADZONE_MAX - 1,
+                        onValueChange = { onDraftChange(draft.copy(gamepadRightStickAntiDeadzone = it.roundToInt())) },
+                        helpText = stringResource(R.string.settings_help_gamepad_stick_anti_deadzone),
+                        onResetToDefault = { onDraftChange(draft.copy(gamepadRightStickAntiDeadzone = defaultProfile.gamepadRightStickAntiDeadzone)) }
+                    )
+                    SliderRow(
+                        title = stringResource(R.string.settings_gamepad_left_stick_curve),
+                        value = draft.gamepadLeftStickCurve.toFloat(),
+                        valueLabel = "${draft.gamepadLeftStickCurve}%",
+                        range = AppPreferences.GAMEPAD_STICK_CURVE_MIN.toFloat()..AppPreferences.GAMEPAD_STICK_CURVE_MAX.toFloat(),
+                        steps = AppPreferences.GAMEPAD_STICK_CURVE_MAX - AppPreferences.GAMEPAD_STICK_CURVE_MIN - 1,
+                        onValueChange = { onDraftChange(draft.copy(gamepadLeftStickCurve = it.roundToInt())) },
+                        helpText = stringResource(R.string.settings_help_gamepad_stick_curve),
+                        onResetToDefault = { onDraftChange(draft.copy(gamepadLeftStickCurve = defaultProfile.gamepadLeftStickCurve)) }
+                    )
+                    SliderRow(
+                        title = stringResource(R.string.settings_gamepad_right_stick_curve),
+                        value = draft.gamepadRightStickCurve.toFloat(),
+                        valueLabel = "${draft.gamepadRightStickCurve}%",
+                        range = AppPreferences.GAMEPAD_STICK_CURVE_MIN.toFloat()..AppPreferences.GAMEPAD_STICK_CURVE_MAX.toFloat(),
+                        steps = AppPreferences.GAMEPAD_STICK_CURVE_MAX - AppPreferences.GAMEPAD_STICK_CURVE_MIN - 1,
+                        onValueChange = { onDraftChange(draft.copy(gamepadRightStickCurve = it.roundToInt())) },
+                        helpText = stringResource(R.string.settings_help_gamepad_stick_curve),
+                        onResetToDefault = { onDraftChange(draft.copy(gamepadRightStickCurve = defaultProfile.gamepadRightStickCurve)) }
+                    )
+                    SliderRow(
+                        title = stringResource(R.string.settings_pressure_modifier_amount),
+                        value = draft.pressureModifierAmount.toFloat(),
+                        valueLabel = "${draft.pressureModifierAmount}%",
+                        range = 1f..100f,
+                        steps = 98,
+                        onValueChange = { onDraftChange(draft.copy(pressureModifierAmount = it.roundToInt())) },
+                        helpText = stringResource(R.string.settings_help_pressure_modifier_amount),
+                        onResetToDefault = { onDraftChange(draft.copy(pressureModifierAmount = defaultProfile.pressureModifierAmount)) }
+                    )
+                }
+                PerGameGamepadMappingSection(
+                    bindingsByPad = draft.gamepadBindingsByPad,
+                    onBindingsChange = { bindings ->
+                        onDraftChange(draft.copy(gamepadBindingsByPad = bindings))
+                    }
+                )
+                PerGameKeyboardMouseSettingsSection(
+                    override = draft.keyboardMouse,
+                    globalSettings = globalKeyboardMouseSettings,
+                    onOverrideChange = { keyboardMouse ->
+                        onDraftChange(draft.copy(keyboardMouse = keyboardMouse))
+                    }
+                )
+            }
+            GameSettingsManagerTab.Fixes -> {
+                EditorSection(title = stringResource(R.string.settings_image_processing)) {
+                    SelectionRow(
+                        title = stringResource(R.string.settings_deinterlacing),
+                        options = deinterlacingOptions(),
+                        selectedValue = draft.deinterlaceMode,
+                        onSelected = { onDraftChange(draft.copy(deinterlaceMode = it)) },
+                        helpText = stringResource(R.string.settings_help_deinterlacing),
+                        onResetToDefault = { onDraftChange(draft.copy(deinterlaceMode = defaultProfile.deinterlaceMode)) }
+                    )
+                    SelectionRow(
+                        title = stringResource(R.string.settings_dithering),
+                        options = ditheringOptions(),
+                        selectedValue = draft.dithering,
+                        onSelected = { onDraftChange(draft.copy(dithering = it)) },
+                        helpText = stringResource(R.string.settings_help_dithering),
+                        onResetToDefault = { onDraftChange(draft.copy(dithering = defaultProfile.dithering)) }
+                    )
+                }
+                EditorSection(title = stringResource(R.string.settings_patches_section)) {
+                    ToggleRow(
+                        title = stringResource(R.string.settings_widescreen_patches),
+                        checked = draft.enableWidescreenPatches,
+                        onCheckedChange = { onDraftChange(draft.copy(enableWidescreenPatches = it)) },
+                        helpText = stringResource(R.string.settings_help_widescreen_patches),
+                        onResetToDefault = { onDraftChange(draft.copy(enableWidescreenPatches = defaultProfile.enableWidescreenPatches)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_no_interlacing_patches),
+                        checked = draft.enableNoInterlacingPatches,
+                        onCheckedChange = { onDraftChange(draft.copy(enableNoInterlacingPatches = it)) },
+                        helpText = stringResource(R.string.settings_help_no_interlacing_patches),
+                        onResetToDefault = { onDraftChange(draft.copy(enableNoInterlacingPatches = defaultProfile.enableNoInterlacingPatches)) }
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_anti_blur),
+                        checked = draft.antiBlur,
+                        onCheckedChange = { onDraftChange(draft.copy(antiBlur = it)) },
+                        helpText = stringResource(R.string.settings_help_anti_blur),
+                        onResetToDefault = { onDraftChange(draft.copy(antiBlur = defaultProfile.antiBlur)) }
+                    )
+                }
+                HardwareFixesRows(
+                    draft = draft,
+                    defaultProfile = defaultProfile,
+                    onDraftChange = onDraftChange
+                )
+                UpscalingFixesRows(
+                    draft = draft,
+                    defaultProfile = defaultProfile,
+                    onDraftChange = onDraftChange
+                )
+            }
+        }
+    }
+}
+
+@Composable
+@Suppress("unused")
+fun PerGameSettingsQuickEditorDialog(
+    game: GameItem,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val repository = remember(context) { PerGameSettingsRepository(context) }
+    val preferences = remember(context) { AppPreferences(context) }
+    val settingsSnapshot by preferences.settingsSnapshot.collectAsState(initial = SettingsSnapshot())
+    val autoSaveEnabled by preferences.autoSaveEnabled.collectAsState(initial = false)
+    val autoSaveIntervalMinutes by preferences.autoSaveIntervalMinutes.collectAsState(initial = 1)
+    val frameGenerationForDefault = remember(context, settingsSnapshot) {
+        FrameGenerationManager(context).snapshot()
+    }
+    val initialProfile = remember(
+        game.path,
+        game.title,
+        game.serial,
+        settingsSnapshot,
+        frameGenerationForDefault,
+        autoSaveEnabled,
+        autoSaveIntervalMinutes
+    ) {
+        val base = settingsSnapshot.toPerGameSettings(game)
+        val withLsfg = base.copy(
+            frameGenerationEnabled = frameGenerationForDefault.settings.enabled,
+            frameGenerationMultiplier = frameGenerationForDefault.settings.multiplier,
+            frameGenerationPerformance = frameGenerationForDefault.settings.performanceMode,
+            frameGenerationFlowScale = frameGenerationForDefault.settings.flowScalePercent,
+            frameGenerationTargetRate = frameGenerationForDefault.settings.targetRefreshRate,
+            interfaceSettings = settingsSnapshot.toInterfaceSettings(autoSaveEnabled, autoSaveIntervalMinutes)
+        )
+        repository.get(game.path) ?: withLsfg
+    }
+    var foreignDedicatedCardNames by remember(game.path) { mutableStateOf(emptySet<String>()) }
+    LaunchedEffect(game.path) {
+        foreignDedicatedCardNames = withContext(Dispatchers.IO) {
+            repository.getAll()
+                .asSequence()
+                .filter { it.gameKey != game.path }
+                .flatMap { it.dedicatedMemoryCards.asSequence() }
+                .map { it.lowercase() }
+                .toSet()
+        }
+    }
+
+    GameSettingsEditorDialog(
+        profile = initialProfile,
+        foreignDedicatedCardNames = foreignDedicatedCardNames,
+        onDismiss = onDismiss,
+        onSave = { updated ->
+            repository.save(updated)
+        }
+    )
+}
+
+@Composable
+@Suppress("unused")
+private fun GameSettingsProfileCard(
+    profile: PerGameSettings,
+    onEdit: () -> Unit,
+    onReset: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val context = LocalContext.current
+    val dateText = remember(profile.updatedAt) {
+        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(profile.updatedAt)
+    }
+    val coverPath = remember(profile.gameKey, profile.gameSerial, profile.gameTitle) {
+        GameRepository().findCoverForGame(
+            path = profile.gameKey,
+            context = context,
+            serial = profile.gameSerial,
+            title = profile.gameTitle
+        )
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = neonShape(20.dp),
+        tonalElevation = 1.dp,
+        shadowElevation = 3.dp,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                GameCoverArt(
+                    coverPath = coverPath,
+                    fallbackTitle = profile.gameTitle,
+                    modifier = Modifier
+                        .width(66.dp)
+                        .height(90.dp)
+                        .clip(gameCoverShape(coverPath, neonShape(16.dp))),
+                    contentScale = gameCoverContentScale(coverPath, ContentScale.Crop)
+                )
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = profile.gameTitle,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        val subtitle = buildList {
+                            profile.gameSerial?.takeIf { it.isNotBlank() }?.let(::add)
+                            add(dateText)
+                        }.joinToString("  /  ")
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ProfileBadge(text = stringResource(rendererLabel(profile.renderer)))
+                        ProfileBadge(
+                            text = formatUpscaleLabel(
+                                value = profile.upscaleMultiplier,
+                                nativeLabel = stringResource(R.string.settings_upscale_native)
+                            )
+                        )
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                ProfileActionIconButton(
+                    modifier = Modifier.weight(1f),
+                    icon = Icons.Rounded.Tune,
+                    title = stringResource(R.string.edit),
+                    onClick = onEdit
+                )
+                ProfileActionIconButton(
+                    modifier = Modifier.weight(1f),
+                    icon = Icons.Rounded.Restore,
+                    title = stringResource(R.string.game_settings_manager_reset_game_title),
+                    onClick = onReset
+                )
+                ProfileActionIconButton(
+                    modifier = Modifier.weight(1f),
+                    icon = Icons.Rounded.DeleteOutline,
+                    title = stringResource(R.string.delete),
+                    onClick = onDelete,
+                    destructive = true
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GameSettingsEditorDialog(
+    profile: PerGameSettings,
+    foreignDedicatedCardNames: Set<String>,
+    onDismiss: () -> Unit,
+    onSave: (PerGameSettings) -> Unit
+) {
+    val context = LocalContext.current
+    val preferences = remember(context) { AppPreferences(context) }
+    val memoryCardRepository = remember(context, preferences) { MemoryCardRepository(context, preferences) }
+    var memoryCards by remember { mutableStateOf(emptyList<MemoryCardInfo>()) }
+    LaunchedEffect(memoryCardRepository) {
+        memoryCards = withContext(Dispatchers.IO) { memoryCardRepository.listCards() }
+    }
+    val scope = rememberCoroutineScope()
+    var isCreatingCard by remember { mutableStateOf(false) }
+    val createCardLabel = stringResource(R.string.per_game_memory_card_create)
+    val createCardFailedMessage = stringResource(R.string.memory_card_create_failed)
+    val settingsSnapshot by preferences.settingsSnapshot.collectAsState(initial = SettingsSnapshot())
+    val autoSaveEnabled by preferences.autoSaveEnabled.collectAsState(initial = false)
+    val autoSaveIntervalMinutes by preferences.autoSaveIntervalMinutes.collectAsState(initial = 1)
+    val frameGenerationForDefault = remember(context, settingsSnapshot) {
+        FrameGenerationManager(context).snapshot()
+    }
+    val nativeUpscaleLabel = stringResource(R.string.settings_upscale_native)
+    val defaultProfile = remember(settingsSnapshot, profile.gameKey, profile.gameTitle, profile.gameSerial, frameGenerationForDefault, autoSaveEnabled, autoSaveIntervalMinutes) {
+        val base = settingsSnapshot.toPerGameSettings(
+            GameItem(
+                path = profile.gameKey,
+                title = profile.gameTitle,
+                fileName = profile.gameTitle,
+                fileSize = 0L,
+                lastModified = profile.updatedAt,
+                serial = profile.gameSerial
+            )
+        )
+        base.copy(
+            frameGenerationEnabled = frameGenerationForDefault.settings.enabled,
+            frameGenerationMultiplier = frameGenerationForDefault.settings.multiplier,
+            frameGenerationPerformance = frameGenerationForDefault.settings.performanceMode,
+            frameGenerationFlowScale = frameGenerationForDefault.settings.flowScalePercent,
+            frameGenerationTargetRate = frameGenerationForDefault.settings.targetRefreshRate,
+            interfaceSettings = settingsSnapshot.toInterfaceSettings(autoSaveEnabled, autoSaveIntervalMinutes)
+        )
+    }
+    val editableProfile = remember(profile, defaultProfile) {
+        profile.resolveAgainst(defaultProfile)
+    }
+    var draft by remember(editableProfile) { mutableStateOf(editableProfile) }
+    var hasUserChange by remember(editableProfile) { mutableStateOf(false) }
+
+    fun createDedicatedCard(assign: (String) -> Unit) {
+        if (isCreatingCard) return
+        scope.launch {
+            isCreatingCard = true
+            val baseName = draft.gameSerial?.takeIf { it.isNotBlank() } ?: draft.gameTitle
+            val created = withContext(Dispatchers.IO) { memoryCardRepository.ensureGameCard(baseName) }
+            if (created != null) {
+                memoryCards = withContext(Dispatchers.IO) { memoryCardRepository.listCards() }
+                assign(created)
+            } else {
+                Toast.makeText(context, createCardFailedMessage, Toast.LENGTH_SHORT).show()
+            }
+            isCreatingCard = false
+        }
+    }
+
+    val canCreateDedicatedCard = remember(draft.dedicatedMemoryCards, memoryCards) {
+        draft.dedicatedMemoryCards.none { dedicated ->
+            memoryCards.any { it.name.equals(dedicated, ignoreCase = true) }
+        }
+    }
+
+    val containerSize = LocalWindowInfo.current.containerSize
+    val density = LocalDensity.current
+    val windowWidth = with(density) { containerSize.width.toDp() }
+    val windowHeight = with(density) { containerSize.height.toDp() }
+    val isLandscape = windowWidth > windowHeight
+    val maxDialogHeight = if (isLandscape) {
+        (windowHeight - 48.dp).coerceAtLeast(300.dp)
+    } else {
+        (windowHeight - 72.dp).coerceAtLeast(440.dp)
+    }
+    val dialogWidthFraction = if (isLandscape) 0.98f else 0.94f
+    val dialogMaxWidth = if (isLandscape) 1600.dp else 720.dp
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        LaunchedEffect(draft) {
+            if (hasUserChange) {
+                val preservedDraft = draft.copy(
+                    touchControlsLayout = profile.touchControlsLayout ?: draft.touchControlsLayout,
+                    customTouchControls = profile.customTouchControls ?: draft.customTouchControls
+                )
+                onSave(
+                    preservedDraft.withOnlyOverridesComparedWith(
+                        defaultProfile,
+                        profile.providedKeys?.intersect(setOf("hwDownloadMode", "blendingAccuracy"))
+                            ?: setOf("hwDownloadMode", "blendingAccuracy")
+                    )
+                )
+            } else {
+                hasUserChange = true
+            }
+        }
+        val maxUpscaleMultiplier = remember(draft.renderer) {
+            EmulatorBridge.getMaxUpscaleMultiplier(normalizeManagerRenderer(draft.renderer))
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    start = if (isLandscape) 10.dp else 14.dp,
+                    top = if (isLandscape) 10.dp else 14.dp,
+                    end = if (isLandscape) 10.dp else 14.dp,
+                    bottom = if (isLandscape) 4.dp else 8.dp
+                )
+                .imePadding(),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(dialogWidthFraction)
+                    .widthIn(max = dialogMaxWidth),
+                shape = neonShape(30.dp),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = maxDialogHeight)
+                        .verticalScroll(rememberScrollState())
+                        .padding(start = 24.dp, top = 22.dp, end = 24.dp, bottom = 30.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    GameSettingsEditorHeader(
+                        profile = draft
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f))
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.game_settings_manager_editor_desc),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        EditorSection(title = stringResource(R.string.game_settings_manager_section_profile)) {
+                            SelectionRow(
+                                title = stringResource(R.string.settings_renderer),
+                                options = listOf(
+                                    12 to stringResource(R.string.settings_renderer_opengl),
+                                    14 to stringResource(R.string.settings_renderer_vulkan),
+                                    13 to stringResource(R.string.settings_renderer_software)
+                                ),
+                                selectedValue = normalizeManagerRenderer(draft.renderer),
+                                onSelected = { draft = draft.copy(renderer = it) },
+                                helpText = stringResource(R.string.settings_help_renderer),
+                                onResetToDefault = { draft = draft.copy(renderer = normalizeManagerRenderer(defaultProfile.renderer)) }
+                            )
+                            GpuBackendProfileControls(
+                                draft = draft,
+                                defaultProfile = defaultProfile,
+                                onDraftChange = { draft = it }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_upscale),
+                                options = buildUpscaleOptions(nativeUpscaleLabel, maxUpscaleMultiplier),
+                                selectedValue = upscaleMultiplierValue(draft.upscaleMultiplier),
+                                onSelected = { draft = draft.copy(upscaleMultiplier = upscaleKeyToMultiplier(it)) },
+                                helpText = stringResource(R.string.settings_help_upscale),
+                                onResetToDefault = { draft = draft.copy(upscaleMultiplier = defaultProfile.upscaleMultiplier) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_aspect_ratio),
+                                options = listOf(
+                                    1 to stringResource(R.string.settings_aspect_ratio_auto),
+                                    2 to stringResource(R.string.settings_aspect_ratio_43),
+                                    3 to stringResource(R.string.settings_aspect_ratio_169),
+                                    4 to stringResource(R.string.settings_aspect_ratio_107),
+                                    5 to stringResource(R.string.settings_aspect_ratio_219),
+                                    6 to stringResource(R.string.settings_aspect_ratio_209),
+                                    7 to stringResource(R.string.settings_aspect_ratio_1959),
+                                    0 to stringResource(R.string.emulation_aspect_stretch)
+                                ),
+                                selectedValue = draft.aspectRatio,
+                                onSelected = { draft = draft.copy(aspectRatio = it) },
+                                helpText = stringResource(R.string.settings_help_aspect_ratio),
+                                onResetToDefault = { draft = draft.copy(aspectRatio = defaultProfile.aspectRatio) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.emulation_local_multiplayer_title),
+                                options = localMultiplayerOptions(),
+                                selectedValue = draft.localMultiplayerMode,
+                                onSelected = { draft = draft.copy(localMultiplayerMode = it) },
+                                helpText = stringResource(R.string.emulation_local_multiplayer_help),
+                                onResetToDefault = {
+                                    draft = draft.copy(localMultiplayerMode = defaultProfile.localMultiplayerMode)
+                                }
+                            )
+                        }
+                        EditorSection(title = stringResource(R.string.per_game_memory_cards_title)) {
+                            Text(
+                                text = stringResource(R.string.per_game_memory_cards_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            MemoryCardSlotSelectionRow(
+                                title = stringResource(R.string.memory_card_slot_1),
+                                cards = memoryCards,
+                                selectedCardName = draft.memoryCardSlot1,
+                                excludedCardName = draft.memoryCardSlot2,
+                                hiddenCardNames = foreignDedicatedCardNames,
+                                createCardLabel = createCardLabel,
+                                showCreateCardOption = canCreateDedicatedCard,
+                                helpText = stringResource(R.string.settings_help_per_game_memory_cards),
+                                onCreateDedicatedCard = {
+                                    createDedicatedCard { name ->
+                                        if (name.equals(draft.memoryCardSlot2, ignoreCase = true)) {
+                                            return@createDedicatedCard
+                                        }
+                                        draft = draft.copy(
+                                            memoryCardSlot1 = name,
+                                            dedicatedMemoryCards = (draft.dedicatedMemoryCards + name)
+                                                .distinctBy { it.lowercase() }
+                                        )
+                                    }
+                                },
+                                onSelected = { draft = draft.copy(memoryCardSlot1 = it) }
+                            )
+                            MemoryCardSlotSelectionRow(
+                                title = stringResource(R.string.memory_card_slot_2),
+                                cards = memoryCards,
+                                selectedCardName = draft.memoryCardSlot2,
+                                excludedCardName = draft.memoryCardSlot1,
+                                hiddenCardNames = foreignDedicatedCardNames,
+                                createCardLabel = createCardLabel,
+                                showCreateCardOption = canCreateDedicatedCard,
+                                helpText = stringResource(R.string.settings_help_per_game_memory_cards),
+                                onCreateDedicatedCard = {
+                                    createDedicatedCard { name ->
+                                        if (name.equals(draft.memoryCardSlot1, ignoreCase = true)) {
+                                            return@createDedicatedCard
+                                        }
+                                        draft = draft.copy(
+                                            memoryCardSlot2 = name,
+                                            dedicatedMemoryCards = (draft.dedicatedMemoryCards + name)
+                                                .distinctBy { it.lowercase() }
+                                        )
+                                    }
+                                },
+                                onSelected = { draft = draft.copy(memoryCardSlot2 = it) }
+                            )
+                        }
+                        EditorSection(title = stringResource(R.string.settings_customization_touch_controls_section)) {
+                            PerGameInterfaceSettingsEditor(draft, defaultProfile, controls = true, onDraftChange = { draft = it })
+                            SelectionRow(
+                                title = stringResource(R.string.settings_customization_touch_controls_style),
+                                options = listOf(
+                                    -1 to stringResource(R.string.settings_use_global),
+                                    TouchControlVisualStyle.CLASSIC.preferenceValue to stringResource(R.string.settings_customization_touch_style_classic),
+                                    TouchControlVisualStyle.LEGACY.preferenceValue to stringResource(R.string.settings_customization_touch_style_glass),
+                                    TouchControlVisualStyle.MODERN.preferenceValue to stringResource(R.string.settings_customization_touch_style_neon),
+                                    TouchControlVisualStyle.ARCADE.preferenceValue to stringResource(R.string.settings_customization_touch_style_arcade),
+                                    TouchControlVisualStyle.MINIMAL.preferenceValue to stringResource(R.string.settings_customization_touch_style_minimal)
+                                ),
+                                selectedValue = draft.touchControlVisualStyle?.preferenceValue ?: -1,
+                                onSelected = { value ->
+                                    draft = draft.copy(
+                                        touchControlVisualStyle = value.takeIf { it >= 0 }
+                                            ?.let { TouchControlVisualStyle.fromPreference(it) }
+                                    )
+                                },
+                                helpText = stringResource(R.string.settings_customization_touch_controls_help),
+                                onResetToDefault = { draft = draft.copy(touchControlVisualStyle = null) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_customization_touch_press_effect),
+                                options = listOf(
+                                    -1 to stringResource(R.string.settings_use_global),
+                                    TouchControlPressEffect.GROW.preferenceValue to stringResource(R.string.settings_customization_touch_press_effect_grow),
+                                    TouchControlPressEffect.SHRINK.preferenceValue to stringResource(R.string.settings_customization_touch_press_effect_shrink),
+                                    TouchControlPressEffect.SPRING.preferenceValue to stringResource(R.string.settings_customization_touch_press_effect_spring),
+                                    TouchControlPressEffect.GLOW.preferenceValue to stringResource(R.string.settings_customization_touch_press_effect_glow)
+                                ),
+                                selectedValue = draft.touchControlPressEffect?.preferenceValue ?: -1,
+                                onSelected = { value ->
+                                    draft = draft.copy(
+                                        touchControlPressEffect = value.takeIf { it >= 0 }
+                                            ?.let { TouchControlPressEffect.fromPreference(it) }
+                                    )
+                                },
+                                helpText = stringResource(R.string.settings_customization_touch_press_effect_help),
+                                onResetToDefault = { draft = draft.copy(touchControlPressEffect = null) }
+                            )
+                        }
+                        EditorSection(title = stringResource(R.string.game_settings_manager_section_runtime)) {
+                            PerGameInterfaceSettingsEditor(draft, defaultProfile, controls = false, onDraftChange = { draft = it })
+                            ToggleRow(
+                                title = stringResource(R.string.settings_show_fps),
+                                checked = draft.showFps,
+                                onCheckedChange = { draft = draft.copy(showFps = it) },
+                                helpText = stringResource(R.string.settings_help_show_fps),
+                                onResetToDefault = { draft = draft.copy(showFps = defaultProfile.showFps) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_fast_boot),
+                                checked = draft.enableFastBoot,
+                                onCheckedChange = { draft = draft.copy(enableFastBoot = it) },
+                                helpText = stringResource(R.string.settings_help_fast_boot),
+                                onResetToDefault = { draft = draft.copy(enableFastBoot = defaultProfile.enableFastBoot) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_racing_mode),
+                                checked = draft.racingMode,
+                                onCheckedChange = { draft = draft.copy(racingMode = it) },
+                                helpText = stringResource(R.string.settings_help_racing_mode),
+                                onResetToDefault = { draft = draft.copy(racingMode = defaultProfile.racingMode) }
+                            )
+                            StickyButtonsSelector(
+                                selected = draft.stickyButtons,
+                                onSelectionChange = { draft = draft.copy(stickyButtons = it) },
+                                modifier = Modifier.sectionContentFullBleed(GameSettingsSectionContentPadding),
+                                helpText = stringResource(R.string.settings_help_sticky_buttons),
+                                onResetToDefault = {
+                                    draft = draft.copy(stickyButtons = defaultProfile.stickyButtons)
+                                }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_stick_toggle_target),
+                                options = listOf(
+                                    AppPreferences.STICK_TOGGLE_RIGHT to stringResource(R.string.settings_stick_toggle_right),
+                                    AppPreferences.STICK_TOGGLE_LEFT to stringResource(R.string.settings_stick_toggle_left)
+                                ),
+                                selectedValue = draft.stickToggleTarget,
+                                onSelected = { draft = draft.copy(stickToggleTarget = it) },
+                                helpText = stringResource(R.string.settings_help_stick_toggle_target),
+                                onResetToDefault = { draft = draft.copy(stickToggleTarget = defaultProfile.stickToggleTarget) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_touchscreen_left_stick),
+                                checked = draft.touchscreenLeftStick,
+                                onCheckedChange = { draft = draft.copy(touchscreenLeftStick = it) },
+                                helpText = stringResource(R.string.settings_help_touchscreen_left_stick),
+                                onResetToDefault = { draft = draft.copy(touchscreenLeftStick = defaultProfile.touchscreenLeftStick) }
+                            )
+                            if (draft.touchscreenLeftStick) {
+                                SliderRow(
+                                    title = stringResource(R.string.settings_touchscreen_left_stick_sensitivity),
+                                    value = draft.touchscreenLeftStickSensitivity.toFloat(),
+                                    valueLabel = "${draft.touchscreenLeftStickSensitivity}%",
+                                    range = AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN.toFloat()..
+                                        AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX.toFloat(),
+                                    steps = AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX -
+                                        AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN - 1,
+                                    onValueChange = {
+                                        draft = draft.copy(touchscreenLeftStickSensitivity = it.roundToInt())
+                                    },
+                                    helpText = stringResource(R.string.settings_help_touchscreen_left_stick_sensitivity),
+                                    onResetToDefault = {
+                                        draft = draft.copy(
+                                            touchscreenLeftStickSensitivity = defaultProfile.touchscreenLeftStickSensitivity
+                                        )
+                                    }
+                                )
+                            }
+                            ToggleRow(
+                                title = stringResource(R.string.settings_touchscreen_right_stick),
+                                checked = draft.touchscreenRightStick,
+                                onCheckedChange = { draft = draft.copy(touchscreenRightStick = it) },
+                                helpText = stringResource(R.string.settings_help_touchscreen_right_stick),
+                                onResetToDefault = { draft = draft.copy(touchscreenRightStick = defaultProfile.touchscreenRightStick) }
+                            )
+                            if (draft.touchscreenRightStick) {
+                                SliderRow(
+                                    title = stringResource(R.string.settings_touchscreen_right_stick_sensitivity),
+                                    value = draft.touchscreenRightStickSensitivity.toFloat(),
+                                    valueLabel = "${draft.touchscreenRightStickSensitivity}%",
+                                    range = AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN.toFloat()..
+                                        AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX.toFloat(),
+                                    steps = AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX -
+                                        AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN - 1,
+                                    onValueChange = {
+                                        draft = draft.copy(touchscreenRightStickSensitivity = it.roundToInt())
+                                    },
+                                    helpText = stringResource(R.string.settings_help_touchscreen_right_stick_sensitivity),
+                                    onResetToDefault = {
+                                        draft = draft.copy(
+                                            touchscreenRightStickSensitivity = defaultProfile.touchscreenRightStickSensitivity
+                                        )
+                                    }
+                                )
+                            }
+                            ToggleRow(
+                                title = stringResource(R.string.settings_touch_haptics),
+                                checked = draft.touchHaptics,
+                                onCheckedChange = { draft = draft.copy(touchHaptics = it) },
+                                helpText = stringResource(R.string.settings_help_touch_haptics),
+                                onResetToDefault = { draft = draft.copy(touchHaptics = defaultProfile.touchHaptics) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_touch_haptics_preset),
+                                options = touchHapticsPresetOptions(),
+                                selectedValue = draft.touchHapticsPreset,
+                                onSelected = { draft = draft.copy(touchHapticsPreset = it) },
+                                helpText = stringResource(R.string.settings_help_touch_haptics_preset),
+                                onResetToDefault = { draft = draft.copy(touchHapticsPreset = defaultProfile.touchHapticsPreset) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_gyro_mode),
+                        options = gyroModeOptions(
+                            draft.gyroStickTarget
+                                ?: defaultProfile.gyroStickTarget
+                                ?: AppPreferences.DEFAULT_GYRO_STICK_TARGET
+                        ),
+                                selectedValue = draft.gyroMode,
+                                onSelected = { draft = draft.copy(gyroMode = it) },
+                                helpText = stringResource(R.string.settings_help_gyro_mode),
+                                onResetToDefault = { draft = draft.copy(gyroMode = defaultProfile.gyroMode) }
+                            )
+                            if (draft.gyroMode == AppPreferences.GYRO_MODE_AIM) {
+                                SelectionRow(
+                                    title = stringResource(R.string.settings_gyro_stick),
+                                    options = gyroStickOptions(),
+                                    selectedValue = draft.gyroStickTarget
+                                        ?: defaultProfile.gyroStickTarget
+                                        ?: AppPreferences.DEFAULT_GYRO_STICK_TARGET,
+                                    onSelected = { draft = draft.copy(gyroStickTarget = it) },
+                                    onResetToDefault = {
+                                        draft = draft.copy(gyroStickTarget = defaultProfile.gyroStickTarget)
+                                    }
+                                )
+                            }
+                            SelectionRow(
+                                title = stringResource(R.string.settings_light_gun_aim),
+                                options = lightGunAimOptions(),
+                                selectedValue = draft.lightGunAim
+                                    ?: defaultProfile.lightGunAim
+                                    ?: AppPreferences.DEFAULT_LIGHT_GUN_AIM,
+                                onSelected = { draft = draft.copy(lightGunAim = it) },
+                                onResetToDefault = {
+                                    draft = draft.copy(lightGunAim = defaultProfile.lightGunAim)
+                                }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_light_gun_cursor),
+                                checked = draft.lightGunCursorEnabled
+                                    ?: defaultProfile.lightGunCursorEnabled
+                                    ?: true,
+                                onCheckedChange = {
+                                    draft = draft.copy(lightGunCursorEnabled = it)
+                                },
+                                helpText = stringResource(R.string.settings_help_light_gun_cursor),
+                                onResetToDefault = {
+                                    draft = draft.copy(
+                                        lightGunCursorEnabled = defaultProfile.lightGunCursorEnabled
+                                    )
+                                }
+                            )
+                            if (draft.gyroMode != AppPreferences.GYRO_MODE_OFF) {
+                                SliderRow(stringResource(R.string.settings_gyro_sensitivity), draft.gyroSensitivity.toFloat(), "${draft.gyroSensitivity}%", 25f..300f, 10, { draft = draft.copy(gyroSensitivity = it.roundToInt()) }, helpText = stringResource(R.string.settings_help_gyro_sensitivity), onResetToDefault = { draft = draft.copy(gyroSensitivity = defaultProfile.gyroSensitivity) })
+                                SliderRow(stringResource(R.string.settings_gyro_smoothing), draft.gyroSmoothing.toFloat(), "${draft.gyroSmoothing}%", 0f..90f, 8, { draft = draft.copy(gyroSmoothing = it.roundToInt()) }, helpText = stringResource(R.string.settings_help_gyro_smoothing), onResetToDefault = { draft = draft.copy(gyroSmoothing = defaultProfile.gyroSmoothing) })
+                                ToggleRow(stringResource(R.string.settings_gyro_invert_x), draft.gyroInvertX, { draft = draft.copy(gyroInvertX = it) }, onResetToDefault = { draft = draft.copy(gyroInvertX = defaultProfile.gyroInvertX) })
+                                if (draft.gyroMode == AppPreferences.GYRO_MODE_AIM ||
+                                draft.gyroMode == AppPreferences.GYRO_MODE_LIGHT_GUN
+                            ) {
+                                    ToggleRow(stringResource(R.string.settings_gyro_invert_y), draft.gyroInvertY, { draft = draft.copy(gyroInvertY = it) }, onResetToDefault = { draft = draft.copy(gyroInvertY = defaultProfile.gyroInvertY) })
+                                }
+                            }
+                            ToggleRow(
+                                title = stringResource(R.string.settings_gamepad_right_stick_up_to_r2),
+                                checked = draft.gamepadRightStickUpToR2,
+                                onCheckedChange = { draft = draft.copy(gamepadRightStickUpToR2 = it) },
+                                helpText = stringResource(R.string.settings_help_gamepad_right_stick_up_to_r2),
+                                onResetToDefault = { draft = draft.copy(gamepadRightStickUpToR2 = defaultProfile.gamepadRightStickUpToR2) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_gamepad_right_stick_down_to_l2),
+                                checked = draft.gamepadRightStickDownToL2,
+                                onCheckedChange = { draft = draft.copy(gamepadRightStickDownToL2 = it) },
+                                helpText = stringResource(R.string.settings_help_gamepad_right_stick_down_to_l2),
+                                onResetToDefault = { draft = draft.copy(gamepadRightStickDownToL2 = defaultProfile.gamepadRightStickDownToL2) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_gamepad_button_haptics),
+                                checked = draft.gamepadButtonHaptics,
+                                onCheckedChange = { draft = draft.copy(gamepadButtonHaptics = it) },
+                                helpText = stringResource(R.string.settings_help_gamepad_button_haptics),
+                                onResetToDefault = { draft = draft.copy(gamepadButtonHaptics = defaultProfile.gamepadButtonHaptics) }
+                            )
+                            SliderRow(
+                                title = stringResource(R.string.settings_pressure_modifier_amount),
+                                value = draft.pressureModifierAmount.toFloat(),
+                                valueLabel = "${draft.pressureModifierAmount}%",
+                                range = 1f..100f,
+                                steps = 98,
+                                onValueChange = { draft = draft.copy(pressureModifierAmount = it.roundToInt()) },
+                                helpText = stringResource(R.string.settings_help_pressure_modifier_amount),
+                                onResetToDefault = { draft = draft.copy(pressureModifierAmount = defaultProfile.pressureModifierAmount) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_fps_overlay_mode),
+                                options = listOf(
+                                    AppPreferences.FPS_OVERLAY_MODE_SIMPLE to stringResource(R.string.settings_fps_overlay_mode_simple),
+                                    AppPreferences.FPS_OVERLAY_MODE_DETAILED to stringResource(R.string.settings_fps_overlay_mode_detailed)
+                                ),
+                                selectedValue = draft.fpsOverlayMode,
+                                onSelected = { draft = draft.copy(fpsOverlayMode = it) },
+                                helpText = stringResource(R.string.settings_help_fps_overlay_mode),
+                                onResetToDefault = { draft = draft.copy(fpsOverlayMode = defaultProfile.fpsOverlayMode) }
+                            )
+                            HardcoreOverrideRow(draft.achievementsHardcore) { draft = draft.copy(achievementsHardcore = it) }
+                            ToggleRow(
+                                title = stringResource(R.string.settings_frame_limiter),
+                                checked = draft.frameLimitEnabled,
+                                onCheckedChange = { draft = draft.copy(frameLimitEnabled = it) },
+                                helpText = stringResource(R.string.settings_help_frame_limiter),
+                                onResetToDefault = { draft = draft.copy(frameLimitEnabled = defaultProfile.frameLimitEnabled) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_ee_cycle_rate),
+                                options = eeCycleRateOptions(),
+                                selectedValue = draft.eeCycleRate,
+                                onSelected = { draft = draft.copy(eeCycleRate = it) },
+                                helpText = stringResource(R.string.settings_help_ee_cycle_rate),
+                                onResetToDefault = { draft = draft.copy(eeCycleRate = defaultProfile.eeCycleRate) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_ee_cycle_skip),
+                                options = eeCycleSkipOptions(),
+                                selectedValue = draft.eeCycleSkip,
+                                onSelected = { draft = draft.copy(eeCycleSkip = it) },
+                                helpText = stringResource(R.string.settings_help_ee_cycle_skip),
+                                onResetToDefault = { draft = draft.copy(eeCycleSkip = defaultProfile.eeCycleSkip) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_target_fps_mode),
+                                options = listOf(
+                                    0 to stringResource(R.string.settings_target_fps_auto),
+                                    1 to stringResource(R.string.settings_target_fps_manual)
+                                ),
+                                selectedValue = if (draft.targetFps <= 0) 0 else 1,
+                                onSelected = { mode ->
+                                    draft = draft.copy(
+                                        targetFps = if (mode == 0) 0 else resolveManualTargetFps(draft.targetFps, defaultProfile.targetFps)
+                                    )
+                                },
+                                helpText = stringResource(R.string.settings_help_target_fps),
+                                onResetToDefault = { draft = draft.copy(targetFps = defaultProfile.targetFps) }
+                            )
+                            if (draft.targetFps > 0) {
+                                SliderRow(
+                                    title = stringResource(R.string.settings_target_fps),
+                                    value = draft.targetFps.toFloat(),
+                                    valueLabel = draft.targetFps.toString(),
+                                    range = 20f..120f,
+                                    steps = 99,
+                                    onValueChange = { draft = draft.copy(targetFps = it.toInt()) },
+                                    helpText = stringResource(R.string.settings_help_target_fps),
+                                    onResetToDefault = { draft = draft.copy(targetFps = defaultProfile.targetFps) }
+                                )
+                            }
+                            SliderRow(
+                                title = stringResource(R.string.settings_ntsc_framerate),
+                                value = draft.ntscFramerate,
+                                valueLabel = formatFramerateHz(draft.ntscFramerate),
+                                range = 20f..120f,
+                                steps = 199,
+                                onValueChange = { draft = draft.copy(ntscFramerate = it) },
+                                valueLabelForValue = { formatFramerateHz(it) },
+                                helpText = stringResource(R.string.settings_help_ntsc_framerate),
+                                onResetToDefault = { draft = draft.copy(ntscFramerate = defaultProfile.ntscFramerate) }
+                            )
+                            SliderRow(
+                                title = stringResource(R.string.settings_pal_framerate),
+                                value = draft.palFramerate,
+                                valueLabel = formatFramerateHz(draft.palFramerate),
+                                range = 20f..120f,
+                                steps = 199,
+                                onValueChange = { draft = draft.copy(palFramerate = it) },
+                                valueLabelForValue = { formatFramerateHz(it) },
+                                helpText = stringResource(R.string.settings_help_pal_framerate),
+                                onResetToDefault = { draft = draft.copy(palFramerate = defaultProfile.palFramerate) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_instant_vu1),
+                                checked = draft.enableInstantVu1,
+                                onCheckedChange = { draft = draft.copy(enableInstantVu1 = it) },
+                                helpText = stringResource(R.string.settings_help_instant_vu1),
+                                onResetToDefault = { draft = draft.copy(enableInstantVu1 = defaultProfile.enableInstantVu1) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_mtvu),
+                                checked = draft.enableMtvu,
+                                onCheckedChange = { draft = draft.copy(enableMtvu = it) },
+                                helpText = stringResource(R.string.settings_help_mtvu),
+                                onResetToDefault = { draft = draft.copy(enableMtvu = defaultProfile.enableMtvu) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_iop_thread),
+                                checked = draft.enableIopThread,
+                                onCheckedChange = { draft = draft.copy(enableIopThread = it) },
+                                helpText = stringResource(R.string.settings_help_iop_thread),
+                                onResetToDefault = { draft = draft.copy(enableIopThread = defaultProfile.enableIopThread) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_vu_aot),
+                                checked = draft.enableVUAot,
+                                onCheckedChange = { draft = draft.copy(enableVUAot = it) },
+                                helpText = stringResource(R.string.settings_help_vu_aot),
+                                onResetToDefault = { draft = draft.copy(enableVUAot = defaultProfile.enableVUAot) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_fast_cdvd),
+                                checked = draft.enableFastCdvd,
+                                onCheckedChange = { draft = draft.copy(enableFastCdvd = it) },
+                                helpText = stringResource(R.string.settings_help_fast_cdvd),
+                                onResetToDefault = { draft = draft.copy(enableFastCdvd = defaultProfile.enableFastCdvd) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_low_latency_mode),
+                                checked = draft.lowLatencyMode,
+                                onCheckedChange = { draft = draft.copy(lowLatencyMode = it) },
+                                helpText = stringResource(R.string.settings_help_low_latency_mode),
+                                onResetToDefault = { draft = draft.copy(lowLatencyMode = defaultProfile.lowLatencyMode) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_skip_duplicate_frames),
+                                checked = draft.skipDuplicateFrames,
+                                onCheckedChange = { draft = draft.copy(skipDuplicateFrames = it) },
+                                helpText = stringResource(R.string.settings_help_skip_duplicate_frames),
+                                onResetToDefault = { draft = draft.copy(skipDuplicateFrames = defaultProfile.skipDuplicateFrames) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_frame_skip),
+                                options = listOf(
+                                    0 to stringResource(R.string.settings_frame_skip_off),
+                                    1 to "1",
+                                    2 to "2",
+                                    3 to "3",
+                                    4 to "4"
+                                ),
+                                selectedValue = draft.frameSkip,
+                                onSelected = { draft = draft.copy(frameSkip = it) },
+                                helpText = stringResource(R.string.settings_help_frame_skip),
+                                onResetToDefault = { draft = draft.copy(frameSkip = defaultProfile.frameSkip) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_enable_cheats),
+                                checked = draft.enableCheats,
+                                onCheckedChange = { draft = draft.copy(enableCheats = it) },
+                                helpText = stringResource(R.string.settings_help_cheats),
+                                onResetToDefault = { draft = draft.copy(enableCheats = defaultProfile.enableCheats) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_game_fixes),
+                                checked = draft.enableGameFixes,
+                                onCheckedChange = { draft = draft.copy(enableGameFixes = it) },
+                                helpText = stringResource(R.string.settings_help_game_fixes),
+                                onResetToDefault = { draft = draft.copy(enableGameFixes = defaultProfile.enableGameFixes) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_auto_gs_hw_fixes),
+                                checked = draft.autoGsHardwareFixes,
+                                onCheckedChange = { draft = draft.copy(autoGsHardwareFixes = it) },
+                                helpText = stringResource(R.string.settings_help_auto_gs_hw_fixes),
+                                onResetToDefault = { draft = draft.copy(autoGsHardwareFixes = defaultProfile.autoGsHardwareFixes) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_ee_timing_hack),
+                                checked = draft.enableEeTimingHack,
+                                onCheckedChange = { draft = draft.copy(enableEeTimingHack = it) },
+                                helpText = stringResource(R.string.settings_help_ee_timing_hack),
+                                onResetToDefault = {
+                                    draft = draft.copy(enableEeTimingHack = defaultProfile.enableEeTimingHack)
+                                }
+                            )
+                        }
+                        EditorSection(title = stringResource(R.string.game_settings_manager_section_graphics)) {
+                            SelectionRow(
+                                title = stringResource(R.string.settings_bilinear_filtering),
+                                options = bilinearFilteringOptions(),
+                                selectedValue = draft.textureFiltering,
+                                onSelected = { draft = draft.copy(textureFiltering = it) },
+                                helpText = stringResource(R.string.settings_help_bilinear_filtering),
+                                onResetToDefault = { draft = draft.copy(textureFiltering = defaultProfile.textureFiltering) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_trilinear_filtering),
+                                options = trilinearFilteringOptions(),
+                                selectedValue = draft.trilinearFiltering,
+                                onSelected = { draft = draft.copy(trilinearFiltering = it) },
+                                helpText = stringResource(R.string.settings_help_trilinear_filtering),
+                                onResetToDefault = { draft = draft.copy(trilinearFiltering = defaultProfile.trilinearFiltering) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_hw_download_mode),
+                                options = hwDownloadModeOptions(),
+                                selectedValue = draft.hwDownloadMode,
+                                onSelected = { draft = draft.copy(hwDownloadMode = it) },
+                                helpText = stringResource(R.string.settings_help_hw_download_mode),
+                                onResetToDefault = { draft = draft.copy(hwDownloadMode = defaultProfile.hwDownloadMode) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_blending_accuracy),
+                                options = blendingAccuracyOptions(),
+                                selectedValue = draft.blendingAccuracy,
+                                onSelected = { draft = draft.copy(blendingAccuracy = it) },
+                                helpText = stringResource(R.string.settings_help_blending_accuracy),
+                                onResetToDefault = { draft = draft.copy(blendingAccuracy = defaultProfile.blendingAccuracy) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_texture_preloading),
+                                options = texturePreloadingOptions(),
+                                selectedValue = draft.texturePreloading,
+                                onSelected = { draft = draft.copy(texturePreloading = it) },
+                                helpText = stringResource(R.string.settings_help_texture_preloading),
+                                onResetToDefault = { draft = draft.copy(texturePreloading = defaultProfile.texturePreloading) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_anisotropic_filtering),
+                                options = anisotropicFilteringOptions(),
+                                selectedValue = draft.anisotropicFiltering,
+                                onSelected = { draft = draft.copy(anisotropicFiltering = it) },
+                                helpText = stringResource(R.string.settings_help_anisotropic_filtering),
+                                onResetToDefault = { draft = draft.copy(anisotropicFiltering = defaultProfile.anisotropicFiltering) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_fxaa),
+                                checked = draft.enableFxaa,
+                                onCheckedChange = { draft = draft.copy(enableFxaa = it) },
+                                helpText = stringResource(R.string.settings_help_fxaa),
+                                onResetToDefault = { draft = draft.copy(enableFxaa = defaultProfile.enableFxaa) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_sgsr),
+                                options = sgsrModeOptions(),
+                                selectedValue = draft.sgsrMode,
+                                onSelected = { draft = draft.copy(sgsrMode = it) },
+                                helpText = stringResource(R.string.settings_help_sgsr),
+                                onResetToDefault = { draft = draft.copy(sgsrMode = defaultProfile.sgsrMode) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_cas),
+                                options = casModeOptions(),
+                                selectedValue = draft.casMode,
+                                onSelected = { draft = draft.copy(casMode = it) },
+                                helpText = stringResource(R.string.settings_help_cas),
+                                onResetToDefault = { draft = draft.copy(casMode = defaultProfile.casMode) }
+                            )
+                            if (draft.casMode != 0) {
+                                SliderRow(
+                                    title = stringResource(R.string.settings_cas_sharpness),
+                                    value = draft.casSharpness.toFloat(),
+                                    valueLabel = stringResource(
+                                        R.string.settings_cas_sharpness_value,
+                                        draft.casSharpness
+                                    ),
+                                    range = 0f..100f,
+                                    steps = 99,
+                                    onValueChange = { draft = draft.copy(casSharpness = it.toInt()) },
+                                    helpText = stringResource(R.string.settings_help_cas_sharpness),
+                                    onResetToDefault = { draft = draft.copy(casSharpness = defaultProfile.casSharpness) }
+                                )
+                            }
+                            SelectionRow(
+                                title = stringResource(R.string.settings_tv_shader),
+                                options = tvShaderOptions(),
+                                selectedValue = draft.tvShader,
+                                onSelected = { draft = draft.copy(tvShader = it) },
+                                helpText = stringResource(R.string.settings_help_tv_shader),
+                                onResetToDefault = { draft = draft.copy(tvShader = defaultProfile.tvShader) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_hw_mipmapping),
+                                checked = draft.enableHwMipmapping,
+                                onCheckedChange = { draft = draft.copy(enableHwMipmapping = it) },
+                                helpText = stringResource(R.string.settings_help_hw_mipmapping),
+                                onResetToDefault = { draft = draft.copy(enableHwMipmapping = defaultProfile.enableHwMipmapping) }
+                            )
+                        }
+                        EditorSection(title = stringResource(R.string.game_settings_manager_section_screen)) {
+                            SliderRow(
+                                title = stringResource(R.string.settings_shadeboost_brightness),
+                                value = draft.shadeBoostBrightness.toFloat(),
+                                valueLabel = draft.shadeBoostBrightness.toString(),
+                                valueLabelForValue = { it.roundToInt().toString() },
+                                range = 1f..100f,
+                                steps = 98,
+                                onValueChange = {
+                                    val brightness = it.toInt()
+                                    draft = draft.copy(
+                                        shadeBoostEnabled = isShadeBoostActive(
+                                            brightness = brightness,
+                                            contrast = draft.shadeBoostContrast,
+                                            saturation = draft.shadeBoostSaturation,
+                                            gamma = draft.shadeBoostGamma
+                                        ),
+                                        shadeBoostBrightness = brightness
+                                    )
+                                },
+                                helpText = stringResource(R.string.settings_help_shadeboost_brightness),
+                                onResetToDefault = {
+                                    draft = draft.copy(
+                                        shadeBoostEnabled = defaultProfile.shadeBoostEnabled,
+                                        shadeBoostBrightness = defaultProfile.shadeBoostBrightness
+                                    )
+                                }
+                            )
+                            SliderRow(
+                                title = stringResource(R.string.settings_shadeboost_contrast),
+                                value = draft.shadeBoostContrast.toFloat(),
+                                valueLabel = draft.shadeBoostContrast.toString(),
+                                valueLabelForValue = { it.roundToInt().toString() },
+                                range = 1f..100f,
+                                steps = 98,
+                                onValueChange = {
+                                    val contrast = it.toInt()
+                                    draft = draft.copy(
+                                        shadeBoostEnabled = isShadeBoostActive(
+                                            brightness = draft.shadeBoostBrightness,
+                                            contrast = contrast,
+                                            saturation = draft.shadeBoostSaturation,
+                                            gamma = draft.shadeBoostGamma
+                                        ),
+                                        shadeBoostContrast = contrast
+                                    )
+                                },
+                                helpText = stringResource(R.string.settings_help_shadeboost_contrast),
+                                onResetToDefault = {
+                                    draft = draft.copy(
+                                        shadeBoostEnabled = defaultProfile.shadeBoostEnabled,
+                                        shadeBoostContrast = defaultProfile.shadeBoostContrast
+                                    )
+                                }
+                            )
+                            SliderRow(
+                                title = stringResource(R.string.settings_shadeboost_saturation),
+                                value = draft.shadeBoostSaturation.toFloat(),
+                                valueLabel = draft.shadeBoostSaturation.toString(),
+                                valueLabelForValue = { it.roundToInt().toString() },
+                                range = 1f..100f,
+                                steps = 98,
+                                onValueChange = {
+                                    val saturation = it.toInt()
+                                    draft = draft.copy(
+                                        shadeBoostEnabled = isShadeBoostActive(
+                                            brightness = draft.shadeBoostBrightness,
+                                            contrast = draft.shadeBoostContrast,
+                                            saturation = saturation,
+                                            gamma = draft.shadeBoostGamma
+                                        ),
+                                        shadeBoostSaturation = saturation
+                                    )
+                                },
+                                helpText = stringResource(R.string.settings_help_shadeboost_saturation),
+                                onResetToDefault = {
+                                    draft = draft.copy(
+                                        shadeBoostEnabled = defaultProfile.shadeBoostEnabled,
+                                        shadeBoostSaturation = defaultProfile.shadeBoostSaturation
+                                    )
+                                }
+                            )
+                            SliderRow(
+                                title = stringResource(R.string.settings_shadeboost_gamma),
+                                value = draft.shadeBoostGamma.toFloat(),
+                                valueLabel = draft.shadeBoostGamma.toString(),
+                                valueLabelForValue = { it.roundToInt().toString() },
+                                range = 1f..100f,
+                                steps = 98,
+                                onValueChange = {
+                                    val gamma = it.toInt()
+                                    draft = draft.copy(
+                                        shadeBoostEnabled = isShadeBoostActive(
+                                            brightness = draft.shadeBoostBrightness,
+                                            contrast = draft.shadeBoostContrast,
+                                            saturation = draft.shadeBoostSaturation,
+                                            gamma = gamma
+                                        ),
+                                        shadeBoostGamma = gamma
+                                    )
+                                },
+                                helpText = stringResource(R.string.settings_help_shadeboost_gamma),
+                                onResetToDefault = {
+                                    draft = draft.copy(
+                                        shadeBoostEnabled = defaultProfile.shadeBoostEnabled,
+                                        shadeBoostGamma = defaultProfile.shadeBoostGamma
+                                    )
+                                }
+                            )
+                        }
+                        EditorSection(title = stringResource(R.string.settings_image_processing)) {
+                            SelectionRow(
+                                title = stringResource(R.string.settings_deinterlacing),
+                                options = deinterlacingOptions(),
+                                selectedValue = draft.deinterlaceMode,
+                                onSelected = { draft = draft.copy(deinterlaceMode = it) },
+                                helpText = stringResource(R.string.settings_help_deinterlacing),
+                                onResetToDefault = { draft = draft.copy(deinterlaceMode = defaultProfile.deinterlaceMode) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_dithering),
+                                options = ditheringOptions(),
+                                selectedValue = draft.dithering,
+                                onSelected = { draft = draft.copy(dithering = it) },
+                                helpText = stringResource(R.string.settings_help_dithering),
+                                onResetToDefault = { draft = draft.copy(dithering = defaultProfile.dithering) }
+                            )
+                        }
+                        EditorSection(title = stringResource(R.string.settings_patches_section)) {
+                            ToggleRow(
+                                title = stringResource(R.string.settings_widescreen_patches),
+                                checked = draft.enableWidescreenPatches,
+                                onCheckedChange = { draft = draft.copy(enableWidescreenPatches = it) },
+                                helpText = stringResource(R.string.settings_help_widescreen_patches),
+                                onResetToDefault = { draft = draft.copy(enableWidescreenPatches = defaultProfile.enableWidescreenPatches) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_no_interlacing_patches),
+                                checked = draft.enableNoInterlacingPatches,
+                                onCheckedChange = { draft = draft.copy(enableNoInterlacingPatches = it) },
+                                helpText = stringResource(R.string.settings_help_no_interlacing_patches),
+                                onResetToDefault = { draft = draft.copy(enableNoInterlacingPatches = defaultProfile.enableNoInterlacingPatches) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_anti_blur),
+                                checked = draft.antiBlur,
+                                onCheckedChange = { draft = draft.copy(antiBlur = it) },
+                                helpText = stringResource(R.string.settings_help_anti_blur),
+                                onResetToDefault = { draft = draft.copy(antiBlur = defaultProfile.antiBlur) }
+                            )
+                        }
+                        EditorSection(title = stringResource(R.string.settings_hardware_fixes)) {
+                            SelectionRow(
+                                title = stringResource(R.string.settings_cpu_sprite_render_size),
+                                options = cpuSpriteRenderSizeOptions(),
+                                selectedValue = draft.cpuSpriteRenderSize,
+                                onSelected = { draft = draft.copy(cpuSpriteRenderSize = it) },
+                                helpText = stringResource(R.string.settings_help_cpu_sprite_render_size),
+                                onResetToDefault = { draft = draft.copy(cpuSpriteRenderSize = defaultProfile.cpuSpriteRenderSize) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_cpu_sprite_render_level),
+                                options = cpuSpriteRenderLevelOptions(),
+                                selectedValue = draft.cpuSpriteRenderLevel,
+                                onSelected = { draft = draft.copy(cpuSpriteRenderLevel = it) },
+                                helpText = stringResource(R.string.settings_help_cpu_sprite_render_level),
+                                onResetToDefault = { draft = draft.copy(cpuSpriteRenderLevel = defaultProfile.cpuSpriteRenderLevel) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_software_clut_render),
+                                options = softwareClutRenderOptions(),
+                                selectedValue = draft.softwareClutRender,
+                                onSelected = { draft = draft.copy(softwareClutRender = it) },
+                                helpText = stringResource(R.string.settings_help_software_clut_render),
+                                onResetToDefault = { draft = draft.copy(softwareClutRender = defaultProfile.softwareClutRender) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_gpu_target_clut),
+                                options = gpuTargetClutOptions(),
+                                selectedValue = draft.gpuTargetClutMode,
+                                onSelected = { draft = draft.copy(gpuTargetClutMode = it) },
+                                helpText = stringResource(R.string.settings_help_gpu_target_clut),
+                                onResetToDefault = { draft = draft.copy(gpuTargetClutMode = defaultProfile.gpuTargetClutMode) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_auto_flush_hardware),
+                                options = autoFlushHardwareOptions(),
+                                selectedValue = draft.autoFlushHardware,
+                                onSelected = { draft = draft.copy(autoFlushHardware = it) },
+                                helpText = stringResource(R.string.settings_help_auto_flush_hardware),
+                                onResetToDefault = { draft = draft.copy(autoFlushHardware = defaultProfile.autoFlushHardware) }
+                            )
+                            SliderRow(
+                                title = stringResource(R.string.settings_skip_draw_start),
+                                value = draft.skipDrawStart.toFloat(),
+                                valueLabel = draft.skipDrawStart.toString(),
+                                range = 0f..100f,
+                                steps = 99,
+                                onValueChange = { draft = draft.copy(skipDrawStart = it.toInt()) },
+                                helpText = stringResource(R.string.settings_help_skip_draw_start),
+                                onResetToDefault = { draft = draft.copy(skipDrawStart = defaultProfile.skipDrawStart) }
+                            )
+                            SliderRow(
+                                title = stringResource(R.string.settings_skip_draw_end),
+                                value = draft.skipDrawEnd.toFloat(),
+                                valueLabel = draft.skipDrawEnd.toString(),
+                                range = 0f..100f,
+                                steps = 99,
+                                onValueChange = { draft = draft.copy(skipDrawEnd = it.toInt()) },
+                                helpText = stringResource(R.string.settings_help_skip_draw_end),
+                                onResetToDefault = { draft = draft.copy(skipDrawEnd = defaultProfile.skipDrawEnd) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_cpu_framebuffer_conversion),
+                                checked = draft.cpuFramebufferConversion,
+                                onCheckedChange = { draft = draft.copy(cpuFramebufferConversion = it) },
+                                helpText = stringResource(R.string.settings_help_cpu_framebuffer_conversion),
+                                onResetToDefault = { draft = draft.copy(cpuFramebufferConversion = defaultProfile.cpuFramebufferConversion) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_disable_depth_conversion),
+                                checked = draft.disableDepthConversion,
+                                onCheckedChange = { draft = draft.copy(disableDepthConversion = it) },
+                                helpText = stringResource(R.string.settings_help_disable_depth_conversion),
+                                onResetToDefault = { draft = draft.copy(disableDepthConversion = defaultProfile.disableDepthConversion) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_disable_safe_features),
+                                checked = draft.disableSafeFeatures,
+                                onCheckedChange = { draft = draft.copy(disableSafeFeatures = it) },
+                                helpText = stringResource(R.string.settings_help_disable_safe_features),
+                                onResetToDefault = { draft = draft.copy(disableSafeFeatures = defaultProfile.disableSafeFeatures) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_disable_render_fixes),
+                                checked = draft.disableRenderFixes,
+                                onCheckedChange = { draft = draft.copy(disableRenderFixes = it) },
+                                helpText = stringResource(R.string.settings_help_disable_render_fixes),
+                                onResetToDefault = { draft = draft.copy(disableRenderFixes = defaultProfile.disableRenderFixes) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_preload_frame_data),
+                                checked = draft.preloadFrameData,
+                                onCheckedChange = { draft = draft.copy(preloadFrameData = it) },
+                                helpText = stringResource(R.string.settings_help_preload_frame_data),
+                                onResetToDefault = { draft = draft.copy(preloadFrameData = defaultProfile.preloadFrameData) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_disable_partial_invalidation),
+                                checked = draft.disablePartialInvalidation,
+                                onCheckedChange = { draft = draft.copy(disablePartialInvalidation = it) },
+                                helpText = stringResource(R.string.settings_help_disable_partial_invalidation),
+                                onResetToDefault = { draft = draft.copy(disablePartialInvalidation = defaultProfile.disablePartialInvalidation) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_texture_inside_rt),
+                                options = textureInsideRtOptions(),
+                                selectedValue = draft.textureInsideRt,
+                                onSelected = { draft = draft.copy(textureInsideRt = it) },
+                                helpText = stringResource(R.string.settings_help_texture_inside_rt),
+                                onResetToDefault = { draft = draft.copy(textureInsideRt = defaultProfile.textureInsideRt) },
+                                alwaysScroll = true
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_read_targets_on_close),
+                                checked = draft.readTargetsOnClose,
+                                onCheckedChange = { draft = draft.copy(readTargetsOnClose = it) },
+                                helpText = stringResource(R.string.settings_help_read_targets_on_close),
+                                onResetToDefault = { draft = draft.copy(readTargetsOnClose = defaultProfile.readTargetsOnClose) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_estimate_texture_region),
+                                checked = draft.estimateTextureRegion,
+                                onCheckedChange = { draft = draft.copy(estimateTextureRegion = it) },
+                                helpText = stringResource(R.string.settings_help_estimate_texture_region),
+                                onResetToDefault = { draft = draft.copy(estimateTextureRegion = defaultProfile.estimateTextureRegion) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_gpu_palette_conversion),
+                                checked = draft.gpuPaletteConversion,
+                                onCheckedChange = { draft = draft.copy(gpuPaletteConversion = it) },
+                                helpText = stringResource(R.string.settings_help_gpu_palette_conversion),
+                                onResetToDefault = { draft = draft.copy(gpuPaletteConversion = defaultProfile.gpuPaletteConversion) }
+                            )
+                        }
+                        EditorSection(title = stringResource(R.string.settings_upscaling_fixes)) {
+                            SelectionRow(
+                                title = stringResource(R.string.settings_half_pixel_offset),
+                                options = halfPixelOffsetOptions(),
+                                selectedValue = draft.halfPixelOffset,
+                                onSelected = { draft = draft.copy(halfPixelOffset = it) },
+                                helpText = stringResource(R.string.settings_help_half_pixel_offset),
+                                onResetToDefault = { draft = draft.copy(halfPixelOffset = defaultProfile.halfPixelOffset) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_native_scaling),
+                                options = nativeScalingOptions(),
+                                selectedValue = draft.nativeScaling,
+                                onSelected = { draft = draft.copy(nativeScaling = it) },
+                                helpText = stringResource(R.string.settings_help_native_scaling),
+                                onResetToDefault = { draft = draft.copy(nativeScaling = defaultProfile.nativeScaling) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_round_sprite),
+                                options = roundSpriteOptions(),
+                                selectedValue = draft.roundSprite,
+                                onSelected = { draft = draft.copy(roundSprite = it) },
+                                helpText = stringResource(R.string.settings_help_round_sprite),
+                                onResetToDefault = { draft = draft.copy(roundSprite = defaultProfile.roundSprite) }
+                            )
+                            SelectionRow(
+                                title = stringResource(R.string.settings_bilinear_upscale),
+                                options = bilinearUpscaleOptions(),
+                                selectedValue = draft.bilinearUpscale,
+                                onSelected = { draft = draft.copy(bilinearUpscale = it) },
+                                helpText = stringResource(R.string.settings_help_bilinear_upscale),
+                                onResetToDefault = { draft = draft.copy(bilinearUpscale = defaultProfile.bilinearUpscale) }
+                            )
+                            SliderRow(
+                                title = stringResource(R.string.settings_texture_offset_x),
+                                value = draft.textureOffsetX.toFloat(),
+                                valueLabel = draft.textureOffsetX.toString(),
+                                range = -512f..512f,
+                                steps = 1023,
+                                onValueChange = { draft = draft.copy(textureOffsetX = it.toInt()) },
+                                helpText = stringResource(R.string.settings_help_texture_offset_x),
+                                onResetToDefault = { draft = draft.copy(textureOffsetX = defaultProfile.textureOffsetX) }
+                            )
+                            SliderRow(
+                                title = stringResource(R.string.settings_texture_offset_y),
+                                value = draft.textureOffsetY.toFloat(),
+                                valueLabel = draft.textureOffsetY.toString(),
+                                range = -512f..512f,
+                                steps = 1023,
+                                onValueChange = { draft = draft.copy(textureOffsetY = it.toInt()) },
+                                helpText = stringResource(R.string.settings_help_texture_offset_y),
+                                onResetToDefault = { draft = draft.copy(textureOffsetY = defaultProfile.textureOffsetY) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_align_sprite),
+                                checked = draft.alignSprite,
+                                onCheckedChange = { draft = draft.copy(alignSprite = it) },
+                                helpText = stringResource(R.string.settings_help_align_sprite),
+                                onResetToDefault = { draft = draft.copy(alignSprite = defaultProfile.alignSprite) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_merge_sprite),
+                                checked = draft.mergeSprite,
+                                onCheckedChange = { draft = draft.copy(mergeSprite = it) },
+                                helpText = stringResource(R.string.settings_help_merge_sprite),
+                                onResetToDefault = { draft = draft.copy(mergeSprite = defaultProfile.mergeSprite) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_force_even_sprite_position),
+                                checked = draft.forceEvenSpritePosition,
+                                onCheckedChange = { draft = draft.copy(forceEvenSpritePosition = it) },
+                                helpText = stringResource(R.string.settings_help_force_even_sprite_position),
+                                onResetToDefault = { draft = draft.copy(forceEvenSpritePosition = defaultProfile.forceEvenSpritePosition) }
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_native_palette_draw),
+                                checked = draft.nativePaletteDraw,
+                                onCheckedChange = { draft = draft.copy(nativePaletteDraw = it) },
+                                helpText = stringResource(R.string.settings_help_native_palette_draw),
+                                onResetToDefault = { draft = draft.copy(nativePaletteDraw = defaultProfile.nativePaletteDraw) }
+                            )
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = neonShape(18.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    ) {
+                        Text(
+                            text = stringResource(R.string.cancel),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GameSettingsEditorHeader(
+    profile: PerGameSettings,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            modifier = Modifier.size(58.dp),
+            shape = neonShape(18.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Rounded.Tune,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(30.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.game_settings_manager_editor_eyebrow),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = profile.gameTitle,
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            profile.gameSerial?.takeIf { it.isNotBlank() }?.let { serial ->
+                Text(
+                    text = serial,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditorSection(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = neonShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp,
+            border = BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(GameSettingsSectionContentPadding),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+private fun GpuBackendProfileControls(
+    draft: PerGameSettings,
+    defaultProfile: PerGameSettings,
+    onOpenGpuDriverManager: (() -> Unit)? = null,
+    onDraftChange: (PerGameSettings) -> Unit
+) {
+    val context = LocalContext.current
+    val supportsCustomDrivers = customGpuDriversSupported()
+    val angleOpenGlSupported = remember {
+        GpuHardwareProfiles.isMediatekProfile(GpuHardwareProfiles.detectHardwareProfile())
+    }
+    val bundledAngleAvailable = remember { EmulatorBridge.isBundledAngleAvailable() }
+    val frameGenerationReady = remember(context) { FrameGenerationManager(context).snapshot().isConfigured }
+
+    if (supportsCustomDrivers) {
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val driverManager = remember(context) { GpuDriverManager(context) }
+        val deviceGpuSnapshot by com.sbro.emucorex.core.DeviceGpuInfoProvider.snapshot.collectAsState()
+        var installedDrivers by remember(context, deviceGpuSnapshot) {
+            mutableStateOf(driverManager.listInstalledDrivers().filter { it.isUsable })
+        }
+        DisposableEffect(lifecycleOwner, driverManager, deviceGpuSnapshot) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    installedDrivers = driverManager.listInstalledDrivers().filter { it.isUsable }
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+        if (onOpenGpuDriverManager != null) {
+            ManagerActionButton(
+                modifier = Modifier.fillMaxWidth(),
+                icon = Icons.Rounded.Tune,
+                title = stringResource(R.string.settings_gpu_driver_manage),
+                onClick = onOpenGpuDriverManager
+            )
+        }
+        val driverOptions = buildList {
+            add(0 to stringResource(R.string.settings_gpu_driver_system))
+            installedDrivers.forEachIndexed { index, driver ->
+                add(index + 1 to driver.name)
+            }
+        }
+        val selectedDriverIndex = if (draft.gpuDriverType == 1) {
+            installedDrivers.indexOfFirst { it.mainLibraryPath == draft.customDriverPath }
+                .takeIf { it >= 0 }
+                ?.plus(1)
+                ?: 0
+        } else {
+            0
+        }
+        SelectionRow(
+            title = stringResource(R.string.settings_gpu_driver),
+            options = driverOptions,
+            selectedValue = selectedDriverIndex,
+            onSelected = { selectedIndex ->
+                val selectedDriver = installedDrivers.getOrNull(selectedIndex - 1)
+                onDraftChange(
+                    draft.copy(
+                        gpuDriverType = if (selectedDriver == null) 0 else 1,
+                        customDriverPath = selectedDriver?.mainLibraryPath
+                    )
+                )
+            },
+            helpText = stringResource(
+                if (GpuDriverCompatibility.deviceVendor() == GpuDriverVendor.ADRENO) {
+                    R.string.settings_help_gpu_driver
+                } else {
+                    R.string.settings_help_gpu_driver_generic
+                }
+            ),
+            onResetToDefault = {
+                onDraftChange(
+                    draft.copy(
+                        gpuDriverType = defaultProfile.gpuDriverType,
+                        customDriverPath = defaultProfile.customDriverPath
+                    )
+                )
+            }
+        )
+    }
+
+    if (frameGenerationReady) {
+        ToggleRow(
+            title = stringResource(R.string.frame_generation_enable),
+            checked = draft.frameGenerationEnabled,
+            onCheckedChange = { onDraftChange(draft.copy(frameGenerationEnabled = it)) },
+            helpText = stringResource(R.string.frame_generation_requirements_ready),
+            onResetToDefault = { onDraftChange(draft.copy(frameGenerationEnabled = defaultProfile.frameGenerationEnabled)) }
+        )
+        SelectionRow(
+            title = stringResource(R.string.frame_generation_multiplier),
+            options = listOf(2 to "×2", 3 to "×3", 4 to "×4"),
+            selectedValue = draft.frameGenerationMultiplier,
+            onSelected = { onDraftChange(draft.copy(frameGenerationMultiplier = it)) },
+            onResetToDefault = { onDraftChange(draft.copy(frameGenerationMultiplier = defaultProfile.frameGenerationMultiplier)) }
+        )
+        SelectionRow(
+            title = stringResource(R.string.frame_generation_flow_scale),
+            options = listOf(25, 50, 75).map { it to "$it%" } +
+                listOf(100 to stringResource(R.string.settings_auto)),
+            selectedValue = draft.frameGenerationFlowScale,
+            onSelected = { onDraftChange(draft.copy(frameGenerationFlowScale = it)) },
+            helpText = stringResource(R.string.frame_generation_flow_hint),
+            onResetToDefault = { onDraftChange(draft.copy(frameGenerationFlowScale = defaultProfile.frameGenerationFlowScale)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.frame_generation_performance),
+            checked = draft.frameGenerationPerformance,
+            onCheckedChange = { onDraftChange(draft.copy(frameGenerationPerformance = it)) },
+            helpText = stringResource(R.string.frame_generation_performance_desc),
+            onResetToDefault = { onDraftChange(draft.copy(frameGenerationPerformance = defaultProfile.frameGenerationPerformance)) }
+        )
+        SelectionRow(
+            title = stringResource(R.string.frame_generation_target_rate),
+            options = listOf(0 to stringResource(R.string.frame_generation_fixed), 60 to "60 Hz", 90 to "90 Hz", 120 to "120 Hz", 144 to "144 Hz"),
+            selectedValue = draft.frameGenerationTargetRate,
+            onSelected = { onDraftChange(draft.copy(frameGenerationTargetRate = it)) },
+            onResetToDefault = { onDraftChange(draft.copy(frameGenerationTargetRate = defaultProfile.frameGenerationTargetRate)) }
+        )
+    }
+
+    if (angleOpenGlSupported && bundledAngleAvailable) {
+        ToggleRow(
+            title = stringResource(R.string.settings_mediatek_angle_opengl),
+            checked = draft.mediatekAngleOpenGl,
+            onCheckedChange = { onDraftChange(draft.copy(mediatekAngleOpenGl = it)) },
+            helpText = stringResource(R.string.settings_help_mediatek_angle_opengl),
+            onResetToDefault = {
+                onDraftChange(draft.copy(mediatekAngleOpenGl = defaultProfile.mediatekAngleOpenGl))
+            }
+        )
+    }
+}
+
+@Composable
+private fun HardcoreOverrideRow(value: Boolean?, onChanged: (Boolean?) -> Unit) {
+    SelectionRow(
+        title = stringResource(R.string.settings_ra_hardcore),
+        options = listOf(
+            -1 to stringResource(R.string.settings_use_global),
+            1 to stringResource(R.string.gamedb_browser_enabled),
+            0 to stringResource(R.string.settings_disabled_short)
+        ),
+        selectedValue = when (value) { true -> 1; false -> 0; null -> -1 },
+        onSelected = { onChanged(when (it) { 1 -> true; 0 -> false; else -> null }) },
+        helpText = stringResource(R.string.settings_ra_hardcore_pending_desc),
+        onResetToDefault = { onChanged(null) }
+    )
+}
+
+@Composable
+private fun SelectionRow(
+    title: String,
+    options: List<Pair<Int, String>>,
+    selectedValue: Int,
+    onSelected: (Int) -> Unit,
+    helpText: String? = null,
+    onResetToDefault: (() -> Unit)? = null,
+    alwaysScroll: Boolean = false
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val context = LocalContext.current
+    val resetToast = stringResource(R.string.settings_reset_to_default_toast)
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {},
+                onLongClick = onResetToDefault?.let {
+                    {
+                        it()
+                        Toast.makeText(context, resetToast, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            helpText?.let {
+                SettingHelpButton(title = title, description = it)
+            }
+        }
+        if (alwaysScroll || options.size > 2) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .sectionContentFullBleed(GameSettingsSectionContentPadding)
+                    .tvFocusGroup(),
+                contentPadding = PaddingValues(horizontal = GameSettingsSectionContentPadding),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(options, key = { it.first }) { (value, label) ->
+                    val optionInteractionSource = remember { MutableInteractionSource() }
+                    FilterChip(
+                        modifier = Modifier.tvGamepadFocusableCard(
+                            shape = neonShape(16.dp),
+                            interactionSource = optionInteractionSource,
+                            addFocusTarget = false
+                        ),
+                        shape = neonChipShape(),
+                        selected = selectedValue == value,
+                        onClick = { onSelected(value) },
+                        interactionSource = optionInteractionSource,
+                        colors = premiumFilterChipColors(),
+                        label = { Text(label) }
+                    )
+                }
+            }
+        } else {
+            FlowRow(
+                modifier = Modifier.tvFocusGroup(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                options.forEach { (value, label) ->
+                    val optionInteractionSource = remember { MutableInteractionSource() }
+                    FilterChip(
+                        modifier = Modifier.tvGamepadFocusableCard(
+                            shape = neonShape(16.dp),
+                            interactionSource = optionInteractionSource,
+                            addFocusTarget = false
+                        ),
+                        shape = neonChipShape(),
+                        selected = selectedValue == value,
+                        onClick = { onSelected(value) },
+                        interactionSource = optionInteractionSource,
+                        colors = premiumFilterChipColors(),
+                        label = { Text(label) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BitmaskChoiceRow(
+    title: String,
+    options: List<Pair<Int, String>>,
+    selectedMask: Int,
+    onToggle: (Int) -> Unit,
+    helpText: String? = null,
+    onResetToDefault: (() -> Unit)? = null
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val context = LocalContext.current
+    val resetToast = stringResource(R.string.settings_reset_to_default_toast)
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {},
+                onLongClick = onResetToDefault?.let {
+                    {
+                        it()
+                        Toast.makeText(context, resetToast, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            helpText?.let {
+                SettingHelpButton(title = title, description = it)
+            }
+        }
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .sectionContentFullBleed(GameSettingsSectionContentPadding)
+                .tvFocusGroup(),
+            contentPadding = PaddingValues(horizontal = GameSettingsSectionContentPadding),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(options, key = { it.first }) { (metric, label) ->
+                val optionInteractionSource = remember { MutableInteractionSource() }
+                FilterChip(
+                    modifier = Modifier.tvGamepadFocusableCard(
+                        shape = neonShape(16.dp),
+                        interactionSource = optionInteractionSource,
+                        addFocusTarget = false
+                    ),
+                    shape = neonChipShape(),
+                    selected = PerformanceOverlayMetrics.isEnabled(selectedMask, metric),
+                    onClick = { onToggle(metric) },
+                    interactionSource = optionInteractionSource,
+                    colors = premiumFilterChipColors(),
+                    label = { Text(label) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToggleRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    helpText: String? = null,
+    onResetToDefault: (() -> Unit)? = null
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val context = LocalContext.current
+    val resetToast = stringResource(R.string.settings_reset_to_default_toast)
+    val shape = neonShape(14.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = { onCheckedChange(!checked) },
+                onLongClick = onResetToDefault?.let {
+                    {
+                        it()
+                        Toast.makeText(context, resetToast, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+            .gamepadFocusableCard(
+                shape = shape,
+                interactionSource = interactionSource,
+                addFocusTarget = false
+            )
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                modifier = Modifier.weight(1f, fill = false),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            helpText?.let {
+                SettingHelpButton(title = title, description = it)
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = null
+        )
+    }
+}
+
+@Composable
+private fun SliderRow(
+    title: String,
+    value: Float,
+    valueLabel: String,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    onValueChange: (Float) -> Unit,
+    valueLabelForValue: ((Float) -> String)? = null,
+    helpText: String? = null,
+    onResetToDefault: (() -> Unit)? = null
+) {
+    var sliderValue by remember { mutableFloatStateOf(value) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val context = LocalContext.current
+    val resetToast = stringResource(R.string.settings_reset_to_default_toast)
+
+    LaunchedEffect(value) {
+        sliderValue = value
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = {},
+                    onLongClick = onResetToDefault?.let {
+                        {
+                            it()
+                            Toast.makeText(context, resetToast, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    modifier = Modifier.weight(1f, fill = false),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                helpText?.let {
+                    SettingHelpButton(title = title, description = it)
+                }
+            }
+            Text(
+                text = valueLabelForValue?.invoke(sliderValue) ?: valueLabel,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Slider(
+            value = sliderValue,
+            onValueChange = {
+                sliderValue = it
+                onValueChange(it)
+            },
+            valueRange = range,
+            steps = steps
+        )
+    }
+}
+
+@Composable
+@Suppress("unused")
+private fun ManagerActionButton(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    title: String,
+    onClick: () -> Unit,
+    destructive: Boolean = false
+) {
+    Surface(
+        modifier = modifier,
+        shape = neonShape(16.dp),
+        color = if (destructive) {
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.22f)
+        } else {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+        },
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (destructive) {
+                MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+            } else {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+            }
+        ),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+@Composable
+private fun PerGameGamepadMappingSection(
+    bindingsByPad: Map<Int, Map<String, Int>>,
+    onBindingsChange: (Map<Int, Map<String, Int>>) -> Unit
+) {
+    val context = LocalContext.current
+    val preferences = remember(context) { AppPreferences(context) }
+    val globalBindingsByPad by preferences.gamepadBindingsByPad.collectAsState(initial = emptyMap())
+    var showMappingDialog by remember { mutableStateOf(false) }
+
+    EditorSection(title = stringResource(R.string.settings_gamepad_mapping_title)) {
+        Text(
+            text = stringResource(R.string.settings_gamepad_mapping_game_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        ManagerActionButton(
+            icon = Icons.Rounded.Gamepad,
+            title = stringResource(R.string.settings_gamepad_mapping_configure),
+            onClick = { showMappingDialog = true }
+        )
+        if (bindingsByPad.isNotEmpty()) {
+            ManagerActionButton(
+                icon = Icons.Rounded.Restore,
+                title = stringResource(R.string.settings_gamepad_mapping_use_global),
+                onClick = { onBindingsChange(emptyMap()) }
+            )
+        }
+    }
+
+    if (showMappingDialog) {
+        PerGameGamepadMappingDialog(
+            globalBindingsByPad = globalBindingsByPad,
+            bindingsByPad = bindingsByPad,
+            onBindingsChange = onBindingsChange,
+            onDismiss = { showMappingDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun PerGameGamepadMappingDialog(
+    globalBindingsByPad: Map<Int, Map<String, Int>>,
+    bindingsByPad: Map<Int, Map<String, Int>>,
+    onBindingsChange: (Map<Int, Map<String, Int>>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val gamepadActions = remember { GamepadManager.mappableButtonActions() }
+    var selectedPadIndex by remember { mutableIntStateOf(0) }
+    var pendingActionId by remember { mutableStateOf<String?>(null) }
+
+    DisposableEffect(pendingActionId) {
+        val actionId = pendingActionId
+        if (actionId != null) {
+            GamepadManager.startBindingCapture(selectedPadIndex) { keyCode ->
+                val padBindings = GamepadBindingRules.assign(
+                    bindingsByPad[selectedPadIndex].orEmpty(),
+                    actionId,
+                    keyCode
+                )
+                onBindingsChange(bindingsByPad + (selectedPadIndex to padBindings))
+                pendingActionId = null
+            }
+        } else {
+            GamepadManager.cancelBindingCapture()
+        }
+        onDispose { GamepadManager.cancelBindingCapture() }
+    }
+
+    val effectiveBindings = remember(globalBindingsByPad, bindingsByPad) {
+        GamepadBindingRules.merge(globalBindingsByPad, bindingsByPad)
+    }
+    val overrides = bindingsByPad[selectedPadIndex].orEmpty()
+    val selectedBindings = effectiveBindings[selectedPadIndex].orEmpty()
+    val connectedControllerName = GamepadManager.connectedControllerName(selectedPadIndex)
+
+    SettingsStyledDialog(
+        title = stringResource(R.string.settings_gamepad_mapping_title),
+        eyebrow = stringResource(R.string.app_name),
+        icon = Icons.Rounded.Gamepad,
+        onDismissRequest = { if (pendingActionId == null) onDismiss() },
+        edgeToEdgeContent = true
+    ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                        listOf(0, 1).forEach { padIndex ->
+                            FilterChip(
+                                shape = neonChipShape(),
+                                selected = selectedPadIndex == padIndex,
+                                onClick = {
+                                    if (pendingActionId == null) selectedPadIndex = padIndex
+                                },
+                                colors = premiumFilterChipColors(),
+                                label = { Text(gamepadPlayerLabel(padIndex)) }
+                            )
+                        }
+                    }
+                    Text(
+                        text = connectedControllerName?.let {
+                            stringResource(
+                                R.string.settings_gamepad_mapping_player_connected,
+                                gamepadPlayerLabel(selectedPadIndex),
+                                it
+                            )
+                        } ?: stringResource(
+                            R.string.settings_gamepad_mapping_player_disconnected,
+                            gamepadPlayerLabel(selectedPadIndex)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+            pendingActionId?.let { actionId ->
+                Text(
+                    text = stringResource(
+                        R.string.settings_gamepad_mapping_listening_desc,
+                        gamepadActionLabel(actionId)
+                    ),
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                    gamepadActions.forEach { action ->
+                        val assignedKeyCode = GamepadManager.resolveBindingForAction(
+                            actionId = action.id,
+                            customBindings = selectedBindings
+                        )
+                        val isOverride = overrides.containsKey(action.id)
+                        ManagerGamepadBindingRow(
+                            title = gamepadActionLabel(action.id),
+                            value = assignedKeyCode?.let(GamepadManager::keyCodeLabel)
+                                ?: stringResource(R.string.settings_not_set),
+                            autoLabel = if (isOverride || action.defaultKeyCodes.isEmpty()) {
+                                null
+                            } else {
+                                stringResource(R.string.settings_gamepad_mapping_auto_format)
+                            },
+                            highlight = pendingActionId == action.id,
+                            onBindClick = { pendingActionId = action.id },
+                            onClearClick = if (isOverride) {
+                                {
+                                    val updatedPad = overrides - action.id
+                                    val updated = if (updatedPad.isEmpty()) {
+                                        bindingsByPad - selectedPadIndex
+                                    } else {
+                                        bindingsByPad + (selectedPadIndex to updatedPad)
+                                    }
+                                    onBindingsChange(updated)
+                                }
+                            } else {
+                                null
+                            }
+                        )
+                    }
+        }
+        ManagerGamepadBindingRow(
+            title = stringResource(R.string.settings_gamepad_mapping_use_global),
+            value = stringResource(R.string.settings_gamepad_mapping_use_global_desc),
+            autoLabel = null,
+            icon = Icons.Rounded.Restore,
+            valueColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            onBindClick = { onBindingsChange(emptyMap()) },
+            onClearClick = null
+        )
+        Button(
+            onClick = onDismiss,
+            enabled = pendingActionId == null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            shape = neonShape(18.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.close),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(vertical = 6.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ManagerGamepadBindingRow(
+    title: String,
+    value: String,
+    autoLabel: String?,
+    highlight: Boolean = false,
+    icon: ImageVector = Icons.Rounded.Gamepad,
+    valueColor: androidx.compose.ui.graphics.Color? = null,
+    onBindClick: () -> Unit,
+    onClearClick: (() -> Unit)?
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = neonShape(16.dp),
+        color = if (highlight) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)
+        },
+        border = if (highlight) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f))
+        } else {
+            null
+        },
+        onClick = onBindClick
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(neonShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = valueColor ?: MaterialTheme.colorScheme.primary
+                    )
+                    autoLabel?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            onClearClick?.let { clear ->
+                TextButton(onClick = clear) {
+                    Text(stringResource(R.string.settings_gamepad_mapping_clear))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun gamepadPlayerLabel(padIndex: Int): String {
+    return stringResource(
+        if (padIndex == 0) R.string.settings_gamepad_player_1 else R.string.settings_gamepad_player_2
+    )
+}
+
+@Composable
+private fun ProfileActionIconButton(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    title: String,
+    onClick: () -> Unit,
+    destructive: Boolean = false
+) {
+    Surface(
+        modifier = modifier,
+        shape = neonShape(18.dp),
+        color = if (destructive) {
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.22f)
+        } else {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+        },
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (destructive) {
+                MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+            } else {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+            }
+        ),
+        onClick = onClick
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(46.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileBadge(text: String) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+private fun Modifier.gameManagerFullBleed(): Modifier {
+    return layout { measurable, constraints ->
+        val sidePadding = ScreenHorizontalPadding.roundToPx()
+        val expandedConstraints = constraints.copy(
+            minWidth = (constraints.minWidth + sidePadding * 2).coerceAtLeast(0),
+            maxWidth = (constraints.maxWidth + sidePadding * 2).coerceAtLeast(0)
+        )
+        val placeable = measurable.measure(expandedConstraints)
+        layout(constraints.maxWidth, placeable.height) {
+            placeable.placeRelative(-sidePadding, 0)
+        }
+    }
+}
+
+private fun Modifier.sectionContentFullBleed(horizontalPadding: Dp): Modifier {
+    return layout { measurable, constraints ->
+        val sidePadding = horizontalPadding.roundToPx()
+        val expandedConstraints = constraints.copy(
+            minWidth = (constraints.minWidth + sidePadding * 2).coerceAtLeast(0),
+            maxWidth = (constraints.maxWidth + sidePadding * 2).coerceAtLeast(0)
+        )
+        val placeable = measurable.measure(expandedConstraints)
+        layout(constraints.maxWidth, placeable.height) {
+            placeable.placeRelative(-sidePadding, 0)
+        }
+    }
+}
+
+@Composable
+private fun GameSettingsManagerTab.title(): String = when (this) {
+    GameSettingsManagerTab.Graphics -> stringResource(R.string.settings_graphics_tab)
+    GameSettingsManagerTab.System -> stringResource(R.string.game_settings_manager_tab_system)
+    GameSettingsManagerTab.Controls -> stringResource(R.string.settings_controls_tab)
+    GameSettingsManagerTab.Fixes -> stringResource(R.string.settings_fixes_tab)
+    GameSettingsManagerTab.MemoryCards -> stringResource(R.string.game_settings_manager_tab_memory_cards)
+}
+
+@Composable
+private fun ShadeBoostRows(
+    draft: PerGameSettings,
+    defaultProfile: PerGameSettings,
+    onDraftChange: (PerGameSettings) -> Unit
+) {
+    SliderRow(
+        title = stringResource(R.string.settings_shadeboost_brightness),
+        value = draft.shadeBoostBrightness.toFloat(),
+        valueLabel = draft.shadeBoostBrightness.toString(),
+        valueLabelForValue = { it.roundToInt().toString() },
+        range = 1f..100f,
+        steps = 98,
+        onValueChange = {
+            val brightness = it.toInt()
+            onDraftChange(
+                draft.copy(
+                    shadeBoostEnabled = isShadeBoostActive(
+                        brightness = brightness,
+                        contrast = draft.shadeBoostContrast,
+                        saturation = draft.shadeBoostSaturation,
+                        gamma = draft.shadeBoostGamma
+                    ),
+                    shadeBoostBrightness = brightness
+                )
+            )
+        },
+        helpText = stringResource(R.string.settings_help_shadeboost_brightness),
+        onResetToDefault = {
+            onDraftChange(
+                draft.copy(
+                    shadeBoostEnabled = defaultProfile.shadeBoostEnabled,
+                    shadeBoostBrightness = defaultProfile.shadeBoostBrightness
+                )
+            )
+        }
+    )
+    SliderRow(
+        title = stringResource(R.string.settings_shadeboost_contrast),
+        value = draft.shadeBoostContrast.toFloat(),
+        valueLabel = draft.shadeBoostContrast.toString(),
+        valueLabelForValue = { it.roundToInt().toString() },
+        range = 1f..100f,
+        steps = 98,
+        onValueChange = {
+            val contrast = it.toInt()
+            onDraftChange(
+                draft.copy(
+                    shadeBoostEnabled = isShadeBoostActive(
+                        brightness = draft.shadeBoostBrightness,
+                        contrast = contrast,
+                        saturation = draft.shadeBoostSaturation,
+                        gamma = draft.shadeBoostGamma
+                    ),
+                    shadeBoostContrast = contrast
+                )
+            )
+        },
+        helpText = stringResource(R.string.settings_help_shadeboost_contrast),
+        onResetToDefault = {
+            onDraftChange(
+                draft.copy(
+                    shadeBoostEnabled = defaultProfile.shadeBoostEnabled,
+                    shadeBoostContrast = defaultProfile.shadeBoostContrast
+                )
+            )
+        }
+    )
+    SliderRow(
+        title = stringResource(R.string.settings_shadeboost_saturation),
+        value = draft.shadeBoostSaturation.toFloat(),
+        valueLabel = draft.shadeBoostSaturation.toString(),
+        valueLabelForValue = { it.roundToInt().toString() },
+        range = 1f..100f,
+        steps = 98,
+        onValueChange = {
+            val saturation = it.toInt()
+            onDraftChange(
+                draft.copy(
+                    shadeBoostEnabled = isShadeBoostActive(
+                        brightness = draft.shadeBoostBrightness,
+                        contrast = draft.shadeBoostContrast,
+                        saturation = saturation,
+                        gamma = draft.shadeBoostGamma
+                    ),
+                    shadeBoostSaturation = saturation
+                )
+            )
+        },
+        helpText = stringResource(R.string.settings_help_shadeboost_saturation),
+        onResetToDefault = {
+            onDraftChange(
+                draft.copy(
+                    shadeBoostEnabled = defaultProfile.shadeBoostEnabled,
+                    shadeBoostSaturation = defaultProfile.shadeBoostSaturation
+                )
+            )
+        }
+    )
+    SliderRow(
+        title = stringResource(R.string.settings_shadeboost_gamma),
+        value = draft.shadeBoostGamma.toFloat(),
+        valueLabel = draft.shadeBoostGamma.toString(),
+        valueLabelForValue = { it.roundToInt().toString() },
+        range = 1f..100f,
+        steps = 98,
+        onValueChange = {
+            val gamma = it.toInt()
+            onDraftChange(
+                draft.copy(
+                    shadeBoostEnabled = isShadeBoostActive(
+                        brightness = draft.shadeBoostBrightness,
+                        contrast = draft.shadeBoostContrast,
+                        saturation = draft.shadeBoostSaturation,
+                        gamma = gamma
+                    ),
+                    shadeBoostGamma = gamma
+                )
+            )
+        },
+        helpText = stringResource(R.string.settings_help_shadeboost_gamma),
+        onResetToDefault = {
+            onDraftChange(
+                draft.copy(
+                    shadeBoostEnabled = defaultProfile.shadeBoostEnabled,
+                    shadeBoostGamma = defaultProfile.shadeBoostGamma
+                )
+            )
+        }
+    )
+}
+
+@Composable
+private fun HardwareFixesRows(
+    draft: PerGameSettings,
+    defaultProfile: PerGameSettings,
+    onDraftChange: (PerGameSettings) -> Unit
+) {
+    EditorSection(title = stringResource(R.string.settings_hardware_fixes)) {
+        SelectionRow(
+            title = stringResource(R.string.settings_cpu_sprite_render_size),
+            options = cpuSpriteRenderSizeOptions(),
+            selectedValue = draft.cpuSpriteRenderSize,
+            onSelected = { onDraftChange(draft.copy(cpuSpriteRenderSize = it)) },
+            helpText = stringResource(R.string.settings_help_cpu_sprite_render_size),
+            onResetToDefault = { onDraftChange(draft.copy(cpuSpriteRenderSize = defaultProfile.cpuSpriteRenderSize)) }
+        )
+        SelectionRow(
+            title = stringResource(R.string.settings_cpu_sprite_render_level),
+            options = cpuSpriteRenderLevelOptions(),
+            selectedValue = draft.cpuSpriteRenderLevel,
+            onSelected = { onDraftChange(draft.copy(cpuSpriteRenderLevel = it)) },
+            helpText = stringResource(R.string.settings_help_cpu_sprite_render_level),
+            onResetToDefault = { onDraftChange(draft.copy(cpuSpriteRenderLevel = defaultProfile.cpuSpriteRenderLevel)) }
+        )
+        SelectionRow(
+            title = stringResource(R.string.settings_software_clut_render),
+            options = softwareClutRenderOptions(),
+            selectedValue = draft.softwareClutRender,
+            onSelected = { onDraftChange(draft.copy(softwareClutRender = it)) },
+            helpText = stringResource(R.string.settings_help_software_clut_render),
+            onResetToDefault = { onDraftChange(draft.copy(softwareClutRender = defaultProfile.softwareClutRender)) }
+        )
+        SelectionRow(
+            title = stringResource(R.string.settings_gpu_target_clut),
+            options = gpuTargetClutOptions(),
+            selectedValue = draft.gpuTargetClutMode,
+            onSelected = { onDraftChange(draft.copy(gpuTargetClutMode = it)) },
+            helpText = stringResource(R.string.settings_help_gpu_target_clut),
+            onResetToDefault = { onDraftChange(draft.copy(gpuTargetClutMode = defaultProfile.gpuTargetClutMode)) }
+        )
+        SelectionRow(
+            title = stringResource(R.string.settings_auto_flush_hardware),
+            options = autoFlushHardwareOptions(),
+            selectedValue = draft.autoFlushHardware,
+            onSelected = { onDraftChange(draft.copy(autoFlushHardware = it)) },
+            helpText = stringResource(R.string.settings_help_auto_flush_hardware),
+            onResetToDefault = { onDraftChange(draft.copy(autoFlushHardware = defaultProfile.autoFlushHardware)) }
+        )
+        SliderRow(
+            title = stringResource(R.string.settings_skip_draw_start),
+            value = draft.skipDrawStart.toFloat(),
+            valueLabel = draft.skipDrawStart.toString(),
+            range = 0f..100f,
+            steps = 99,
+            onValueChange = { onDraftChange(draft.copy(skipDrawStart = it.toInt())) },
+            helpText = stringResource(R.string.settings_help_skip_draw_start),
+            onResetToDefault = { onDraftChange(draft.copy(skipDrawStart = defaultProfile.skipDrawStart)) }
+        )
+        SliderRow(
+            title = stringResource(R.string.settings_skip_draw_end),
+            value = draft.skipDrawEnd.toFloat(),
+            valueLabel = draft.skipDrawEnd.toString(),
+            range = 0f..100f,
+            steps = 99,
+            onValueChange = { onDraftChange(draft.copy(skipDrawEnd = it.toInt())) },
+            helpText = stringResource(R.string.settings_help_skip_draw_end),
+            onResetToDefault = { onDraftChange(draft.copy(skipDrawEnd = defaultProfile.skipDrawEnd)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_cpu_framebuffer_conversion),
+            checked = draft.cpuFramebufferConversion,
+            onCheckedChange = { onDraftChange(draft.copy(cpuFramebufferConversion = it)) },
+            helpText = stringResource(R.string.settings_help_cpu_framebuffer_conversion),
+            onResetToDefault = { onDraftChange(draft.copy(cpuFramebufferConversion = defaultProfile.cpuFramebufferConversion)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_disable_depth_conversion),
+            checked = draft.disableDepthConversion,
+            onCheckedChange = { onDraftChange(draft.copy(disableDepthConversion = it)) },
+            helpText = stringResource(R.string.settings_help_disable_depth_conversion),
+            onResetToDefault = { onDraftChange(draft.copy(disableDepthConversion = defaultProfile.disableDepthConversion)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_disable_safe_features),
+            checked = draft.disableSafeFeatures,
+            onCheckedChange = { onDraftChange(draft.copy(disableSafeFeatures = it)) },
+            helpText = stringResource(R.string.settings_help_disable_safe_features),
+            onResetToDefault = { onDraftChange(draft.copy(disableSafeFeatures = defaultProfile.disableSafeFeatures)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_disable_render_fixes),
+            checked = draft.disableRenderFixes,
+            onCheckedChange = { onDraftChange(draft.copy(disableRenderFixes = it)) },
+            helpText = stringResource(R.string.settings_help_disable_render_fixes),
+            onResetToDefault = { onDraftChange(draft.copy(disableRenderFixes = defaultProfile.disableRenderFixes)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_preload_frame_data),
+            checked = draft.preloadFrameData,
+            onCheckedChange = { onDraftChange(draft.copy(preloadFrameData = it)) },
+            helpText = stringResource(R.string.settings_help_preload_frame_data),
+            onResetToDefault = { onDraftChange(draft.copy(preloadFrameData = defaultProfile.preloadFrameData)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_disable_partial_invalidation),
+            checked = draft.disablePartialInvalidation,
+            onCheckedChange = { onDraftChange(draft.copy(disablePartialInvalidation = it)) },
+            helpText = stringResource(R.string.settings_help_disable_partial_invalidation),
+            onResetToDefault = { onDraftChange(draft.copy(disablePartialInvalidation = defaultProfile.disablePartialInvalidation)) }
+        )
+        SelectionRow(
+            title = stringResource(R.string.settings_texture_inside_rt),
+            options = textureInsideRtOptions(),
+            selectedValue = draft.textureInsideRt,
+            onSelected = { onDraftChange(draft.copy(textureInsideRt = it)) },
+            helpText = stringResource(R.string.settings_help_texture_inside_rt),
+            onResetToDefault = { onDraftChange(draft.copy(textureInsideRt = defaultProfile.textureInsideRt)) },
+            alwaysScroll = true
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_read_targets_on_close),
+            checked = draft.readTargetsOnClose,
+            onCheckedChange = { onDraftChange(draft.copy(readTargetsOnClose = it)) },
+            helpText = stringResource(R.string.settings_help_read_targets_on_close),
+            onResetToDefault = { onDraftChange(draft.copy(readTargetsOnClose = defaultProfile.readTargetsOnClose)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_estimate_texture_region),
+            checked = draft.estimateTextureRegion,
+            onCheckedChange = { onDraftChange(draft.copy(estimateTextureRegion = it)) },
+            helpText = stringResource(R.string.settings_help_estimate_texture_region),
+            onResetToDefault = { onDraftChange(draft.copy(estimateTextureRegion = defaultProfile.estimateTextureRegion)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_gpu_palette_conversion),
+            checked = draft.gpuPaletteConversion,
+            onCheckedChange = { onDraftChange(draft.copy(gpuPaletteConversion = it)) },
+            helpText = stringResource(R.string.settings_help_gpu_palette_conversion),
+            onResetToDefault = { onDraftChange(draft.copy(gpuPaletteConversion = defaultProfile.gpuPaletteConversion)) }
+        )
+    }
+}
+
+@Composable
+private fun UpscalingFixesRows(
+    draft: PerGameSettings,
+    defaultProfile: PerGameSettings,
+    onDraftChange: (PerGameSettings) -> Unit
+) {
+    EditorSection(title = stringResource(R.string.settings_upscaling_fixes)) {
+        SelectionRow(
+            title = stringResource(R.string.settings_half_pixel_offset),
+            options = halfPixelOffsetOptions(),
+            selectedValue = draft.halfPixelOffset,
+            onSelected = { onDraftChange(draft.copy(halfPixelOffset = it)) },
+            helpText = stringResource(R.string.settings_help_half_pixel_offset),
+            onResetToDefault = { onDraftChange(draft.copy(halfPixelOffset = defaultProfile.halfPixelOffset)) }
+        )
+        SelectionRow(
+            title = stringResource(R.string.settings_native_scaling),
+            options = nativeScalingOptions(),
+            selectedValue = draft.nativeScaling,
+            onSelected = { onDraftChange(draft.copy(nativeScaling = it)) },
+            helpText = stringResource(R.string.settings_help_native_scaling),
+            onResetToDefault = { onDraftChange(draft.copy(nativeScaling = defaultProfile.nativeScaling)) }
+        )
+        SelectionRow(
+            title = stringResource(R.string.settings_round_sprite),
+            options = roundSpriteOptions(),
+            selectedValue = draft.roundSprite,
+            onSelected = { onDraftChange(draft.copy(roundSprite = it)) },
+            helpText = stringResource(R.string.settings_help_round_sprite),
+            onResetToDefault = { onDraftChange(draft.copy(roundSprite = defaultProfile.roundSprite)) }
+        )
+        SelectionRow(
+            title = stringResource(R.string.settings_bilinear_upscale),
+            options = bilinearUpscaleOptions(),
+            selectedValue = draft.bilinearUpscale,
+            onSelected = { onDraftChange(draft.copy(bilinearUpscale = it)) },
+            helpText = stringResource(R.string.settings_help_bilinear_upscale),
+            onResetToDefault = { onDraftChange(draft.copy(bilinearUpscale = defaultProfile.bilinearUpscale)) }
+        )
+        SliderRow(
+            title = stringResource(R.string.settings_texture_offset_x),
+            value = draft.textureOffsetX.toFloat(),
+            valueLabel = draft.textureOffsetX.toString(),
+            range = -512f..512f,
+            steps = 1023,
+            onValueChange = { onDraftChange(draft.copy(textureOffsetX = it.toInt())) },
+            helpText = stringResource(R.string.settings_help_texture_offset_x),
+            onResetToDefault = { onDraftChange(draft.copy(textureOffsetX = defaultProfile.textureOffsetX)) }
+        )
+        SliderRow(
+            title = stringResource(R.string.settings_texture_offset_y),
+            value = draft.textureOffsetY.toFloat(),
+            valueLabel = draft.textureOffsetY.toString(),
+            range = -512f..512f,
+            steps = 1023,
+            onValueChange = { onDraftChange(draft.copy(textureOffsetY = it.toInt())) },
+            helpText = stringResource(R.string.settings_help_texture_offset_y),
+            onResetToDefault = { onDraftChange(draft.copy(textureOffsetY = defaultProfile.textureOffsetY)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_align_sprite),
+            checked = draft.alignSprite,
+            onCheckedChange = { onDraftChange(draft.copy(alignSprite = it)) },
+            helpText = stringResource(R.string.settings_help_align_sprite),
+            onResetToDefault = { onDraftChange(draft.copy(alignSprite = defaultProfile.alignSprite)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_merge_sprite),
+            checked = draft.mergeSprite,
+            onCheckedChange = { onDraftChange(draft.copy(mergeSprite = it)) },
+            helpText = stringResource(R.string.settings_help_merge_sprite),
+            onResetToDefault = { onDraftChange(draft.copy(mergeSprite = defaultProfile.mergeSprite)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_force_even_sprite_position),
+            checked = draft.forceEvenSpritePosition,
+            onCheckedChange = { onDraftChange(draft.copy(forceEvenSpritePosition = it)) },
+            helpText = stringResource(R.string.settings_help_force_even_sprite_position),
+            onResetToDefault = { onDraftChange(draft.copy(forceEvenSpritePosition = defaultProfile.forceEvenSpritePosition)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_native_palette_draw),
+            checked = draft.nativePaletteDraw,
+            onCheckedChange = { onDraftChange(draft.copy(nativePaletteDraw = it)) },
+            helpText = stringResource(R.string.settings_help_native_palette_draw),
+            onResetToDefault = { onDraftChange(draft.copy(nativePaletteDraw = defaultProfile.nativePaletteDraw)) }
+        )
+    }
+}
+
+@Composable
+private fun eeCycleRateOptions(): List<Pair<Int, String>> = listOf(
+    -3 to "50%",
+    -2 to "60%",
+    -1 to "75%",
+    0 to "100%",
+    1 to "130%",
+    2 to "180%",
+    3 to "300%"
+)
+
+@Composable
+private fun localMultiplayerOptions(): List<Pair<Int, String>> = listOf(
+    AppPreferences.LOCAL_MULTIPLAYER_OFF to stringResource(R.string.emulation_local_multiplayer_off),
+    AppPreferences.LOCAL_MULTIPLAYER_SIDE_BY_SIDE to stringResource(R.string.emulation_local_multiplayer_side_by_side),
+    AppPreferences.LOCAL_MULTIPLAYER_STACKED to stringResource(R.string.emulation_local_multiplayer_stacked),
+    AppPreferences.LOCAL_MULTIPLAYER_HORIZONTAL_CROP to stringResource(R.string.emulation_local_multiplayer_crop),
+    AppPreferences.LOCAL_MULTIPLAYER_HORIZONTAL_CROP_SWAPPED to stringResource(R.string.emulation_local_multiplayer_crop_swapped)
+)
+
+@Composable
+private fun eeCycleSkipOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_ee_cycle_disabled),
+    1 to stringResource(R.string.settings_ee_cycle_mild),
+    2 to stringResource(R.string.settings_ee_cycle_moderate),
+    3 to stringResource(R.string.settings_ee_cycle_maximum)
+)
+
+@Composable
+private fun floatRoundModeOptions(): List<Pair<Int, String>> = listOf(
+    AppPreferences.FLOAT_ROUND_NEAREST to stringResource(R.string.settings_float_round_nearest),
+    AppPreferences.FLOAT_ROUND_NEGATIVE to stringResource(R.string.settings_float_round_negative),
+    AppPreferences.FLOAT_ROUND_POSITIVE to stringResource(R.string.settings_float_round_positive),
+    AppPreferences.FLOAT_ROUND_CHOP to stringResource(R.string.settings_float_round_chop)
+)
+
+@Composable
+private fun eeFpuClampingModeOptions(): List<Pair<Int, String>> = listOf(
+    AppPreferences.CLAMPING_NONE to stringResource(R.string.settings_clamping_none),
+    AppPreferences.CLAMPING_NORMAL to stringResource(R.string.settings_clamping_normal),
+    AppPreferences.CLAMPING_EXTRA to stringResource(R.string.settings_clamping_extra),
+    AppPreferences.CLAMPING_FULL to stringResource(R.string.settings_clamping_full)
+)
+
+@Composable
+private fun vuClampingModeOptions(): List<Pair<Int, String>> = listOf(
+    AppPreferences.CLAMPING_NONE to stringResource(R.string.settings_clamping_none),
+    AppPreferences.CLAMPING_NORMAL to stringResource(R.string.settings_clamping_normal),
+    AppPreferences.CLAMPING_EXTRA to stringResource(R.string.settings_clamping_extra),
+    AppPreferences.CLAMPING_FULL to stringResource(R.string.settings_clamping_extra_sign)
+)
+
+@Composable
+private fun blendingAccuracyOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_blending_accuracy_minimum),
+    1 to stringResource(R.string.settings_blending_accuracy_basic),
+    2 to stringResource(R.string.settings_blending_accuracy_medium),
+    3 to stringResource(R.string.settings_blending_accuracy_high),
+    4 to stringResource(R.string.settings_blending_accuracy_full),
+    5 to stringResource(R.string.settings_blending_accuracy_maximum)
+)
+
+@Composable
+private fun texturePreloadingOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_texture_preloading_none),
+    1 to stringResource(R.string.settings_texture_preloading_partial),
+    2 to stringResource(R.string.settings_texture_preloading_full)
+)
+
+@Composable
+private fun anisotropicFilteringOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_aniso_off),
+    2 to "2x",
+    4 to "4x",
+    8 to "8x",
+    16 to "16x"
+)
+
+@Composable
+private fun bilinearFilteringOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_bilinear_filtering_nearest),
+    1 to stringResource(R.string.settings_bilinear_filtering_forced),
+    2 to stringResource(R.string.settings_bilinear_filtering_ps2),
+    3 to stringResource(R.string.settings_bilinear_filtering_no_sprite)
+)
+
+@Composable
+private fun trilinearFilteringOptions(): List<Pair<Int, String>> = listOf(
+    -1 to stringResource(R.string.settings_trilinear_filtering_auto),
+    0 to stringResource(R.string.settings_trilinear_filtering_off),
+    1 to stringResource(R.string.settings_trilinear_filtering_ps2),
+    2 to stringResource(R.string.settings_trilinear_filtering_forced)
+)
+
+@Composable
+private fun hwDownloadModeOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_hw_download_mode_accurate),
+    1 to stringResource(R.string.settings_hw_download_mode_force_full),
+    2 to stringResource(R.string.settings_hw_download_mode_no_readbacks),
+    3 to stringResource(R.string.settings_hw_download_mode_unsynchronized),
+    4 to stringResource(R.string.settings_hw_download_mode_disabled)
+)
+
+@Composable
+private fun touchHapticsPresetOptions(): List<Pair<Int, String>> = listOf(
+    AppPreferences.TOUCH_HAPTICS_PRESET_SOFT to stringResource(R.string.settings_touch_haptics_preset_soft),
+    AppPreferences.TOUCH_HAPTICS_PRESET_BALANCED to stringResource(R.string.settings_touch_haptics_preset_balanced),
+    AppPreferences.TOUCH_HAPTICS_PRESET_CRISP to stringResource(R.string.settings_touch_haptics_preset_crisp),
+    AppPreferences.TOUCH_HAPTICS_PRESET_STRONG to stringResource(R.string.settings_touch_haptics_preset_strong)
+)
+
+@Composable
+private fun gyroStickOptions(): List<Pair<Int, String>> = listOf(
+    AppPreferences.GYRO_STICK_RIGHT to stringResource(R.string.settings_stick_toggle_right),
+    AppPreferences.GYRO_STICK_LEFT to stringResource(R.string.settings_stick_toggle_left)
+)
+
+@Composable
+private fun lightGunAimOptions(): List<Pair<Int, String>> = listOf(
+    AppPreferences.LIGHT_GUN_AIM_GYRO to stringResource(R.string.settings_light_gun_aim_gyro),
+    AppPreferences.LIGHT_GUN_AIM_LEFT_STICK to stringResource(R.string.settings_stick_toggle_left),
+    AppPreferences.LIGHT_GUN_AIM_RIGHT_STICK to stringResource(R.string.settings_stick_toggle_right)
+)
+
+@Composable
+private fun gyroModeOptions(
+    stickTarget: Int = AppPreferences.DEFAULT_GYRO_STICK_TARGET
+): List<Pair<Int, String>> = listOf(
+    AppPreferences.GYRO_MODE_OFF to stringResource(R.string.settings_gyro_off),
+    AppPreferences.GYRO_MODE_AIM to stringResource(
+        if (stickTarget == AppPreferences.GYRO_STICK_LEFT) {
+            R.string.settings_gyro_aim_left
+        } else {
+            R.string.settings_gyro_aim
+        }
+    ),
+    AppPreferences.GYRO_MODE_STEERING to stringResource(R.string.settings_gyro_steering),
+    AppPreferences.GYRO_MODE_LIGHT_GUN to stringResource(R.string.settings_gyro_mode_light_gun)
+)
+
+@Composable
+private fun casModeOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_cas_mode_off),
+    1 to stringResource(R.string.settings_cas_mode_sharpen_only),
+    2 to stringResource(R.string.settings_cas_mode_sharpen_resize)
+)
+
+@Composable
+private fun sgsrModeOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_sgsr_off),
+    1 to stringResource(R.string.settings_sgsr_quality),
+    2 to stringResource(R.string.settings_sgsr_balanced),
+    3 to stringResource(R.string.settings_sgsr_performance)
+)
+
+@Composable
+private fun tvShaderOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_tv_shader_none),
+    1 to stringResource(R.string.settings_tv_shader_scanline),
+    2 to stringResource(R.string.settings_tv_shader_diagonal),
+    3 to stringResource(R.string.settings_tv_shader_triangular),
+    4 to stringResource(R.string.settings_tv_shader_wave),
+    5 to stringResource(R.string.settings_tv_shader_lottes_crt),
+    6 to stringResource(R.string.settings_tv_shader_4x_rgss),
+    7 to stringResource(R.string.settings_tv_shader_nx_agss)
+)
+
+@Composable
+private fun deinterlacingOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_deinterlacing_automatic),
+    1 to stringResource(R.string.settings_deinterlacing_off),
+    2 to stringResource(R.string.settings_deinterlacing_weave_tff),
+    3 to stringResource(R.string.settings_deinterlacing_weave_bff),
+    4 to stringResource(R.string.settings_deinterlacing_bob_tff),
+    5 to stringResource(R.string.settings_deinterlacing_bob_bff),
+    6 to stringResource(R.string.settings_deinterlacing_blend_tff),
+    7 to stringResource(R.string.settings_deinterlacing_blend_bff),
+    8 to stringResource(R.string.settings_deinterlacing_adaptive_tff),
+    9 to stringResource(R.string.settings_deinterlacing_adaptive_bff)
+)
+
+@Composable
+private fun ditheringOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_dithering_off),
+    1 to stringResource(R.string.settings_dithering_scaled),
+    2 to stringResource(R.string.settings_dithering_unscaled),
+    3 to stringResource(R.string.settings_dithering_force_32bit)
+)
+
+@Composable
+private fun cpuSpriteRenderSizeOptions(): List<Pair<Int, String>> = (0..10).map { value ->
+    value to if (value == 0) stringResource(R.string.settings_disabled_short) else value.toString()
+}
+
+@Composable
+private fun cpuSpriteRenderLevelOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_cpu_sprite_render_level_sprites),
+    1 to stringResource(R.string.settings_cpu_sprite_render_level_triangles),
+    2 to stringResource(R.string.settings_cpu_sprite_render_level_blended)
+)
+
+@Composable
+private fun softwareClutRenderOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_disabled_short),
+    1 to stringResource(R.string.settings_normal_short),
+    2 to stringResource(R.string.settings_aggressive_short)
+)
+
+@Composable
+private fun gpuTargetClutOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_hw_download_mode_disabled),
+    1 to stringResource(R.string.settings_gpu_target_clut_exact),
+    2 to stringResource(R.string.settings_gpu_target_clut_inside)
+)
+
+@Composable
+private fun autoFlushHardwareOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_hw_download_mode_disabled),
+    1 to stringResource(R.string.settings_auto_flush_sprites),
+    2 to stringResource(R.string.settings_auto_flush_all)
+)
+
+@Composable
+private fun textureInsideRtOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_hw_download_mode_disabled),
+    1 to stringResource(R.string.settings_texture_inside_rt_inside),
+    2 to stringResource(R.string.settings_texture_inside_rt_merge)
+)
+
+@Composable
+private fun halfPixelOffsetOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_half_pixel_off),
+    1 to stringResource(R.string.settings_half_pixel_normal),
+    2 to stringResource(R.string.settings_half_pixel_special),
+    3 to stringResource(R.string.settings_half_pixel_special_aggressive),
+    4 to stringResource(R.string.settings_half_pixel_native),
+    5 to stringResource(R.string.settings_half_pixel_native_tex)
+)
+
+@Composable
+private fun nativeScalingOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_native_scaling_off),
+    1 to stringResource(R.string.settings_native_scaling_normal),
+    2 to stringResource(R.string.settings_native_scaling_aggressive),
+    3 to stringResource(R.string.settings_native_scaling_normal_maintain_upscale),
+    4 to stringResource(R.string.settings_native_scaling_aggressive_maintain_upscale)
+)
+
+@Composable
+private fun roundSpriteOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_half_pixel_off),
+    1 to stringResource(R.string.settings_round_sprite_half),
+    2 to stringResource(R.string.settings_round_sprite_full)
+)
+
+@Composable
+private fun bilinearUpscaleOptions(): List<Pair<Int, String>> = listOf(
+    0 to stringResource(R.string.settings_trilinear_filtering_auto),
+    1 to stringResource(R.string.settings_bilinear_upscale_force_bilinear),
+    2 to stringResource(R.string.settings_bilinear_upscale_force_nearest)
+)
+
+@Composable
+@Suppress("unused")
+private fun DialogWindowWidth(
+    enabled: Boolean,
+    widthFraction: Float,
+    maxWidthDp: Int
+) {
+    val view = LocalView.current
+    val density = LocalDensity.current
+    val containerSize = LocalWindowInfo.current.containerSize
+    val windowWidth = with(density) { containerSize.width.toDp() }
+    val isLandscape = containerSize.width > containerSize.height
+
+    SideEffect {
+        val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
+        window.setGravity(Gravity.CENTER)
+        window.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
+        window.decorView.setPadding(0, 0, 0, 0)
+        if (!enabled) {
+            val attributes = window.attributes
+            attributes.x = 0
+            window.attributes = attributes
+            window.setLayout(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
+            return@SideEffect
+        }
+
+        val requestedWidthPx = with(density) {
+            (windowWidth * widthFraction)
+                .coerceAtMost(maxWidthDp.dp)
+                .roundToPx()
+        }
+        val attributes = window.attributes
+        attributes.x = landscapeCenterOffsetPx(view, isLandscape)
+        window.attributes = attributes
+        window.setLayout(requestedWidthPx, WindowManager.LayoutParams.WRAP_CONTENT)
+    }
+}
+
+private fun landscapeCenterOffsetPx(view: View, isLandscape: Boolean): Int {
+    if (!isLandscape) return 0
+    val insets = view.rootWindowInsets ?: return 0
+    val leftRight = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val bars = insets.getInsets(
+            android.view.WindowInsets.Type.systemBars() or
+                android.view.WindowInsets.Type.displayCutout()
+        )
+        bars.left to bars.right
+    } else {
+        @Suppress("DEPRECATION")
+        insets.systemWindowInsetLeft to insets.systemWindowInsetRight
+    }
+    return (leftRight.first - leftRight.second) / 2
+}
+
+private fun rendererLabel(renderer: Int): Int = when (normalizeManagerRenderer(renderer)) {
+    12 -> R.string.settings_renderer_opengl
+    13 -> R.string.settings_renderer_software
+    else -> R.string.settings_renderer_vulkan
+}
+
+private fun normalizeManagerRenderer(renderer: Int): Int {
+    return RendererDefaults.normalizeAndroidRenderer(renderer)
+}
+
+private fun isShadeBoostActive(
+    brightness: Int,
+    contrast: Int,
+    saturation: Int,
+    gamma: Int
+): Boolean {
+    return brightness != 50 || contrast != 50 || saturation != 50 || gamma != 50
+}
+
+private fun resolveManualTargetFps(currentTargetFps: Int, defaultTargetFps: Int): Int {
+    return when {
+        currentTargetFps > 0 -> currentTargetFps
+        defaultTargetFps > 0 -> defaultTargetFps
+        else -> 60
+    }
+}
+
+private fun formatFramerateHz(value: Float): String {
+    val rounded = kotlin.math.round(value * 100f) / 100f
+    val whole = rounded.toInt()
+    return if (rounded == whole.toFloat()) {
+        "$whole Hz"
+    } else {
+        "$rounded Hz"
+    }
+}
+
+private fun SettingsSnapshot.toPerGameSettings(game: GameItem): PerGameSettings {
+    return PerGameSettings(
+        gameKey = game.path,
+        gameTitle = game.title,
+        gameSerial = game.serial,
+        interfaceSettings = toInterfaceSettings(),
+        renderer = renderer,
+        gpuDriverType = gpuDriverType,
+        customDriverPath = customDriverPath,
+        mediatekAngleOpenGl = mediatekAngleOpenGl,
+        upscaleMultiplier = upscaleMultiplier,
+        aspectRatio = aspectRatio,
+        localMultiplayerMode = localMultiplayerMode,
+        displayCrop = displayCrop,
+        showFps = showFps,
+        fpsOverlayMode = fpsOverlayMode,
+        racingMode = racingMode,
+        stickyButtons = stickyButtons,
+        touchscreenRightStick = touchscreenRightStick,
+        touchscreenRightStickSensitivity = touchscreenRightStickSensitivity,
+        touchscreenLeftStick = touchscreenLeftStick,
+        touchscreenLeftStickSensitivity = touchscreenLeftStickSensitivity,
+        touchHaptics = touchHaptics,
+        stickToggleTarget = stickToggleTarget,
+        touchHapticsPreset = touchHapticsPreset,
+        gyroMode = gyroMode,
+        gyroSensitivity = gyroSensitivity,
+        gyroSmoothing = gyroSmoothing,
+        gyroInvertX = gyroInvertX,
+        gyroInvertY = gyroInvertY,
+        gyroStickTarget = gyroStickTarget,
+        lightGunAim = lightGunAim,
+        lightGunCursorEnabled = lightGunCursorEnabled,
+        gamepadRightStickUpToR2 = gamepadRightStickUpToR2,
+        gamepadRightStickDownToL2 = gamepadRightStickDownToL2,
+        gamepadButtonHaptics = gamepadButtonHaptics,
+        gamepadStickDeadzone = gamepadStickDeadzone,
+        gamepadLeftStickSensitivity = gamepadLeftStickSensitivity,
+        gamepadRightStickSensitivity = gamepadRightStickSensitivity,
+        gamepadLeftStickNegativeDeadzone = gamepadLeftStickNegativeDeadzone,
+        gamepadRightStickNegativeDeadzone = gamepadRightStickNegativeDeadzone,
+        gamepadLeftStickAntiDeadzone = gamepadLeftStickAntiDeadzone,
+        gamepadRightStickAntiDeadzone = gamepadRightStickAntiDeadzone,
+        gamepadLeftStickCurve = gamepadLeftStickCurve,
+        gamepadRightStickCurve = gamepadRightStickCurve,
+        pressureModifierAmount = pressureModifierAmount,
+        autoSaveOnExit = false,
+        autoLoadOnStart = false,
+        enableFastBoot = enableFastBoot,
+        enableInstantVu1 = enableInstantVu1,
+        enableMtvu = enableMtvu,
+        enableIopThread = enableIopThread,
+        enableVUAot = enableVUAot,
+        enableFastCdvd = enableFastCdvd,
+        enableCheats = enableCheats,
+        enableGameFixes = enableGameFixes,
+        autoGsHardwareFixes = autoGsHardwareFixes,
+        enableEeTimingHack = enableEeTimingHack,
+        eeFpuRoundMode = eeFpuRoundMode,
+        vu0RoundMode = vu0RoundMode,
+        vu1RoundMode = vu1RoundMode,
+        eeFpuClampingMode = eeFpuClampingMode,
+        vu0ClampingMode = vu0ClampingMode,
+        vu1ClampingMode = vu1ClampingMode,
+        hwDownloadMode = hwDownloadMode,
+        eeCycleRate = eeCycleRate,
+        eeCycleSkip = eeCycleSkip,
+        frameSkip = frameSkip,
+        skipDuplicateFrames = skipDuplicateFrames,
+        lowLatencyMode = lowLatencyMode,
+        frameLimitEnabled = frameLimitEnabled,
+        targetFps = targetFps,
+        ntscFramerate = ntscFramerate,
+        palFramerate = palFramerate,
+        textureFiltering = textureFiltering,
+        trilinearFiltering = trilinearFiltering,
+        blendingAccuracy = blendingAccuracy,
+        texturePreloading = texturePreloading,
+        enableFxaa = enableFxaa,
+        casMode = casMode,
+        sgsrMode = sgsrMode,
+        casSharpness = casSharpness,
+        tvShader = tvShader,
+        shadeBoostEnabled = shadeBoostEnabled,
+        shadeBoostBrightness = shadeBoostBrightness,
+        shadeBoostContrast = shadeBoostContrast,
+        shadeBoostSaturation = shadeBoostSaturation,
+        shadeBoostGamma = shadeBoostGamma,
+        anisotropicFiltering = anisotropicFiltering,
+        enableHwMipmapping = enableHwMipmapping,
+        antiBlur = antiBlur,
+        deinterlaceMode = deinterlaceMode,
+        dithering = dithering,
+        enableWidescreenPatches = enableWidescreenPatches,
+        enableNoInterlacingPatches = enableNoInterlacingPatches,
+        cpuSpriteRenderSize = cpuSpriteRenderSize,
+        cpuSpriteRenderLevel = cpuSpriteRenderLevel,
+        softwareClutRender = softwareClutRender,
+        gpuTargetClutMode = gpuTargetClutMode,
+        skipDrawStart = skipDrawStart,
+        skipDrawEnd = skipDrawEnd,
+        autoFlushHardware = autoFlushHardware,
+        cpuFramebufferConversion = cpuFramebufferConversion,
+        disableDepthConversion = disableDepthConversion,
+        disableSafeFeatures = disableSafeFeatures,
+        disableRenderFixes = disableRenderFixes,
+        preloadFrameData = preloadFrameData,
+        disablePartialInvalidation = disablePartialInvalidation,
+        textureInsideRt = textureInsideRt,
+        readTargetsOnClose = readTargetsOnClose,
+        estimateTextureRegion = estimateTextureRegion,
+        gpuPaletteConversion = gpuPaletteConversion,
+        halfPixelOffset = halfPixelOffset,
+        nativeScaling = nativeScaling,
+        roundSprite = roundSprite,
+        bilinearUpscale = bilinearUpscale,
+        textureOffsetX = textureOffsetX,
+        textureOffsetY = textureOffsetY,
+        alignSprite = alignSprite,
+        mergeSprite = mergeSprite,
+        forceEvenSpritePosition = forceEvenSpritePosition,
+        nativePaletteDraw = nativePaletteDraw
+    )
+}
+
+private const val GLOBAL_MEMORY_CARD_OPTION = -1
+private const val NONE_MEMORY_CARD_OPTION = 0
+private const val CREATE_MEMORY_CARD_OPTION = -2
+
+@Composable
+private fun MemoryCardSlotSelectionRow(
+    title: String,
+    cards: List<MemoryCardInfo>,
+    selectedCardName: String?,
+    excludedCardName: String?,
+    hiddenCardNames: Set<String>,
+    createCardLabel: String,
+    showCreateCardOption: Boolean,
+    helpText: String? = null,
+    onCreateDedicatedCard: () -> Unit,
+    onSelected: (String?) -> Unit
+) {
+    val useGlobalLabel = stringResource(R.string.settings_use_global)
+    val noneLabel = stringResource(R.string.memory_card_slot_empty)
+    val options = remember(
+        cards,
+        excludedCardName,
+        hiddenCardNames,
+        selectedCardName,
+        showCreateCardOption,
+        useGlobalLabel,
+        noneLabel,
+        createCardLabel
+    ) {
+        buildList {
+            add(GLOBAL_MEMORY_CARD_OPTION to useGlobalLabel)
+            add(NONE_MEMORY_CARD_OPTION to noneLabel)
+            cards.forEachIndexed { index, card ->
+                val isHidden = card.name.lowercase() in hiddenCardNames
+                val isSelected = card.name.equals(selectedCardName, ignoreCase = true)
+                if (!card.name.equals(excludedCardName, ignoreCase = true) && (!isHidden || isSelected)) {
+                    add(index + 1 to card.name)
+                }
+            }
+            if (showCreateCardOption) {
+                add(CREATE_MEMORY_CARD_OPTION to createCardLabel)
+            }
+        }
+    }
+    val selectedValue = when {
+        selectedCardName == null -> GLOBAL_MEMORY_CARD_OPTION
+        selectedCardName.isEmpty() -> NONE_MEMORY_CARD_OPTION
+        else -> cards.indexOfFirst { it.name.equals(selectedCardName, ignoreCase = true) }
+            .takeIf { it >= 0 }?.plus(1) ?: GLOBAL_MEMORY_CARD_OPTION
+    }
+    SelectionRow(
+        title = title,
+        options = options,
+        selectedValue = selectedValue,
+        helpText = helpText,
+        onSelected = { value ->
+            if (value == CREATE_MEMORY_CARD_OPTION) {
+                onCreateDedicatedCard()
+            } else {
+                onSelected(
+                    when {
+                        value == GLOBAL_MEMORY_CARD_OPTION -> null
+                        value == NONE_MEMORY_CARD_OPTION -> ""
+                        else -> cards.getOrNull(value - 1)?.name
+                    }
+                )
+            }
+        },
+        onResetToDefault = { onSelected(null) },
+        alwaysScroll = true
+    )
+}
+
+private fun PerGameSettings.resolveAgainst(defaultProfile: PerGameSettings): PerGameSettings {
+    val effectiveInterface = interfaceSettings?.resolveAgainst(defaultProfile.interfaceSettings ?: PerGameInterfaceSettings())
+        ?: defaultProfile.interfaceSettings
+    val keys = providedKeys ?: return copy(interfaceSettings = effectiveInterface, providedKeys = null)
+    fun <T> pick(key: String, current: T, fallback: T): T = if (key in keys) current else fallback
+    return defaultProfile.copy(
+        interfaceSettings = effectiveInterface,
+        gameKey = gameKey,
+        gameTitle = gameTitle,
+        gameSerial = gameSerial,
+        achievementsHardcore = achievementsHardcore,
+        keyboardMouse = pick("keyboardMouse", keyboardMouse, defaultProfile.keyboardMouse),
+        renderer = pick("renderer", renderer, defaultProfile.renderer),
+        gpuDriverType = pick("gpuDriverType", gpuDriverType, defaultProfile.gpuDriverType),
+        customDriverPath = pick("customDriverPath", customDriverPath, defaultProfile.customDriverPath),
+        memoryCardSlot1 = pick("memoryCardSlot1", memoryCardSlot1, defaultProfile.memoryCardSlot1),
+        memoryCardSlot2 = pick("memoryCardSlot2", memoryCardSlot2, defaultProfile.memoryCardSlot2),
+        dedicatedMemoryCards = pick("dedicatedMemoryCards", dedicatedMemoryCards, defaultProfile.dedicatedMemoryCards),
+        frameGenerationEnabled = pick("frameGenerationEnabled", frameGenerationEnabled, defaultProfile.frameGenerationEnabled),
+        frameGenerationMultiplier = pick("frameGenerationMultiplier", frameGenerationMultiplier, defaultProfile.frameGenerationMultiplier),
+        frameGenerationPerformance = pick("frameGenerationPerformance", frameGenerationPerformance, defaultProfile.frameGenerationPerformance),
+        frameGenerationFlowScale = pick("frameGenerationFlowScale", frameGenerationFlowScale, defaultProfile.frameGenerationFlowScale),
+        frameGenerationTargetRate = pick("frameGenerationTargetRate", frameGenerationTargetRate, defaultProfile.frameGenerationTargetRate),
+        mediatekAngleOpenGl = pick("mediatekAngleOpenGl", mediatekAngleOpenGl, defaultProfile.mediatekAngleOpenGl),
+        upscaleMultiplier = pick("upscaleMultiplier", upscaleMultiplier, defaultProfile.upscaleMultiplier),
+        aspectRatio = pick("aspectRatio", aspectRatio, defaultProfile.aspectRatio),
+        localMultiplayerMode = pick(
+            "localMultiplayerMode",
+            localMultiplayerMode,
+            defaultProfile.localMultiplayerMode
+        ),
+        displayCrop = pick("displayCrop", displayCrop, defaultProfile.displayCrop),
+        showFps = pick("showFps", showFps, defaultProfile.showFps),
+        fpsOverlayMode = pick("fpsOverlayMode", fpsOverlayMode, defaultProfile.fpsOverlayMode),
+        racingMode = pick("racingMode", racingMode, defaultProfile.racingMode),
+        stickyButtons = pick("stickyButtons", stickyButtons, defaultProfile.stickyButtons),
+        touchscreenRightStick = pick("touchscreenRightStick", touchscreenRightStick, defaultProfile.touchscreenRightStick),
+        touchscreenRightStickSensitivity = pick(
+            "touchscreenRightStickSensitivity",
+            touchscreenRightStickSensitivity,
+            defaultProfile.touchscreenRightStickSensitivity
+        ),
+        touchscreenLeftStick = pick("touchscreenLeftStick", touchscreenLeftStick, defaultProfile.touchscreenLeftStick),
+        touchscreenLeftStickSensitivity = pick(
+            "touchscreenLeftStickSensitivity",
+            touchscreenLeftStickSensitivity,
+            defaultProfile.touchscreenLeftStickSensitivity
+        ),
+        touchHaptics = pick("touchHaptics", touchHaptics, defaultProfile.touchHaptics),
+        stickToggleTarget = pick("stickToggleTarget", stickToggleTarget, defaultProfile.stickToggleTarget),
+        touchHapticsPreset = pick("touchHapticsPreset", touchHapticsPreset, defaultProfile.touchHapticsPreset),
+        gyroMode = pick("gyroMode", gyroMode, defaultProfile.gyroMode),
+        gyroSensitivity = pick("gyroSensitivity", gyroSensitivity, defaultProfile.gyroSensitivity),
+        gyroSmoothing = pick("gyroSmoothing", gyroSmoothing, defaultProfile.gyroSmoothing),
+        gyroInvertX = pick("gyroInvertX", gyroInvertX, defaultProfile.gyroInvertX),
+        gyroInvertY = pick("gyroInvertY", gyroInvertY, defaultProfile.gyroInvertY),
+        gyroStickTarget = pick(
+            "gyroStickTarget",
+            gyroStickTarget,
+            defaultProfile.gyroStickTarget
+        ),
+        lightGunAim = pick(
+            "lightGunAim",
+            lightGunAim,
+            defaultProfile.lightGunAim
+        ),
+        lightGunCursorEnabled = pick(
+            "lightGunCursorEnabled",
+            lightGunCursorEnabled,
+            defaultProfile.lightGunCursorEnabled
+        ),
+        gamepadRightStickUpToR2 = pick("gamepadRightStickUpToR2", gamepadRightStickUpToR2, defaultProfile.gamepadRightStickUpToR2),
+        gamepadRightStickDownToL2 = pick("gamepadRightStickDownToL2", gamepadRightStickDownToL2, defaultProfile.gamepadRightStickDownToL2),
+        gamepadButtonHaptics = pick("gamepadButtonHaptics", gamepadButtonHaptics, defaultProfile.gamepadButtonHaptics),
+        gamepadStickDeadzone = pick("gamepadStickDeadzone", gamepadStickDeadzone, defaultProfile.gamepadStickDeadzone),
+        gamepadLeftStickSensitivity = pick("gamepadLeftStickSensitivity", gamepadLeftStickSensitivity, defaultProfile.gamepadLeftStickSensitivity),
+        gamepadRightStickSensitivity = pick("gamepadRightStickSensitivity", gamepadRightStickSensitivity, defaultProfile.gamepadRightStickSensitivity),
+        gamepadLeftStickNegativeDeadzone = pick("gamepadLeftStickNegativeDeadzone", gamepadLeftStickNegativeDeadzone, defaultProfile.gamepadLeftStickNegativeDeadzone),
+        gamepadRightStickNegativeDeadzone = pick("gamepadRightStickNegativeDeadzone", gamepadRightStickNegativeDeadzone, defaultProfile.gamepadRightStickNegativeDeadzone),
+        gamepadLeftStickAntiDeadzone = pick("gamepadLeftStickAntiDeadzone", gamepadLeftStickAntiDeadzone, defaultProfile.gamepadLeftStickAntiDeadzone),
+        gamepadRightStickAntiDeadzone = pick("gamepadRightStickAntiDeadzone", gamepadRightStickAntiDeadzone, defaultProfile.gamepadRightStickAntiDeadzone),
+        gamepadLeftStickCurve = pick("gamepadLeftStickCurve", gamepadLeftStickCurve, defaultProfile.gamepadLeftStickCurve),
+        gamepadRightStickCurve = pick("gamepadRightStickCurve", gamepadRightStickCurve, defaultProfile.gamepadRightStickCurve),
+        pressureModifierAmount = pick("pressureModifierAmount", pressureModifierAmount, defaultProfile.pressureModifierAmount),
+        autoSaveOnExit = pick("autoSaveOnExit", autoSaveOnExit, defaultProfile.autoSaveOnExit),
+        autoLoadOnStart = pick("autoLoadOnStart", autoLoadOnStart, defaultProfile.autoLoadOnStart),
+        enableFastBoot = pick("enableFastBoot", enableFastBoot, defaultProfile.enableFastBoot),
+        enableInstantVu1 = pick("enableInstantVu1", enableInstantVu1, defaultProfile.enableInstantVu1),
+        enableMtvu = pick("enableMtvu", enableMtvu, defaultProfile.enableMtvu),
+        enableIopThread = pick("enableIopThread", enableIopThread, defaultProfile.enableIopThread),
+        enableVUAot = pick("enableVUAot", enableVUAot, defaultProfile.enableVUAot),
+        enableFastCdvd = pick("enableFastCdvd", enableFastCdvd, defaultProfile.enableFastCdvd),
+        enableCheats = pick("enableCheats", enableCheats, defaultProfile.enableCheats),
+        enableGameFixes = pick("enableGameFixes", enableGameFixes, defaultProfile.enableGameFixes),
+        autoGsHardwareFixes = pick("autoGsHardwareFixes", autoGsHardwareFixes, defaultProfile.autoGsHardwareFixes),
+        enableEeTimingHack = pick("enableEeTimingHack", enableEeTimingHack, defaultProfile.enableEeTimingHack),
+        eeFpuRoundMode = pick("eeFpuRoundMode", eeFpuRoundMode, defaultProfile.eeFpuRoundMode),
+        vu0RoundMode = pick("vu0RoundMode", vu0RoundMode, defaultProfile.vu0RoundMode),
+        vu1RoundMode = pick("vu1RoundMode", vu1RoundMode, defaultProfile.vu1RoundMode),
+        eeFpuClampingMode = pick("eeFpuClampingMode", eeFpuClampingMode, defaultProfile.eeFpuClampingMode),
+        vu0ClampingMode = pick("vu0ClampingMode", vu0ClampingMode, defaultProfile.vu0ClampingMode),
+        vu1ClampingMode = pick("vu1ClampingMode", vu1ClampingMode, defaultProfile.vu1ClampingMode),
+        hwDownloadMode = pick("hwDownloadMode", hwDownloadMode, defaultProfile.hwDownloadMode),
+        eeCycleRate = pick("eeCycleRate", eeCycleRate, defaultProfile.eeCycleRate),
+        eeCycleSkip = pick("eeCycleSkip", eeCycleSkip, defaultProfile.eeCycleSkip),
+        frameSkip = pick("frameSkip", frameSkip, defaultProfile.frameSkip),
+        skipDuplicateFrames = pick("skipDuplicateFrames", skipDuplicateFrames, defaultProfile.skipDuplicateFrames),
+        lowLatencyMode = pick("lowLatencyMode", lowLatencyMode, defaultProfile.lowLatencyMode),
+        frameLimitEnabled = pick("frameLimitEnabled", frameLimitEnabled, defaultProfile.frameLimitEnabled),
+        targetFps = pick("targetFps", targetFps, defaultProfile.targetFps),
+        ntscFramerate = pick("ntscFramerate", ntscFramerate, defaultProfile.ntscFramerate),
+        palFramerate = pick("palFramerate", palFramerate, defaultProfile.palFramerate),
+        textureFiltering = pick("textureFiltering", textureFiltering, defaultProfile.textureFiltering),
+        trilinearFiltering = pick("trilinearFiltering", trilinearFiltering, defaultProfile.trilinearFiltering),
+        blendingAccuracy = pick("blendingAccuracy", blendingAccuracy, defaultProfile.blendingAccuracy),
+        texturePreloading = pick("texturePreloading", texturePreloading, defaultProfile.texturePreloading),
+        shaderChainOverrideEnabled = shaderChainOverrideEnabled,
+        shaderChainPreset = shaderChainPreset,
+        enableFxaa = pick("enableFxaa", enableFxaa, defaultProfile.enableFxaa),
+        casMode = pick("casMode", casMode, defaultProfile.casMode),
+        sgsrMode = pick("sgsrMode", sgsrMode, defaultProfile.sgsrMode),
+        casSharpness = pick("casSharpness", casSharpness, defaultProfile.casSharpness),
+        tvShader = pick("tvShader", tvShader, defaultProfile.tvShader),
+        shadeBoostEnabled = pick("shadeBoostEnabled", shadeBoostEnabled, defaultProfile.shadeBoostEnabled),
+        shadeBoostBrightness = pick("shadeBoostBrightness", shadeBoostBrightness, defaultProfile.shadeBoostBrightness),
+        shadeBoostContrast = pick("shadeBoostContrast", shadeBoostContrast, defaultProfile.shadeBoostContrast),
+        shadeBoostSaturation = pick("shadeBoostSaturation", shadeBoostSaturation, defaultProfile.shadeBoostSaturation),
+        shadeBoostGamma = pick("shadeBoostGamma", shadeBoostGamma, defaultProfile.shadeBoostGamma),
+        anisotropicFiltering = pick("anisotropicFiltering", anisotropicFiltering, defaultProfile.anisotropicFiltering),
+        enableHwMipmapping = pick("enableHwMipmapping", enableHwMipmapping, defaultProfile.enableHwMipmapping),
+        antiBlur = pick("antiBlur", antiBlur, defaultProfile.antiBlur),
+        deinterlaceMode = pick("deinterlaceMode", deinterlaceMode, defaultProfile.deinterlaceMode),
+        dithering = pick("dithering", dithering, defaultProfile.dithering),
+        enableWidescreenPatches = pick("enableWidescreenPatches", enableWidescreenPatches, defaultProfile.enableWidescreenPatches),
+        enableNoInterlacingPatches = pick("enableNoInterlacingPatches", enableNoInterlacingPatches, defaultProfile.enableNoInterlacingPatches),
+        cpuSpriteRenderSize = pick("cpuSpriteRenderSize", cpuSpriteRenderSize, defaultProfile.cpuSpriteRenderSize),
+        cpuSpriteRenderLevel = pick("cpuSpriteRenderLevel", cpuSpriteRenderLevel, defaultProfile.cpuSpriteRenderLevel),
+        softwareClutRender = pick("softwareClutRender", softwareClutRender, defaultProfile.softwareClutRender),
+        gpuTargetClutMode = pick("gpuTargetClutMode", gpuTargetClutMode, defaultProfile.gpuTargetClutMode),
+        skipDrawStart = pick("skipDrawStart", skipDrawStart, defaultProfile.skipDrawStart),
+        skipDrawEnd = pick("skipDrawEnd", skipDrawEnd, defaultProfile.skipDrawEnd),
+        autoFlushHardware = pick("autoFlushHardware", autoFlushHardware, defaultProfile.autoFlushHardware),
+        cpuFramebufferConversion = pick("cpuFramebufferConversion", cpuFramebufferConversion, defaultProfile.cpuFramebufferConversion),
+        disableDepthConversion = pick("disableDepthConversion", disableDepthConversion, defaultProfile.disableDepthConversion),
+        disableSafeFeatures = pick("disableSafeFeatures", disableSafeFeatures, defaultProfile.disableSafeFeatures),
+        disableRenderFixes = pick("disableRenderFixes", disableRenderFixes, defaultProfile.disableRenderFixes),
+        preloadFrameData = pick("preloadFrameData", preloadFrameData, defaultProfile.preloadFrameData),
+        disablePartialInvalidation = pick("disablePartialInvalidation", disablePartialInvalidation, defaultProfile.disablePartialInvalidation),
+        textureInsideRt = pick("textureInsideRt", textureInsideRt, defaultProfile.textureInsideRt),
+        readTargetsOnClose = pick("readTargetsOnClose", readTargetsOnClose, defaultProfile.readTargetsOnClose),
+        estimateTextureRegion = pick("estimateTextureRegion", estimateTextureRegion, defaultProfile.estimateTextureRegion),
+        gpuPaletteConversion = pick("gpuPaletteConversion", gpuPaletteConversion, defaultProfile.gpuPaletteConversion),
+        halfPixelOffset = pick("halfPixelOffset", halfPixelOffset, defaultProfile.halfPixelOffset),
+        nativeScaling = pick("nativeScaling", nativeScaling, defaultProfile.nativeScaling),
+        roundSprite = pick("roundSprite", roundSprite, defaultProfile.roundSprite),
+        bilinearUpscale = pick("bilinearUpscale", bilinearUpscale, defaultProfile.bilinearUpscale),
+        textureOffsetX = pick("textureOffsetX", textureOffsetX, defaultProfile.textureOffsetX),
+        textureOffsetY = pick("textureOffsetY", textureOffsetY, defaultProfile.textureOffsetY),
+        alignSprite = pick("alignSprite", alignSprite, defaultProfile.alignSprite),
+        mergeSprite = pick("mergeSprite", mergeSprite, defaultProfile.mergeSprite),
+        forceEvenSpritePosition = pick("forceEvenSpritePosition", forceEvenSpritePosition, defaultProfile.forceEvenSpritePosition),
+        nativePaletteDraw = pick("nativePaletteDraw", nativePaletteDraw, defaultProfile.nativePaletteDraw),
+        touchControlVisualStyle = pick("touchControlVisualStyle", touchControlVisualStyle, defaultProfile.touchControlVisualStyle),
+        touchControlPressEffect = pick("touchControlPressEffect", touchControlPressEffect, defaultProfile.touchControlPressEffect),
+        providedKeys = null,
+        updatedAt = updatedAt
+    )
+}
+
+@Composable
+private fun PerGameInterfaceSettingsEditor(
+    draft: PerGameSettings,
+    defaultProfile: PerGameSettings,
+    controls: Boolean,
+    onDraftChange: (PerGameSettings) -> Unit
+) {
+    val base = defaultProfile.interfaceSettings ?: PerGameInterfaceSettings()
+    val current = draft.interfaceSettings ?: base
+    fun update(settings: PerGameInterfaceSettings) = onDraftChange(draft.copy(interfaceSettings = settings.sanitized()))
+    if (controls) {
+        ToggleRow(
+            title = stringResource(R.string.emulation_show_controls), checked = current.overlayShow,
+            onCheckedChange = { update(current.copy(overlayShow = it)) },
+            onResetToDefault = { update(current.copy(overlayShow = base.overlayShow)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_gamepad_hide_overlay), checked = current.hideOverlayOnGamepad,
+            onCheckedChange = { update(current.copy(hideOverlayOnGamepad = it)) },
+            helpText = stringResource(R.string.settings_help_hide_overlay_on_gamepad),
+            onResetToDefault = { update(current.copy(hideOverlayOnGamepad = base.hideOverlayOnGamepad)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_compact_controls), checked = current.compactControls,
+            onCheckedChange = { update(current.copy(compactControls = it)) },
+            helpText = stringResource(R.string.settings_help_compact_controls),
+            onResetToDefault = { update(current.copy(compactControls = base.compactControls)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_keep_screen_on), checked = current.keepScreenOn,
+            onCheckedChange = { update(current.copy(keepScreenOn = it)) },
+            helpText = stringResource(R.string.settings_help_keep_screen_on),
+            onResetToDefault = { update(current.copy(keepScreenOn = base.keepScreenOn)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_invert_left_stick), checked = current.invertLeftStick,
+            onCheckedChange = { update(current.copy(invertLeftStick = it)) },
+            helpText = stringResource(R.string.settings_help_invert_left_stick),
+            onResetToDefault = { update(current.copy(invertLeftStick = base.invertLeftStick)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_invert_right_stick), checked = current.invertRightStick,
+            onCheckedChange = { update(current.copy(invertRightStick = it)) },
+            helpText = stringResource(R.string.settings_help_invert_right_stick),
+            onResetToDefault = { update(current.copy(invertRightStick = base.invertRightStick)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_invert_left_stick_horizontal), checked = current.invertLeftStickHorizontal,
+            onCheckedChange = { update(current.copy(invertLeftStickHorizontal = it)) },
+            helpText = stringResource(R.string.settings_help_invert_left_stick_horizontal),
+            onResetToDefault = { update(current.copy(invertLeftStickHorizontal = base.invertLeftStickHorizontal)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.settings_invert_right_stick_horizontal), checked = current.invertRightStickHorizontal,
+            onCheckedChange = { update(current.copy(invertRightStickHorizontal = it)) },
+            helpText = stringResource(R.string.settings_help_invert_right_stick_horizontal),
+            onResetToDefault = { update(current.copy(invertRightStickHorizontal = base.invertRightStickHorizontal)) }
+        )
+        SliderRow(
+            title = stringResource(R.string.settings_overlay_scale), value = current.overlayScale.toFloat(),
+            valueLabel = "${current.overlayScale}%", range = 50f..150f, steps = 99,
+            onValueChange = { update(current.copy(overlayScale = it.roundToInt())) },
+            onResetToDefault = { update(current.copy(overlayScale = base.overlayScale)) }
+        )
+        SliderRow(
+            title = stringResource(R.string.settings_overlay_opacity), value = current.overlayOpacity.toFloat(),
+            valueLabel = "${current.overlayOpacity}%", range = 0f..100f, steps = 99,
+            onValueChange = { update(current.copy(overlayOpacity = it.roundToInt())) },
+            onResetToDefault = { update(current.copy(overlayOpacity = base.overlayOpacity)) }
+        )
+        SliderRow(
+            title = stringResource(R.string.settings_left_stick_sensitivity), value = current.leftStickSensitivity.toFloat(),
+            valueLabel = "${current.leftStickSensitivity}%", range = 50f..200f, steps = 149,
+            onValueChange = { update(current.copy(leftStickSensitivity = it.roundToInt())) },
+            onResetToDefault = { update(current.copy(leftStickSensitivity = base.leftStickSensitivity)) }
+        )
+        SliderRow(
+            title = stringResource(R.string.settings_right_stick_sensitivity), value = current.rightStickSensitivity.toFloat(),
+            valueLabel = "${current.rightStickSensitivity}%", range = 50f..200f, steps = 149,
+            onValueChange = { update(current.copy(rightStickSensitivity = it.roundToInt())) },
+            onResetToDefault = { update(current.copy(rightStickSensitivity = base.rightStickSensitivity)) }
+        )
+    } else {
+        SelectionRow(
+            title = stringResource(R.string.settings_fps_overlay_position),
+            options = listOf(
+                0 to stringResource(R.string.settings_fps_overlay_corner_top_left),
+                1 to stringResource(R.string.settings_fps_overlay_corner_top_right),
+                2 to stringResource(R.string.settings_fps_overlay_corner_bottom_left),
+                3 to stringResource(R.string.settings_fps_overlay_corner_bottom_right)
+            ),
+            selectedValue = current.fpsOverlayCorner,
+            onSelected = { update(current.copy(fpsOverlayCorner = it)) },
+            onResetToDefault = { update(current.copy(fpsOverlayCorner = base.fpsOverlayCorner)) }
+        )
+        SliderRow(
+            title = stringResource(R.string.settings_fps_overlay_scale), value = current.fpsOverlayScale.toFloat(),
+            valueLabel = "${current.fpsOverlayScale}%", range = 75f..200f, steps = 124,
+            onValueChange = { update(current.copy(fpsOverlayScale = it.roundToInt())) },
+            helpText = stringResource(R.string.settings_help_fps_overlay_scale),
+            onResetToDefault = { update(current.copy(fpsOverlayScale = base.fpsOverlayScale)) }
+        )
+        BitmaskChoiceRow(
+            title = stringResource(R.string.settings_fps_overlay_metrics), options = fpsOverlayMetricOptions(),
+            selectedMask = current.fpsOverlayMetrics,
+            onToggle = { update(current.copy(fpsOverlayMetrics = current.fpsOverlayMetrics xor it)) },
+            helpText = stringResource(R.string.settings_help_fps_overlay_metrics),
+            onResetToDefault = { update(current.copy(fpsOverlayMetrics = base.fpsOverlayMetrics)) }
+        )
+        ToggleRow(
+            title = stringResource(R.string.emulation_auto_save_title), checked = current.autoSaveEnabled,
+            onCheckedChange = { update(current.copy(autoSaveEnabled = it)) },
+            onResetToDefault = { update(current.copy(autoSaveEnabled = base.autoSaveEnabled)) }
+        )
+        SliderRow(
+            title = stringResource(R.string.emulation_auto_save_interval_label), value = current.autoSaveIntervalMinutes.toFloat(),
+            valueLabel = "${current.autoSaveIntervalMinutes} ${stringResource(R.string.emulation_auto_save_interval_suffix)}",
+            range = 1f..999f, steps = 997,
+            onValueChange = { update(current.copy(autoSaveIntervalMinutes = it.roundToInt())) },
+            onResetToDefault = { update(current.copy(autoSaveIntervalMinutes = base.autoSaveIntervalMinutes)) }
+        )
+    }
+}

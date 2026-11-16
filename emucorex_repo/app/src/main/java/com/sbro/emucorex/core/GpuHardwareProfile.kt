@@ -1,0 +1,91 @@
+package com.sbro.emucorex.core
+
+import android.os.Build
+
+object GpuHardwareProfiles {
+    const val ADRENO = 0
+    const val MALI = 1
+    const val POWERVR = 2
+
+    private var cachedDetectedProfile: Int? = null
+    private var cachedMediaTekHardware: Boolean? = null
+
+    fun normalize(profile: Int): Int = when (profile) {
+        MALI -> MALI
+        POWERVR -> POWERVR
+        ADRENO -> ADRENO
+        else -> MALI
+    }
+
+    fun isMediatekProfile(profile: Int): Boolean {
+        return normalize(profile) == MALI || normalize(profile) == POWERVR
+    }
+
+    // Telemetry/crash-report label. The native renderer detects the GPU path itself.
+    fun familyName(profile: Int): String = when (normalize(profile)) {
+        ADRENO -> "adreno"
+        POWERVR -> "powervr"
+        else -> "mali"
+    }
+
+    fun isMediaTekHardware(): Boolean {
+        cachedMediaTekHardware?.let { return it }
+        return hasMediaTekSocHints(buildHardwareHints()).also { cachedMediaTekHardware = it }
+    }
+
+    fun detectHardwareProfile(): Int {
+        cachedDetectedProfile?.let { return it }
+        val profile = classifyHardwareProfile(buildHardwareHints())
+        cachedDetectedProfile = profile
+        return profile
+    }
+
+    private fun buildHardwareHints(): String {
+        val socManufacturer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Build.SOC_MANUFACTURER
+        } else { "" }
+        val socModel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Build.SOC_MODEL
+        } else { "" }
+        val hardware = listOf(Build.HARDWARE, Build.BOARD, Build.DEVICE)
+            .filterNot { it.isNullOrBlank() }
+            .joinToString(" / ")
+        val deviceModel = listOf(Build.MANUFACTURER, Build.MODEL)
+            .filterNot { it.isNullOrBlank() }
+            .joinToString(" ")
+        val hints = listOf(socManufacturer, socModel, hardware, deviceModel, MobileSocNameMapper.currentDeviceName())
+            .joinToString(" ")
+            .lowercase()
+        return hints
+    }
+
+    internal fun hasMediaTekSocHints(rawHints: String): Boolean {
+        val hints = rawHints.lowercase()
+        return listOf("mediatek", "mtk", "dimensity", "helio").any(hints::contains) ||
+            Regex("""\bmt\d{4}[a-z]*\b""").containsMatchIn(hints)
+    }
+
+    internal fun classifyHardwareProfile(rawHints: String): Int {
+        val soc = MobileSocNameMapper.resolveKnownCode(rawHints) ?: MobileSocNameMapper.resolvePlatformFamily(rawHints)
+        val model = GpuModelParser.parse(rawHints) ?: SocGpuCatalog.forSoc(soc)
+        when (model?.vendor) {
+            GpuVendor.ADRENO -> return ADRENO
+            GpuVendor.POWERVR -> return POWERVR
+            GpuVendor.MALI, GpuVendor.XCLIPSE -> return MALI
+            else -> Unit
+        }
+        val hints = rawHints.lowercase()
+        return when {
+            listOf("powervr", "imgtec", "imagination technologies").any(hints::contains) -> POWERVR
+            listOf("qualcomm", "qcom", "qti", "snapdragon", "adreno").any(hints::contains) ||
+                QUALCOMM_SOC_CODE.containsMatchIn(hints) -> ADRENO
+            hasMediaTekSocHints(hints) -> MALI
+            listOf("samsung", "exynos", "xclipse").any(hints::contains) -> MALI
+            listOf("mali", "immortalis", "arm").any(hints::contains) -> MALI
+            else -> MALI
+        }
+    }
+
+    private val QUALCOMM_SOC_CODE =
+        Regex("""\b(?:sm|msm|sdm|apq|qcs|qcm)\d{3,4}[a-z]*\b""", RegexOption.IGNORE_CASE)
+}

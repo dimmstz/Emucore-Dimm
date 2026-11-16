@@ -1,0 +1,8526 @@
+package com.sbro.emucorex.ui.emulation
+
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
+import android.graphics.PixelFormat
+import android.os.Build
+import android.view.MotionEvent
+import android.view.Surface
+import android.view.SurfaceHolder
+import android.view.SurfaceView
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ExitToApp
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.AutoFixHigh
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.Gamepad
+import androidx.compose.material.icons.rounded.Gradient
+import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.Mouse
+import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.SettingsSuggest
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import com.sbro.emucorex.ui.common.AppAlertDialog as AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.window.Dialog
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dimm.emustation.R
+import com.sbro.emucorex.core.AndroidTouchHaptics
+import com.sbro.emucorex.core.UiSoundManager
+import com.sbro.emucorex.core.AndroidGyroscopeInput
+import com.sbro.emucorex.core.AndroidTouchHaptics.ButtonPhase
+import com.sbro.emucorex.core.EmulatorBridge
+import com.sbro.emucorex.core.FrameGenerationPresentationMode
+import com.sbro.emucorex.core.FrameGenerationRefreshRate
+import com.sbro.emucorex.core.FrameGenerationSettings
+import com.sbro.emucorex.core.LowLatencyRefreshRate
+import com.sbro.emucorex.core.NativeApp
+import com.sbro.emucorex.core.GamepadManager
+import com.sbro.emucorex.core.KeyboardMouseManager
+import com.sbro.emucorex.core.LocalTvUiEnvironment
+import com.sbro.emucorex.core.buildUpscaleOptions
+import com.sbro.emucorex.core.upscaleKeyToMultiplier
+import com.sbro.emucorex.core.upscaleMultiplierValue
+import com.sbro.emucorex.core.utils.RetroAchievementsLiveStateManager
+import com.sbro.emucorex.data.ActivePatchNotice
+import com.sbro.emucorex.data.AppPreferences
+import com.sbro.emucorex.data.AppPreferences.Companion.FPS_OVERLAY_MODE_DETAILED
+import com.sbro.emucorex.data.AppPreferences.Companion.FPS_OVERLAY_MODE_SIMPLE
+import com.sbro.emucorex.data.DisplayCrop
+import com.sbro.emucorex.data.OverlayControlLayout
+import com.sbro.emucorex.data.OverlayLayoutSnapshot
+import com.sbro.emucorex.data.PerformanceOverlayMetrics
+import com.sbro.emucorex.data.RemoteCheatPack
+import com.sbro.emucorex.data.RetroAchievementEntry
+import com.sbro.emucorex.data.RetroAchievementGameData
+import com.sbro.emucorex.data.RetroAchievementsRepository
+import com.sbro.emucorex.data.SettingsSnapshot
+import com.sbro.emucorex.data.TouchControlVisualStyle
+import com.sbro.emucorex.data.TouchControlPressEffect
+import com.sbro.emucorex.data.CustomTouchControl
+import com.sbro.emucorex.data.CustomTouchControlPressMode
+import com.sbro.emucorex.data.GameMenuTabId
+import com.sbro.emucorex.data.GameMenuSectionId
+import com.sbro.emucorex.data.GameMenuLayoutStyle
+import com.sbro.emucorex.data.gameMenuSectionsForTab
+import com.sbro.emucorex.ui.common.CustomControlVisual
+import com.sbro.emucorex.ui.common.actionDrawableRes
+import com.sbro.emucorex.ui.common.composeShape
+import com.sbro.emucorex.ui.common.BitmapPathImage
+import com.sbro.emucorex.ui.common.EmulationSideArtworkOverlay
+import com.sbro.emucorex.ui.common.GameCoverArt
+import com.sbro.emucorex.ui.common.GameCoverAspectRatio
+import com.sbro.emucorex.ui.common.ProvideGamepadMenuAction
+import com.sbro.emucorex.ui.common.ProvideGamepadShoulderActions
+import com.sbro.emucorex.ui.common.ProvideGamepadUiNavigation
+import com.sbro.emucorex.ui.common.skipGamepadTextFieldFocus
+import com.sbro.emucorex.ui.common.SettingHelpButton
+import com.sbro.emucorex.ui.common.SettingsStyledDialog
+import com.sbro.emucorex.ui.common.OverlayDpadDirection
+import com.sbro.emucorex.ui.common.VectorAnalogStick
+import com.sbro.emucorex.ui.common.VectorDpadCluster
+import com.sbro.emucorex.ui.common.VectorOverlayButton
+import com.sbro.emucorex.ui.common.buildOverlayCanvasLayout
+import com.sbro.emucorex.ui.common.gamepadActionLabel
+import com.sbro.emucorex.ui.common.gamepadFocusableCard
+import com.sbro.emucorex.ui.common.premiumFilterChipColors
+import com.sbro.emucorex.ui.common.rememberDebouncedClick
+import com.sbro.emucorex.ui.common.tvFocusGroup
+import com.sbro.emucorex.ui.settings.ControlsEditorScreen
+import com.sbro.emucorex.ui.settings.KeyboardMouseSettingsDialog
+import com.sbro.emucorex.ui.settings.toControlsEditorState
+import com.sbro.emucorex.ui.theme.GradientEnd
+import com.sbro.emucorex.ui.theme.GradientStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.DateFormat
+import java.util.Date
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
+import com.sbro.emucorex.ui.theme.neon.LocalNeonTheme
+import com.sbro.emucorex.ui.theme.neon.NeonCrtOverlay
+import com.sbro.emucorex.ui.theme.neon.neonShape
+import com.sbro.emucorex.ui.theme.neon.neonShapeCorners
+import com.sbro.emucorex.ui.theme.neon.neonChipShape
+
+private val DISC_SWAP_MIME_TYPES = arrayOf(
+    "application/octet-stream",
+    "application/x-iso9660-image",
+    "application/x-cd-image",
+    "application/x-chd",
+    "application/gzip"
+)
+
+private object PadKey {
+    const val UP = 19
+    const val RIGHT = 22
+    const val DOWN = 20
+    const val LEFT = 21
+    const val TRIANGLE = 100
+    const val CIRCLE = 97
+    const val CROSS = 96
+    const val SQUARE = 99
+    const val SELECT = 109
+    const val START = 108
+    const val L1 = 102
+    const val L2 = 104
+    const val R1 = 103
+    const val R2 = 105
+    const val L3 = 106
+    const val R3 = 107
+    const val LEFT_STICK_UP = 110
+    const val LEFT_STICK_RIGHT = 111
+    const val LEFT_STICK_DOWN = 112
+    const val LEFT_STICK_LEFT = 113
+    const val RIGHT_STICK_UP = 120
+    const val RIGHT_STICK_RIGHT = 121
+    const val RIGHT_STICK_DOWN = 122
+    const val RIGHT_STICK_LEFT = 123
+    const val PRESSURE = 124
+    const val GUN_TRIGGER = 125
+    const val GUN_PEDAL = 126
+    const val GUN_RELOAD = 127
+    const val GUN_RECALIBRATE = 128
+    const val COIN = 129
+    const val SERVICE = 130
+}
+
+private const val TRANSPORT_HOLD_DELAY_MS = 360L
+private const val LIGHT_GUN_STICK_AIM_SPEED = 0.95f
+
+// Hard limit for how long the stale-frame cover may hide the emulator SurfaceView.
+// The cover exists to mask the previous game's final buffer across a fast restart;
+// it must never become a permanent black screen when the first authoritative frame
+// is delayed or never published by the renderer.
+private const val DISPLAY_COVER_MAX_HOLD_MS = 6_000L
+
+private enum class EmulationMenuTab {
+    Session,
+    Controls,
+    Emulation,
+    Cheats,
+    Shaders,
+    Graphics,
+    Fixes,
+    Achievements
+}
+
+private data class OverlayAchievementsContentState(
+    val isLoading: Boolean = false,
+    val gameData: RetroAchievementGameData? = null
+)
+
+internal data class TouchButtonSpec(
+    val id: String,
+    val drawableRes: Int? = null,
+    val width: Dp,
+    val height: Dp,
+    val x: Dp,
+    val y: Dp,
+    val shape: androidx.compose.ui.graphics.Shape,
+    val opacity: Float = 1f,
+    val customControl: CustomTouchControl? = null,
+    val haptics: Boolean = true,
+    val pressActions: List<TouchButtonPressAction> = emptyList(),
+    val onClick: (() -> Unit)? = null,
+    val tapToHold: Boolean = false,
+    val longPressDelayMs: Long = 0L,
+    val onLongPressChange: ((Boolean) -> Unit)? = null
+)
+
+internal data class TouchButtonPressAction(
+    val ownerId: String,
+    val onPressChange: (Boolean) -> Unit
+)
+
+internal fun touchButtonActionOwner(actionId: String): String = when (actionId) {
+    "dpad_up" -> "up"
+    "dpad_down" -> "down"
+    "dpad_left" -> "left"
+    "dpad_right" -> "right"
+    else -> actionId
+}
+
+private data class TouchButtonLayoutKey(
+    val id: String,
+    val width: Dp,
+    val height: Dp,
+    val x: Dp,
+    val y: Dp,
+    val tapToHold: Boolean,
+    val hasLongPressAction: Boolean
+)
+
+private data class LiveSelectionOption(
+    val value: Int,
+    val label: String? = null,
+    val icon: ImageVector? = null,
+    val contentDescription: String = label.orEmpty()
+)
+
+@Composable
+private fun fpsOverlayCornerLiveOptions(): List<LiveSelectionOption> = listOf(
+    LiveSelectionOption(AppPreferences.FPS_OVERLAY_CORNER_TOP_LEFT, stringResource(R.string.settings_fps_overlay_corner_top_left)),
+    LiveSelectionOption(AppPreferences.FPS_OVERLAY_CORNER_TOP_RIGHT, stringResource(R.string.settings_fps_overlay_corner_top_right)),
+    LiveSelectionOption(AppPreferences.FPS_OVERLAY_CORNER_BOTTOM_LEFT, stringResource(R.string.settings_fps_overlay_corner_bottom_left)),
+    LiveSelectionOption(AppPreferences.FPS_OVERLAY_CORNER_BOTTOM_RIGHT, stringResource(R.string.settings_fps_overlay_corner_bottom_right))
+)
+
+private fun Context.findActivity(): Activity? {
+    var current: Context? = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        val base = current.baseContext
+        if (base === current) break
+        current = base
+    }
+    return current as? Activity
+}
+
+private class EmulationSurfaceView(context: Context) : SurfaceView(context) {
+    var requestedRefreshRate: Float = 0f
+        private set
+    private var frameGenerationRefreshRate: Float = 0f
+    private var lowLatencyMode: Boolean = false
+    private var lastReportedDisplayRefreshRate: Float = Float.NaN
+    private val lowLatencyRefreshMonitor = object : Runnable {
+        override fun run() {
+            if (!isAttachedToWindow || (frameGenerationRefreshRate <= 0f && !lowLatencyMode)) return
+            refreshRequestedRate(forceSurfaceUpdate = false)
+            postDelayed(this, 1_000L)
+        }
+    }
+
+    fun applyRequestedRefreshRate(
+        value: Float,
+        lowLatencyEnabled: Boolean = false,
+        forceSurfaceUpdate: Boolean = false
+    ) {
+        val newFrameGenerationRate = value.takeIf { it.isFinite() && it > 0f }
+            ?.coerceAtMost(240f) ?: 0f
+        val preferenceChanged = frameGenerationRefreshRate != newFrameGenerationRate ||
+            lowLatencyMode != lowLatencyEnabled
+        frameGenerationRefreshRate = newFrameGenerationRate
+        lowLatencyMode = lowLatencyEnabled
+        removeCallbacks(lowLatencyRefreshMonitor)
+        if (preferenceChanged || forceSurfaceUpdate) {
+            refreshRequestedRate(forceSurfaceUpdate)
+        }
+        if ((lowLatencyMode || frameGenerationRefreshRate > 0f) && isAttachedToWindow) {
+            postDelayed(lowLatencyRefreshMonitor, 1_000L)
+        }
+    }
+
+    fun currentDisplayRefreshRate(): Float = (display?.refreshRate ?: 0f)
+        .takeIf { it.isFinite() && it > 1f }
+        ?: 0f
+
+    fun reapplyRequestedRefreshRate() {
+        refreshRequestedRate(forceSurfaceUpdate = true)
+    }
+
+    private fun resolveRequestedRate(): Float {
+        if (frameGenerationRefreshRate > 0f) return frameGenerationRefreshRate
+        if (!lowLatencyMode) return 0f
+        val currentDisplay = display ?: return 0f
+        val activeMode = currentDisplay.mode
+        val nominalRate = runCatching { NativeApp.getNominalFrameRate() }
+            .getOrDefault(0f)
+            .takeIf { it in 20f..120f }
+            ?: 60f
+        return LowLatencyRefreshRate.requested(
+            nominalGameRate = nominalRate,
+            activeWidth = activeMode.physicalWidth,
+            activeHeight = activeMode.physicalHeight,
+            modes = currentDisplay.supportedModes.map { mode ->
+                FrameGenerationPresentationMode(
+                    id = mode.modeId,
+                    width = mode.physicalWidth,
+                    height = mode.physicalHeight,
+                    refreshRate = mode.refreshRate
+                )
+            }
+        )
+    }
+
+    private fun refreshRequestedRate(forceSurfaceUpdate: Boolean) {
+        val actualDisplayRate = currentDisplayRefreshRate()
+        if (lastReportedDisplayRefreshRate.isNaN() ||
+            kotlin.math.abs(lastReportedDisplayRefreshRate - actualDisplayRate) >= 0.1f
+        ) {
+            runCatching { NativeApp.setDisplayRefreshRate(actualDisplayRate) }
+            lastReportedDisplayRefreshRate = actualDisplayRate
+        }
+        val normalized = resolveRequestedRate()
+        val changed = requestedRefreshRate != normalized
+        requestedRefreshRate = normalized
+
+        if (changed) {
+            context.findActivity()?.window?.let { window ->
+                val attributes = window.attributes
+                val currentDisplay = display ?: window.decorView.display
+                val activeMode = currentDisplay?.mode
+                val preferredModeId = if (frameGenerationRefreshRate > 0f && normalized > 0f &&
+                    currentDisplay != null && activeMode != null
+                ) {
+                    FrameGenerationRefreshRate.preferredDisplayModeId(
+                        requestedRate = normalized,
+                        activeWidth = activeMode.physicalWidth,
+                        activeHeight = activeMode.physicalHeight,
+                        modes = currentDisplay.supportedModes.map { mode ->
+                            FrameGenerationPresentationMode(
+                                id = mode.modeId,
+                                width = mode.physicalWidth,
+                                height = mode.physicalHeight,
+                                refreshRate = mode.refreshRate
+                            )
+                        }
+                    )
+                } else {
+                    0
+                }
+                if (attributes.preferredRefreshRate != normalized ||
+                    attributes.preferredDisplayModeId != preferredModeId
+                ) {
+                    attributes.preferredDisplayModeId = preferredModeId
+                    attributes.preferredRefreshRate = normalized
+                    window.attributes = attributes
+                }
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            holder.surface.isValid && (changed || forceSurfaceUpdate)
+        ) {
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    holder.surface.setFrameRate(
+                        normalized,
+                        Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
+                        Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    holder.surface.setFrameRate(normalized, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun fpsOverlayMetricLiveOptions(): List<Pair<Int, String>> = listOf(
+    PerformanceOverlayMetrics.VERSION to stringResource(R.string.settings_fps_metric_version),
+    PerformanceOverlayMetrics.FPS to stringResource(R.string.settings_fps_metric_fps),
+    PerformanceOverlayMetrics.VPS to stringResource(R.string.settings_fps_metric_vps),
+    PerformanceOverlayMetrics.SPEED to stringResource(R.string.settings_fps_metric_speed),
+    PerformanceOverlayMetrics.TARGET to stringResource(R.string.settings_fps_metric_target),
+    PerformanceOverlayMetrics.RENDERER to stringResource(R.string.settings_fps_metric_renderer),
+    PerformanceOverlayMetrics.AUDIO to stringResource(R.string.settings_fps_metric_audio),
+    PerformanceOverlayMetrics.VRAM to stringResource(R.string.settings_fps_metric_vram),
+    PerformanceOverlayMetrics.FRAME_TIME to stringResource(R.string.settings_fps_metric_frame_time),
+    PerformanceOverlayMetrics.QUEUE to stringResource(R.string.settings_fps_metric_queue),
+    PerformanceOverlayMetrics.RESOLUTION to stringResource(R.string.settings_fps_metric_resolution),
+    PerformanceOverlayMetrics.HOST_CPU to stringResource(R.string.settings_fps_metric_host_cpu),
+    PerformanceOverlayMetrics.HOST_GPU to stringResource(R.string.settings_fps_metric_host_gpu),
+    PerformanceOverlayMetrics.EE to stringResource(R.string.settings_fps_metric_ee),
+    PerformanceOverlayMetrics.GS to stringResource(R.string.settings_fps_metric_gs),
+    PerformanceOverlayMetrics.VU to stringResource(R.string.settings_fps_metric_vu),
+    PerformanceOverlayMetrics.IOP to stringResource(R.string.settings_fps_metric_iop),
+    PerformanceOverlayMetrics.SOFTWARE_THREADS to stringResource(R.string.settings_fps_metric_software_threads)
+)
+
+@Composable
+private fun eeCycleRateLiveOptions(): List<LiveSelectionOption> = listOf(
+    LiveSelectionOption(-3, "50%"),
+    LiveSelectionOption(-2, "60%"),
+    LiveSelectionOption(-1, "75%"),
+    LiveSelectionOption(0, "100%"),
+    LiveSelectionOption(1, "130%"),
+    LiveSelectionOption(2, "180%"),
+    LiveSelectionOption(3, "300%")
+)
+
+@Composable
+private fun eeCycleSkipLiveOptions(): List<LiveSelectionOption> = listOf(
+    LiveSelectionOption(0, stringResource(R.string.settings_ee_cycle_disabled)),
+    LiveSelectionOption(1, stringResource(R.string.settings_ee_cycle_mild)),
+    LiveSelectionOption(2, stringResource(R.string.settings_ee_cycle_moderate)),
+    LiveSelectionOption(3, stringResource(R.string.settings_ee_cycle_maximum))
+)
+
+private fun Int.toOverlayAlignment(): Alignment = when (this) {
+    AppPreferences.FPS_OVERLAY_CORNER_TOP_LEFT -> Alignment.TopStart
+    AppPreferences.FPS_OVERLAY_CORNER_BOTTOM_LEFT -> Alignment.BottomStart
+    AppPreferences.FPS_OVERLAY_CORNER_BOTTOM_RIGHT -> Alignment.BottomEnd
+    else -> Alignment.TopEnd
+}
+
+private fun Int.isTopOverlayCorner(): Boolean {
+    return this == AppPreferences.FPS_OVERLAY_CORNER_TOP_LEFT ||
+        this == AppPreferences.FPS_OVERLAY_CORNER_TOP_RIGHT
+}
+
+private fun Int.isBottomOverlayCorner(): Boolean {
+    return this == AppPreferences.FPS_OVERLAY_CORNER_BOTTOM_LEFT ||
+        this == AppPreferences.FPS_OVERLAY_CORNER_BOTTOM_RIGHT
+}
+
+private fun Int.isRightOverlayCorner(): Boolean {
+    return this == AppPreferences.FPS_OVERLAY_CORNER_TOP_RIGHT ||
+        this == AppPreferences.FPS_OVERLAY_CORNER_BOTTOM_RIGHT
+}
+
+private fun resolveManualTargetFps(currentTargetFps: Int, defaultTargetFps: Int): Int {
+    return when {
+        currentTargetFps > 0 -> currentTargetFps
+        defaultTargetFps > 0 -> defaultTargetFps
+        else -> 60
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun ShaderPreparationDialog(
+    state: ShaderPreparationUiSnapshot,
+    onPrepare: () -> Unit,
+    onSkip: () -> Unit,
+    onCancel: () -> Unit,
+    onResume: () -> Unit,
+    onContinue: () -> Unit
+) {
+    val actions = ShaderPreparationUiPolicy.actions(state)
+    val progress = ShaderPreparationUiPolicy.progress(state)
+    val title = when (state.phase) {
+        ShaderPreparationUiPhase.Offer -> stringResource(R.string.shader_prep_offer_title)
+        ShaderPreparationUiPhase.Completed -> stringResource(R.string.shader_prep_complete)
+        else -> shaderPreparationPhaseLabel(state.phase)
+    }
+
+    AlertDialog(
+        onDismissRequest = {
+            if (state.phase == ShaderPreparationUiPhase.Offer) onSkip()
+        },
+        title = { Text(title, style = MaterialTheme.typography.titleLarge) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.40f).dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (state.phase == ShaderPreparationUiPhase.Offer) {
+                    Text(stringResource(R.string.shader_prep_offer_body))
+                } else {
+                    if (progress.total > 0) {
+                        Text(stringResource(R.string.shader_prep_progress, progress.ready, progress.total))
+                    }
+                    Text(stringResource(R.string.shader_prep_cached, state.alreadyAvailable))
+                    Text(stringResource(R.string.shader_prep_in_flight, state.inFlight))
+                    Text(stringResource(R.string.shader_prep_failures, state.failed))
+                    Text(stringResource(R.string.shader_prep_cancelled, state.cancelled))
+                    state.adapterName?.takeIf(String::isNotBlank)?.let { adapter ->
+                        Text(stringResource(R.string.shader_prep_adapter, adapter))
+                    }
+                    state.error?.let { error ->
+                        Text(shaderPreparationErrorMessage(error), color = MaterialTheme.colorScheme.error)
+                    }
+                    if (ShaderPreparationUiPolicy.isDurablyReady(state)) {
+                        Text(stringResource(R.string.shader_prep_checkpoint_saved))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                if (ShaderPreparationUiAction.Prepare in actions) {
+                    TextButton(onClick = onPrepare) { Text(stringResource(R.string.shader_prep_prepare)) }
+                }
+                if (ShaderPreparationUiAction.Skip in actions) {
+                    TextButton(onClick = onSkip) { Text(stringResource(R.string.shader_prep_skip)) }
+                }
+                if (ShaderPreparationUiAction.Cancel in actions) {
+                    TextButton(onClick = onCancel) { Text(stringResource(R.string.shader_prep_cancel)) }
+                }
+                if (ShaderPreparationUiAction.Resume in actions) {
+                    TextButton(onClick = onResume) { Text(stringResource(R.string.shader_prep_resume)) }
+                }
+                if (ShaderPreparationUiAction.ContinueToGame in actions) {
+                    TextButton(onClick = onContinue) {
+                        Text(stringResource(R.string.shader_prep_continue_game))
+                    }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun shaderPreparationPhaseLabel(phase: ShaderPreparationUiPhase): String = when (phase) {
+    ShaderPreparationUiPhase.Hidden,
+    ShaderPreparationUiPhase.Offer -> stringResource(R.string.shader_prep_state_idle)
+    ShaderPreparationUiPhase.WaitingForLifecycle -> stringResource(R.string.shader_prep_state_waiting_for_lifecycle)
+    ShaderPreparationUiPhase.Starting -> stringResource(R.string.shader_prep_state_starting)
+    ShaderPreparationUiPhase.Running -> stringResource(R.string.shader_prep_state_running)
+    ShaderPreparationUiPhase.Cancelling -> stringResource(R.string.shader_prep_state_cancelling)
+    ShaderPreparationUiPhase.Completed -> stringResource(R.string.shader_prep_state_completed)
+    ShaderPreparationUiPhase.Cancelled -> stringResource(R.string.shader_prep_state_cancelled)
+    ShaderPreparationUiPhase.Failed -> stringResource(R.string.shader_prep_state_failed)
+    ShaderPreparationUiPhase.Unsupported -> stringResource(R.string.shader_prep_state_unsupported)
+}
+
+@Composable
+private fun shaderPreparationErrorMessage(error: ShaderPreparationUiError): String = when (error) {
+    ShaderPreparationUiError.LifecycleBusy -> stringResource(R.string.shader_prep_error_lifecycle_busy)
+    ShaderPreparationUiError.UnsupportedRenderer -> stringResource(R.string.shader_prep_error_unsupported_renderer)
+    ShaderPreparationUiError.CacheDisabled -> stringResource(R.string.shader_prep_error_cache_disabled)
+    ShaderPreparationUiError.MissingSource -> stringResource(R.string.shader_prep_error_missing_source)
+    ShaderPreparationUiError.DeviceCreationFailed -> stringResource(R.string.shader_prep_error_device_creation_failed)
+    ShaderPreparationUiError.PipelineFailures -> stringResource(R.string.shader_prep_error_pipeline_failures)
+    ShaderPreparationUiError.CheckpointFailed -> stringResource(R.string.shader_prep_error_checkpoint_failed)
+    ShaderPreparationUiError.InternalError -> stringResource(R.string.shader_prep_error_internal_error)
+}
+
+@SuppressLint("ConfigurationScreenWidthHeight")
+@Composable
+fun EmulationScreen(
+    gamePath: String? = null,
+    bootToBios: Boolean = false,
+    bootSmokeProbe: Boolean = false,
+    saveSlot: Int? = null,
+    autotestMode: Boolean = false,
+    enableEeRecompilerOverride: Boolean? = null,
+    enableIopRecompilerOverride: Boolean? = null,
+    enableVu0RecompilerOverride: Boolean? = null,
+    enableVu1RecompilerOverride: Boolean? = null,
+    enableFastmemOverride: Boolean? = null,
+    enableMtvuOverride: Boolean? = null,
+    enableIopThreadOverride: Boolean? = null,
+    enableVUAotOverride: Boolean? = null,
+    rendererOverride: Int? = null,
+    gsDumpFrames: Int? = null,
+    gsDumpDelayMs: Int? = null,
+    vu0FamilyMaskOverride: Int? = null,
+    vu1FamilyMaskOverride: Int? = null,
+    restoredAfterProcessDeath: Boolean = false,
+    onExit: (activePlayTimeMs: Long) -> Unit,
+    viewModel: EmulationViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val cheatPackBrowserState by viewModel.cheatPackBrowser.collectAsState()
+    val shaderBrowserState by viewModel.shaderBrowser.collectAsState()
+    val shaderPreparationState by viewModel.shaderPreparationUiState.collectAsState()
+    val activePatchNotice by viewModel.activePatchNotice.collectAsState()
+    val retroAchievementsState by RetroAchievementsLiveStateManager.state.collectAsState()
+    val retroAchievementsNotification = retroAchievementsState.notification
+    val context = LocalContext.current
+    val activity = context as? android.app.Activity
+    val originalRequestedOrientation = remember(activity) {
+        activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+    val restoreHostUi = remember(activity, originalRequestedOrientation) {
+        {
+            activity?.requestedOrientation = originalRequestedOrientation
+            activity?.window?.let { window ->
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                controller.show(WindowInsetsCompat.Type.navigationBars())
+                controller.hide(WindowInsetsCompat.Type.statusBars())
+            }
+            Unit
+        }
+    }
+    val currentOnExit by rememberUpdatedState(onExit)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val preferences = remember(context) { AppPreferences(context) }
+    val globalDefaults by preferences.settingsSnapshot.collectAsState(initial = SettingsSnapshot())
+    val overlayDefaults by preferences.overlayLayoutSnapshot.collectAsState(initial = OverlayLayoutSnapshot())
+    val gamepadBindingsByPad by preferences.gamepadBindingsByPad.collectAsState(initial = emptyMap())
+    val floatingQuickActionsEnabled by preferences.floatingQuickActionsEnabled.collectAsState(initial = false)
+    val persistedFloatingQuickSavePosition by preferences.floatingQuickSavePosition.collectAsState(
+        initial = AppPreferences.DEFAULT_FLOATING_QUICK_SAVE_POSITION_X to
+            AppPreferences.DEFAULT_FLOATING_QUICK_SAVE_POSITION_Y
+    )
+    val persistedFloatingQuickLoadPosition by preferences.floatingQuickLoadPosition.collectAsState(
+        initial = AppPreferences.DEFAULT_FLOATING_QUICK_LOAD_POSITION_X to
+            AppPreferences.DEFAULT_FLOATING_QUICK_LOAD_POSITION_Y
+    )
+    val orientationLockPreference by preferences.orientationLock.collectAsState(initial = null)
+    val emulationAllowsBothOrientations by preferences.emulationAllowsBothOrientations.collectAsState(
+        initial = null
+    )
+    val effectiveGamepadBindingsByPad = if (uiState.gameSettingsProfileActive) {
+        com.sbro.emucorex.data.GamepadBindingRules.merge(gamepadBindingsByPad, uiState.gamepadBindingsByPad)
+    } else {
+        gamepadBindingsByPad
+    }
+    val gamepadActions = remember { GamepadManager.mappableButtonActions() }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(uiState.localMultiplayerMode) {
+        EmulatorBridge.setLocalMultiplayerMode(uiState.localMultiplayerMode)
+    }
+    val swapDiscPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let(viewModel::swapDisc)
+    }
+    val rootCutoutPadding = WindowInsets.displayCutout.asPaddingValues()
+    // The option only insets the emulated picture; touch controls and app overlays
+    // always keep clear of the cutout, exactly like the rest of the UI.
+    val gameCutoutPadding = if (globalDefaults.respectDisplayCutout) {
+        rootCutoutPadding
+    } else {
+        PaddingValues(0.dp)
+    }
+    val rootNavPadding = WindowInsets.navigationBars.asPaddingValues()
+    val overlayLeftSafeInset = maxOf(
+        rootCutoutPadding.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
+        rootNavPadding.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr)
+    )
+    val overlayRightSafeInset = maxOf(
+        rootCutoutPadding.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
+        rootNavPadding.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr)
+    )
+    val overlayHorizontalSafeInset = maxOf(overlayLeftSafeInset, overlayRightSafeInset)
+    val overlayTopSafeInset = maxOf(
+        rootCutoutPadding.calculateTopPadding(),
+        rootNavPadding.calculateTopPadding()
+    )
+    val overlayBottomSafeInset = maxOf(
+        rootCutoutPadding.calculateBottomPadding(),
+        rootNavPadding.calculateBottomPadding()
+    )
+
+    LocalConfiguration.current
+    val view = LocalView.current
+    var showExitDialog by remember { mutableStateOf(false) }
+    var exitDispatched by remember { mutableStateOf(false) }
+    var showQuickSaveDialog by remember { mutableStateOf(false) }
+    var showQuickLoadDialog by remember { mutableStateOf(false) }
+    var floatingQuickSavePosition by remember { mutableStateOf<Offset?>(null) }
+    var floatingQuickLoadPosition by remember { mutableStateOf<Offset?>(null) }
+    var lightGunAim by remember { mutableStateOf<Offset?>(null) }
+    var touchLightGunStick by remember { mutableStateOf(Offset.Zero) }
+    val physicalLightGunSticks by GamepadManager.lightGunStickByPad.collectAsState()
+    var showAutoSaveLoadDialog by remember { mutableStateOf(false) }
+    var showControlsEditor by remember { mutableStateOf(false) }
+    var showGamepadMappingDialog by remember { mutableStateOf(false) }
+    var showKeyboardMouseSettingsDialog by remember { mutableStateOf(false) }
+    var pendingGamepadActionId by remember { mutableStateOf<String?>(null) }
+    var pendingGamepadPadIndex by rememberSaveable { mutableIntStateOf(0) }
+    var selectedGamepadPadIndex by rememberSaveable { mutableIntStateOf(0) }
+    var showOverlayShortcut by remember { mutableStateOf(false) }
+    var resumeAfterEditor by remember { mutableStateOf(false) }
+    var lastTapTimestamp by remember { mutableLongStateOf(0L) }
+    var lastTapX by remember { mutableFloatStateOf(0f) }
+    var lastTapY by remember { mutableFloatStateOf(0f) }
+    val connectedGamepadCount by GamepadManager.connectedGamepadCountState.collectAsState()
+    val gamepadConnected = connectedGamepadCount > 0
+    val keyboardMouseConnection by KeyboardMouseManager.connection.collectAsState()
+    val keyboardMouseOverride by viewModel.keyboardMouseOverride.collectAsState()
+    val globalKeyboardMouseSettings by KeyboardMouseManager.globalSettings.collectAsState()
+    val keyboardConnected = keyboardMouseConnection.keyboardConnected
+    val mouseConnected = keyboardMouseConnection.mouseConnected
+    val touchPadIndex = GamepadManager.resolveTouchPadIndex()
+    val overlayPadIndex = touchPadIndex ?: 0
+    val currentOverlayPadIndex by rememberUpdatedState(overlayPadIndex)
+    val currentGyroStickTarget by rememberUpdatedState(uiState.gyroStickTarget)
+    val currentLightGunAimSource by rememberUpdatedState(uiState.lightGunAim)
+    val currentActivePlayTimeMs by rememberUpdatedState(uiState.activePlayTimeMs)
+    val gyroView = LocalView.current
+    var lastLightGunStickNanos by remember { mutableLongStateOf(0L) }
+    // -1 means the running VM has not yet reported its cabinet type.
+    var arcadeInputMode by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(uiState.isRunning, uiState.currentGameTitle) {
+        arcadeInputMode = -1
+        if (uiState.isRunning) {
+            while (true) {
+                val mode = runCatching { NativeApp.getArcadeInputMode() }.getOrDefault(-1)
+                if (mode >= 0) {
+                    arcadeInputMode = mode
+                    return@LaunchedEffect
+                }
+                delay(100)
+            }
+        }
+    }
+    val lightGunInputContext = usesLightGunControls(
+        arcadeInputMode, uiState.usbPort1Device, uiState.usbPort2Device,
+        uiState.ps2GunProfileActive
+    )
+    LaunchedEffect(lightGunInputContext) {
+        KeyboardMouseManager.setPointerCaptureSuppressed(lightGunInputContext)
+    }
+
+    fun publishLightGunAim(normalizedX: Float, normalizedY: Float) {
+        lightGunAim = Offset(normalizedX, normalizedY)
+        val viewWidth = gyroView.width.toFloat()
+        val viewHeight = gyroView.height.toFloat()
+        if (viewWidth > 0f && viewHeight > 0f) {
+            NativeApp.onHostMousePosition(normalizedX * viewWidth, normalizedY * viewHeight)
+        }
+    }
+
+    fun applyLightGunStickAim(dx: Float, dy: Float) {
+        touchLightGunStick = Offset(dx, dy)
+    }
+
+    fun advanceLightGunStickAim(dx: Float, dy: Float) {
+        if (dx == 0f && dy == 0f) {
+            lastLightGunStickNanos = 0L
+            return
+        }
+        val now = System.nanoTime()
+        val dt = if (lastLightGunStickNanos == 0L) {
+            0f
+        } else {
+            ((now - lastLightGunStickNanos) / 1_000_000_000f).coerceIn(0f, 0.05f)
+        }
+        lastLightGunStickNanos = now
+        val current = lightGunAim ?: Offset(0.5f, 0.5f)
+        publishLightGunAim(
+            (current.x + dx * dt * LIGHT_GUN_STICK_AIM_SPEED).coerceIn(0f, 1f),
+            (current.y + dy * dt * LIGHT_GUN_STICK_AIM_SPEED).coerceIn(0f, 1f)
+        )
+    }
+
+    val gyroController = remember(context) {
+        AndroidGyroscopeInput(
+            context = context,
+            onAnalog = { emittedMode, x, y ->
+                if (emittedMode != AppPreferences.GYRO_MODE_LIGHT_GUN) {
+                    val targetRightStick = emittedMode == AppPreferences.GYRO_MODE_AIM &&
+                        currentGyroStickTarget == AppPreferences.GYRO_STICK_RIGHT
+                    updateAnalogStick(
+                        x = x,
+                        y = y,
+                        upKey = if (targetRightStick) PadKey.RIGHT_STICK_UP else PadKey.LEFT_STICK_UP,
+                        rightKey = if (targetRightStick) PadKey.RIGHT_STICK_RIGHT else PadKey.LEFT_STICK_RIGHT,
+                        downKey = if (targetRightStick) PadKey.RIGHT_STICK_DOWN else PadKey.LEFT_STICK_DOWN,
+                        leftKey = if (targetRightStick) PadKey.RIGHT_STICK_LEFT else PadKey.LEFT_STICK_LEFT,
+                        onPadInput = { key, range, pressed -> viewModel.onPadInput(currentOverlayPadIndex, key, range, pressed) }
+                    )
+                }
+            },
+            onLightGunAim = { normalizedX, normalizedY ->
+                if (currentLightGunAimSource == AppPreferences.LIGHT_GUN_AIM_GYRO) {
+                    publishLightGunAim(normalizedX, normalizedY)
+                }
+            }
+        )
+    }
+    DisposableEffect(
+        lifecycleOwner,
+        uiState.isRunning,
+        uiState.gyroMode,
+        uiState.gyroSensitivity,
+        uiState.gyroSmoothing,
+        uiState.gyroInvertX,
+        uiState.gyroInvertY,
+        uiState.lightGunAim,
+        lightGunInputContext
+    ) {
+        fun startGyro() {
+            val sensorMode = if (lightGunInputContext) AppPreferences.GYRO_MODE_LIGHT_GUN
+                else uiState.gyroMode
+            if (uiState.isRunning && sensorMode != AppPreferences.GYRO_MODE_OFF &&
+                (sensorMode != AppPreferences.GYRO_MODE_LIGHT_GUN || lightGunInputContext) &&
+                (sensorMode != AppPreferences.GYRO_MODE_LIGHT_GUN ||
+                    uiState.lightGunAim == AppPreferences.LIGHT_GUN_AIM_GYRO)) {
+                gyroController.start(
+                    mode = sensorMode,
+                    sensitivityPercent = uiState.gyroSensitivity,
+                    smoothingPercent = uiState.gyroSmoothing,
+                    invertX = uiState.gyroInvertX,
+                    invertY = uiState.gyroInvertY
+                )
+            }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> startGyro()
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> gyroController.stop()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) startGyro()
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            gyroController.stop()
+        }
+    }
+
+    // Aim source is independent of the gyro sensor. A GunCon2 or light-gun control mode
+    // activates the same pointer and button path for either physical or touch sticks.
+    LaunchedEffect(lightGunInputContext, uiState.lightGunAim, arcadeInputMode) {
+        GamepadManager.setLightGunModeActive(lightGunInputContext, uiState.lightGunAim)
+        GamepadManager.setArcadeModeActive(arcadeInputMode > 0)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            GamepadManager.setLightGunModeActive(false)
+            GamepadManager.setArcadeModeActive(false)
+        }
+    }
+    LaunchedEffect(lightGunInputContext, uiState.lightGunAim, uiState.isRunning) {
+        if (lightGunInputContext && uiState.isRunning) {
+            while (gyroView.width == 0 || gyroView.height == 0) delay(16)
+            publishLightGunAim(0.5f, 0.5f)
+        } else {
+            lightGunAim = null
+            touchLightGunStick = Offset.Zero
+        }
+        lastLightGunStickNanos = 0L
+    }
+    LaunchedEffect(lightGunInputContext, uiState.lightGunAim, uiState.isRunning, uiState.isPaused,
+        uiState.showMenu, showControlsEditor, physicalLightGunSticks, touchLightGunStick, overlayPadIndex) {
+        if (!lightGunInputContext || !uiState.isRunning || uiState.isPaused || uiState.showMenu ||
+            showControlsEditor || uiState.lightGunAim == AppPreferences.LIGHT_GUN_AIM_GYRO) {
+            lastLightGunStickNanos = 0L
+            if (uiState.showMenu || showControlsEditor) touchLightGunStick = Offset.Zero
+            return@LaunchedEffect
+        }
+        val physical = physicalLightGunSticks[overlayPadIndex]
+            ?.takeIf { it.first != 0f || it.second != 0f }
+            ?: physicalLightGunSticks.values.firstOrNull { it.first != 0f || it.second != 0f }
+        val vector = if (physical != null) {
+            Offset(physical.first, physical.second)
+        } else touchLightGunStick
+        if (vector == Offset.Zero) {
+            lastLightGunStickNanos = 0L
+            return@LaunchedEffect
+        }
+        while (true) {
+            advanceLightGunStickAim(vector.x, vector.y)
+            delay(16)
+        }
+    }
+    var showGamepadIndicator by remember { mutableStateOf(gamepadConnected) }
+
+    val tvUiEnabled = LocalTvUiEnvironment.current.enabled
+    val shouldShowOverlay = !tvUiEnabled && uiState.controlsVisible && (
+        touchPadIndex != null || !gamepadConnected || !uiState.hideOverlayOnGamepad
+    )
+
+    val toggleMenuClick = rememberDebouncedClick(onClick = { viewModel.toggleMenu() })
+    val toggleControlsClick = rememberDebouncedClick(onClick = { viewModel.toggleControlsVisibility() })
+    val togglePauseClick = rememberDebouncedClick(onClick = { viewModel.togglePause() })
+    val requestQuickSaveClick = rememberDebouncedClick(onClick = {
+        if (uiState.confirmSaveLoadActions) {
+            showQuickSaveDialog = true
+        } else {
+            viewModel.quickSave()
+        }
+    })
+    val requestQuickLoadClick = rememberDebouncedClick(onClick = {
+        if (uiState.confirmSaveLoadActions) {
+            showQuickLoadDialog = true
+        } else {
+            viewModel.quickLoad()
+        }
+    })
+    val requestAutoSaveLoadClick = rememberDebouncedClick(onClick = { showAutoSaveLoadDialog = true })
+    val confirmQuickSaveClick = rememberDebouncedClick(onClick = {
+        showQuickSaveDialog = false
+        viewModel.quickSave()
+    })
+    val confirmQuickLoadClick = rememberDebouncedClick(onClick = {
+        showQuickLoadDialog = false
+        viewModel.quickLoad()
+    })
+    val confirmAutoSaveLoadClick = rememberDebouncedClick(onClick = {
+        showAutoSaveLoadDialog = false
+        viewModel.loadAutoSave()
+    })
+    val dismissQuickSaveClick = rememberDebouncedClick(onClick = { showQuickSaveDialog = false })
+    val dismissQuickLoadClick = rememberDebouncedClick(onClick = { showQuickLoadDialog = false })
+    val dismissAutoSaveLoadClick = rememberDebouncedClick(onClick = { showAutoSaveLoadDialog = false })
+    val requestExitClick = rememberDebouncedClick(onClick = { showExitDialog = true })
+    val confirmExitClick = rememberDebouncedClick(onClick = {
+        if (exitDispatched) return@rememberDebouncedClick
+        exitDispatched = true
+        showExitDialog = false
+        val completedActivePlayTimeMs = currentActivePlayTimeMs
+        viewModel.stopEmulation(onExit = {
+            completeEmulationExit(
+                activePlayTimeMs = completedActivePlayTimeMs,
+                restoreHostUi = restoreHostUi,
+                navigateFromEmulation = currentOnExit
+            )
+        })
+    })
+    val dismissExitClick = rememberDebouncedClick(onClick = { showExitDialog = false })
+    val dismissGamepadMappingDialog: () -> Unit = { showGamepadMappingDialog = false }
+    val dismissGamepadMappingDialogClick = rememberDebouncedClick(onClick = dismissGamepadMappingDialog)
+    val sessionRestoredUnavailableMessage = stringResource(R.string.emulation_session_restored_unavailable)
+    val gamepadUiActive = uiState.showMenu ||
+        showControlsEditor ||
+        showExitDialog ||
+        showQuickSaveDialog ||
+        showQuickLoadDialog ||
+        showAutoSaveLoadDialog ||
+        showGamepadMappingDialog ||
+        pendingGamepadActionId != null
+
+    // The in-game menu and dialogs contain text fields (auto-save interval, ...). A field keeping
+    // the input connection attached after the UI closes makes Android route every batched motion
+    // event (analog stick movement) through the IME and flood logcat with InputEventSender
+    // warnings. Drop focus and hide the keyboard on the way back to gameplay.
+    val softwareKeyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(gamepadUiActive) {
+        if (!gamepadUiActive) {
+            softwareKeyboardController?.hide()
+            focusManager.clearFocus(force = true)
+        }
+    }
+
+    BackHandler(enabled = true) {
+        when (resolveEmulationBackAction(uiState.backButtonExitsGame)) {
+            EmulationBackAction.OpenGameMenu -> toggleMenuClick()
+            EmulationBackAction.RequestExit -> requestExitClick()
+        }
+    }
+
+    ProvideGamepadMenuAction(onMenu = toggleMenuClick)
+    ProvideGamepadUiNavigation(
+        enabled = gamepadUiActive,
+        onBack = {
+            when {
+                pendingGamepadActionId != null -> {
+                    pendingGamepadActionId = null
+                    true
+                }
+                showGamepadMappingDialog -> {
+                    dismissGamepadMappingDialog()
+                    true
+                }
+                showQuickLoadDialog -> {
+                    showQuickLoadDialog = false
+                    true
+                }
+                showAutoSaveLoadDialog -> {
+                    showAutoSaveLoadDialog = false
+                    true
+                }
+                showQuickSaveDialog -> {
+                    showQuickSaveDialog = false
+                    true
+                }
+                showExitDialog -> {
+                    showExitDialog = false
+                    true
+                }
+                showControlsEditor -> {
+                    showControlsEditor = false
+                    true
+                }
+                uiState.showMenu -> {
+                    toggleMenuClick()
+                    true
+                }
+                else -> false
+            }
+        }
+    )
+
+    LaunchedEffect(restoredAfterProcessDeath) {
+        if (!restoredAfterProcessDeath) return@LaunchedEffect
+        Toast.makeText(
+            context,
+            sessionRestoredUnavailableMessage,
+            Toast.LENGTH_LONG
+        ).show()
+        if (!exitDispatched) {
+            exitDispatched = true
+            completeEmulationExit(
+                activePlayTimeMs = 0L,
+                restoreHostUi = restoreHostUi,
+                navigateFromEmulation = currentOnExit
+            )
+        }
+    }
+
+    val emulationOrientation: Int? = when {
+        orientationLockPreference == null || emulationAllowsBothOrientations == null -> null
+        tvUiEnabled -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        orientationLockPreference == AppPreferences.ORIENTATION_LOCK_PORTRAIT ->
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        orientationLockPreference == AppPreferences.ORIENTATION_LOCK_LANDSCAPE ->
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        emulationAllowsBothOrientations == true -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+
+    if (emulationOrientation != null) {
+        DisposableEffect(activity, originalRequestedOrientation, emulationOrientation) {
+            activity?.requestedOrientation = emulationOrientation
+            activity?.window?.let { window ->
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            }
+            onDispose {
+                restoreHostUi()
+            }
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, context, showControlsEditor, uiState.showMenu) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START,
+                Lifecycle.Event.ON_RESUME -> {
+                    viewModel.onHostForegrounded()
+                }
+
+                Lifecycle.Event.ON_PAUSE,
+                Lifecycle.Event.ON_STOP -> {
+                    val activity = context as? android.app.Activity
+                    if (activity?.isChangingConfigurations == true) {
+                        return@LifecycleEventObserver
+                    }
+                    viewModel.onHostBackgrounded()
+                }
+
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(
+        gamePath,
+        bootToBios,
+        bootSmokeProbe,
+        autotestMode,
+        enableEeRecompilerOverride,
+        enableIopRecompilerOverride,
+        enableVu0RecompilerOverride,
+        enableVu1RecompilerOverride,
+        enableFastmemOverride,
+        enableMtvuOverride,
+        enableIopThreadOverride,
+        enableVUAotOverride,
+        rendererOverride,
+        gsDumpFrames,
+        gsDumpDelayMs,
+        vu0FamilyMaskOverride,
+        vu1FamilyMaskOverride,
+        restoredAfterProcessDeath
+    ) {
+        if (restoredAfterProcessDeath) return@LaunchedEffect
+        viewModel.startEmulation(
+            path = gamePath,
+            slotToLoad = saveSlot,
+            bootToBios = bootToBios,
+            bootSmokeProbe = bootSmokeProbe,
+            autotestMode = autotestMode,
+            enableEeRecompilerOverride = enableEeRecompilerOverride,
+            enableIopRecompilerOverride = enableIopRecompilerOverride,
+            enableVu0RecompilerOverride = enableVu0RecompilerOverride,
+            enableVu1RecompilerOverride = enableVu1RecompilerOverride,
+            enableFastmemOverride = enableFastmemOverride,
+            enableMtvuOverride = enableMtvuOverride,
+            enableIopThreadOverride = enableIopThreadOverride,
+            enableVUAotOverride = enableVUAotOverride,
+            rendererOverride = rendererOverride,
+            gsDumpFrames = gsDumpFrames,
+            gsDumpDelayMs = gsDumpDelayMs,
+            vu0FamilyMaskOverride = vu0FamilyMaskOverride,
+            vu1FamilyMaskOverride = vu1FamilyMaskOverride,
+            restoredAfterProcessDeath = restoredAfterProcessDeath
+        )
+        RetroAchievementsLiveStateManager.refreshFromNative()
+    }
+
+    DisposableEffect(viewModel, activity, restoredAfterProcessDeath) {
+        onDispose {
+            if (!restoredAfterProcessDeath && activity?.isChangingConfigurations != true) {
+                viewModel.abortPendingShaderPreparation()
+            }
+        }
+    }
+
+    if (shaderPreparationState.phase != ShaderPreparationUiPhase.Hidden) {
+        ShaderPreparationDialog(
+            state = shaderPreparationState,
+            onPrepare = viewModel::prepareShaders,
+            onSkip = viewModel::skipShaderPreparation,
+            onCancel = viewModel::cancelShaderPreparation,
+            onResume = viewModel::resumeShaderPreparation,
+            onContinue = viewModel::continueLaunchWithoutShaderPreparation
+        )
+    }
+
+    LaunchedEffect(
+        uiState.isRunning,
+        gamePath,
+        retroAchievementsState.enabled,
+        retroAchievementsState.user?.username
+    ) {
+        if (!uiState.isRunning || gamePath.isNullOrBlank() || !retroAchievementsState.enabled) {
+            return@LaunchedEffect
+        }
+        delay(800.milliseconds)
+        RetroAchievementsLiveStateManager.refreshFromNative()
+    }
+
+    LaunchedEffect(gamepadConnected, keyboardConnected, mouseConnected, uiState.showMenu) {
+        val anyConnected = gamepadConnected || keyboardConnected || mouseConnected
+        if (!anyConnected || uiState.showMenu) {
+            if (showGamepadIndicator) {
+                delay(700.milliseconds)
+                val stillDisconnected =
+                    !(gamepadConnected || keyboardConnected || mouseConnected) &&
+                        !uiState.showMenu
+                if (stillDisconnected) showGamepadIndicator = false
+            }
+            return@LaunchedEffect
+        }
+        showGamepadIndicator = true
+        delay(5000.milliseconds)
+        showGamepadIndicator = false
+    }
+
+    LaunchedEffect(showOverlayShortcut, uiState.showMenu) {
+        if (uiState.showMenu) {
+            showOverlayShortcut = false
+        } else if (showOverlayShortcut) {
+            delay(2200.milliseconds)
+            showOverlayShortcut = false
+        }
+    }
+
+    LaunchedEffect(retroAchievementsNotification?.id) {
+        val notification = retroAchievementsNotification ?: return@LaunchedEffect
+        delay((if (notification.kind == "mastery") 6500 else 4300).milliseconds)
+        RetroAchievementsLiveStateManager.dismissNotification(notification.id)
+    }
+
+    LaunchedEffect(showControlsEditor) {
+        if (showControlsEditor && !uiState.isPaused) {
+            resumeAfterEditor = true
+            viewModel.togglePause()
+        } else if (!showControlsEditor && resumeAfterEditor && uiState.isPaused) {
+            resumeAfterEditor = false
+            viewModel.togglePause()
+        }
+    }
+
+    DisposableEffect(pendingGamepadActionId) {
+        val actionId = pendingGamepadActionId
+        if (actionId != null) {
+            GamepadManager.startBindingCapture(pendingGamepadPadIndex) { keyCode ->
+                scope.launch {
+                    if (uiState.gameSettingsProfileActive) {
+                        val currentBindings = uiState.gamepadBindingsByPad.toMutableMap()
+                        val padBindings = currentBindings[pendingGamepadPadIndex].orEmpty().toMutableMap()
+                        currentBindings[pendingGamepadPadIndex] =
+                            com.sbro.emucorex.data.GamepadBindingRules.assign(padBindings, actionId, keyCode)
+                        viewModel.setGamepadBindingsByPad(currentBindings)
+                    } else {
+                        preferences.setGamepadBinding(pendingGamepadPadIndex, actionId, keyCode)
+                    }
+                }
+                pendingGamepadActionId = null
+            }
+        }
+        onDispose {
+            GamepadManager.cancelBindingCapture()
+        }
+    }
+
+    LaunchedEffect(uiState.confirmSaveLoadActions) {
+        GamepadManager.gamepadShortcutActions.collect { action ->
+            when (action.actionId) {
+                GamepadManager.ACTION_QUICK_SAVE -> {
+                    if (uiState.confirmSaveLoadActions) {
+                        showQuickSaveDialog = true
+                    } else {
+                        viewModel.quickSave()
+                    }
+                }
+                GamepadManager.ACTION_QUICK_LOAD -> {
+                    if (uiState.confirmSaveLoadActions) {
+                        showQuickLoadDialog = true
+                    } else {
+                        viewModel.quickLoad()
+                    }
+                }
+                GamepadManager.ACTION_PAUSE -> viewModel.togglePause()
+                GamepadManager.ACTION_OPEN_MENU -> viewModel.toggleMenu()
+                "gun_recalibrate" -> {
+                    gyroController.recalibrate()
+                    publishLightGunAim(0.5f, 0.5f)
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        GamepadManager.gamepadFastForwardHolds.collect { held ->
+            viewModel.setFastForwardHeld(held)
+        }
+    }
+
+    LaunchedEffect(gamepadUiActive) {
+        GamepadManager.setEmulationInputEnabled(!gamepadUiActive)
+    }
+
+    DisposableEffect(touchPadIndex, shouldShowOverlay, uiState.showMenu, showControlsEditor) {
+        val activeTouchPadIndex = touchPadIndex?.takeIf {
+            shouldShowOverlay && !uiState.showMenu && !showControlsEditor
+        }
+        onDispose {
+            activeTouchPadIndex?.let(EmulatorBridge::resetPadState)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            GamepadManager.setEmulationInputEnabled(false)
+            if (ShaderPreparationRouteExitPolicy.shouldStopEmulation(activity?.isChangingConfigurations == true)) {
+                viewModel.stopEmulation()
+            }
+        }
+    }
+
+    DisposableEffect(uiState.keepScreenOn) {
+        val previousValue = view.keepScreenOn
+        view.keepScreenOn = uiState.keepScreenOn
+        onDispose {
+            view.keepScreenOn = previousValue
+        }
+    }
+
+    val nativeDisplayDrawRect by produceState<FloatArray?>(
+        initialValue = null,
+        key1 = uiState.isRunning
+    ) {
+        if (!uiState.isRunning) return@produceState
+        while (true) {
+            value = updatedNativeDisplayDrawRect(
+                value,
+                runCatching { NativeApp.getDisplayDrawRect() }.getOrNull()
+            )
+            delay(250.milliseconds)
+        }
+    }
+
+    // Never let the stale-frame cover outlive its purpose: if the renderer has not
+    // published a draw rect within the grace period, lift the cover regardless so a
+    // presentation problem can never masquerade as a permanently black screen.
+    var displayCoverExpired by remember(uiState.isRunning, uiState.currentGameTitle) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(uiState.isRunning, uiState.currentGameTitle) {
+        if (!uiState.isRunning) return@LaunchedEffect
+        delay(DISPLAY_COVER_MAX_HOLD_MS.milliseconds)
+        displayCoverExpired = true
+    }
+
+    val requestedFrameGenerationRate = FrameGenerationRefreshRate.requested(
+        FrameGenerationSettings(
+            enabled = uiState.frameGenerationEnabled,
+            multiplier = uiState.frameGenerationMultiplier,
+            performanceMode = uiState.frameGenerationPerformance,
+            flowScalePercent = uiState.frameGenerationFlowScale,
+            targetRefreshRate = uiState.frameGenerationTargetRate
+        )
+    )
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Game surface
+        AndroidView(
+            factory = { ctx ->
+                EmulationSurfaceView(ctx).also { surfaceView ->
+                    surfaceView.applyRequestedRefreshRate(
+                        requestedFrameGenerationRate,
+                        lowLatencyEnabled = uiState.lowLatencyMode
+                    )
+                    surfaceView.apply {
+                        isClickable = false
+                        isFocusable = false
+                        isFocusableInTouchMode = false
+                        setZOrderOnTop(false)
+                        setZOrderMediaOverlay(false)
+                        holder.setFormat(PixelFormat.OPAQUE)
+                        holder.addCallback(object : SurfaceHolder.Callback {
+                            override fun surfaceCreated(holder: SurfaceHolder) {
+                                try { EmulatorBridge.onSurfaceCreated() } catch (_: Exception) { }
+                            }
+
+                            override fun surfaceChanged(
+                                holder: SurfaceHolder,
+                                format: Int,
+                                width: Int,
+                                height: Int
+                            ) {
+                                reapplyRequestedRefreshRate()
+                                try {
+                                    EmulatorBridge.onSurfaceChanged(
+                                        holder.surface,
+                                        width,
+                                        height,
+                                        currentDisplayRefreshRate()
+                                    )
+                                } catch (_: Exception) { }
+                            }
+
+                            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                                try { EmulatorBridge.onSurfaceDestroyed() } catch (_: Exception) { }
+                            }
+                        })
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(gameCutoutPadding)
+                .pointerInteropFilter { event ->
+                    if (!showControlsEditor && !uiState.showMenu && event.actionMasked == MotionEvent.ACTION_DOWN) {
+                        val timestamp = event.eventTime
+                        val dx = event.x - lastTapX
+                        val dy = event.y - lastTapY
+                        val distanceSquared = (dx * dx) + (dy * dy)
+                        val isDoubleTap = timestamp - lastTapTimestamp in 40L..300L && distanceSquared <= 14400f
+                        if (isDoubleTap) {
+                            showOverlayShortcut = true
+                            lastTapTimestamp = 0L
+                        } else {
+                            lastTapTimestamp = timestamp
+                            lastTapX = event.x
+                            lastTapY = event.y
+                        }
+                    }
+                    false
+                },
+            update = { surfaceView ->
+                surfaceView.applyRequestedRefreshRate(
+                    requestedFrameGenerationRate,
+                    lowLatencyEnabled = uiState.lowLatencyMode
+                )
+            },
+            onRelease = { surfaceView ->
+                surfaceView.applyRequestedRefreshRate(0f, lowLatencyEnabled = false)
+            }
+        )
+
+        // SurfaceView can retain the previous game's final buffer across a fast restart.
+        // Keep it covered until the new renderer publishes its first authoritative draw rect,
+        // but only for a bounded grace period (see DISPLAY_COVER_MAX_HOLD_MS).
+        if (nativeDisplayDrawRect == null && !displayCoverExpired) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            )
+        }
+
+        EmulationSideArtworkOverlay(
+            artwork = globalDefaults.emulationSideArtwork,
+            revision = globalDefaults.emulationSideArtworkRevision,
+            aspectRatioMode = uiState.aspectRatio,
+            nativeDrawRect = nativeDisplayDrawRect,
+            modifier = Modifier.fillMaxSize(),
+            dimPercent = globalDefaults.emulationSideArtworkDim
+        )
+
+        if (!showControlsEditor) {
+        // Top systemic overlay (Gamepad, Achievements)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp, start = overlayHorizontalSafeInset, end = overlayHorizontalSafeInset),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Connected input indicators
+                AnimatedVisibility(
+                    visible = (gamepadConnected || keyboardConnected || mouseConnected) &&
+                        !uiState.showMenu &&
+                        showGamepadIndicator,
+                    enter = fadeIn(tween(300)),
+                    exit = fadeOut(tween(300))
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (gamepadConnected) {
+                            ConnectedInputBadge(
+                                icon = Icons.Rounded.Gamepad,
+                                contentDescription = stringResource(R.string.gamepad_connected),
+                                active = true
+                            )
+                        }
+                        if (keyboardConnected) {
+                            ConnectedInputBadge(
+                                icon = Icons.Rounded.Keyboard,
+                                contentDescription =
+                                    stringResource(R.string.settings_keyboard_connected),
+                                active = true
+                            )
+                        }
+                        if (mouseConnected) {
+                            ConnectedInputBadge(
+                                icon = Icons.Rounded.Mouse,
+                                contentDescription =
+                                    stringResource(R.string.settings_mouse_connected),
+                                active = true
+                            )
+                        }
+                    }
+                }
+
+            }
+        }
+
+        // Native PCSX2 OSD will handle drawing performance stats natively
+        // Toast notifications
+        AnimatedVisibility(
+            visible = showOverlayShortcut && !uiState.showMenu,
+            enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.88f, animationSpec = tween(180)),
+            exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.88f, animationSpec = tween(160)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = overlayTopSafeInset + 12.dp)
+        ) {
+            Surface(
+                onClick = {
+                    showOverlayShortcut = false
+                    toggleMenuClick()
+                },
+                shape = neonShape(18.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                tonalElevation = 6.dp,
+                shadowElevation = 10.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f))
+            ) {
+                Box(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Menu,
+                        contentDescription = stringResource(R.string.emulation_settings),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+
+        // Toast notifications
+        AnimatedVisibility(
+            visible = uiState.toastMessage != null,
+            enter = fadeIn(tween(150)) + scaleIn(initialScale = 0.85f, animationSpec = tween(150)),
+            exit = fadeOut(tween(150)) + scaleOut(targetScale = 0.85f, animationSpec = tween(150)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 48.dp, start = overlayHorizontalSafeInset, end = overlayHorizontalSafeInset)
+                .zIndex(40f)
+        ) {
+            val message = when (uiState.toastMessage) {
+                "saved" -> stringResource(R.string.emulation_saved)
+                "save_failed" -> stringResource(R.string.emulation_save_failed)
+                "loaded" -> stringResource(R.string.emulation_loaded)
+                "load_failed" -> stringResource(R.string.emulation_load_failed)
+                "hardcore_blocked" -> stringResource(R.string.emulation_hardcore_action_blocked)
+                "bios_missing" -> stringResource(R.string.emulation_bios_missing)
+                "launch_failed" -> stringResource(R.string.emulation_launch_failed)
+                "launch_path_error" -> stringResource(R.string.emulation_launch_path_error)
+                "vulkan_fallback_opengl" -> stringResource(R.string.emulation_vulkan_fallback_opengl)
+                "disc_swap_success" -> stringResource(R.string.emulation_swap_disc_success)
+                "disc_swap_failed" -> stringResource(R.string.emulation_swap_disc_failed)
+                "disc_swap_invalid" -> stringResource(R.string.emulation_swap_disc_invalid)
+                "widescreen_patches_restart_required" -> stringResource(R.string.emulation_widescreen_patches_restart_required)
+                else -> uiState.toastMessage?.takeIf { it.startsWith("launch_error:") }
+                    ?.removePrefix("launch_error:").orEmpty()
+            }
+            Box(
+                modifier = Modifier
+                    .clip(neonShape(14.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                GradientStart.copy(alpha = 0.9f),
+                                GradientEnd.copy(alpha = 0.9f)
+                            )
+                        )
+                    )
+                    .padding(horizontal = 24.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White
+                )
+            }
+        }
+
+        // Patch summary for the current launch. The core's own OSD is not rendered on
+        // Android, so the frontend reports the active patch options itself.
+        val patchNotice = activePatchNotice
+        AnimatedVisibility(
+            visible = patchNotice != null && !uiState.showMenu && !showControlsEditor,
+            enter = fadeIn(tween(180)),
+            exit = fadeOut(tween(180)),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(
+                    start = overlayLeftSafeInset + 12.dp,
+                    bottom = overlayBottomSafeInset + 12.dp
+                )
+                .zIndex(39f)
+        ) {
+            patchNotice?.let { notice ->
+                Surface(
+                    color = Color.Black.copy(alpha = 0.74f),
+                    shape = neonShape(14.dp),
+                    border = BorderStroke(1.dp, Color(0xFF6688FF).copy(alpha = 0.5f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.emulation_patches_title),
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFF7CC8FF)
+                        )
+                        if (notice.widescreen) {
+                            Text(
+                                text = stringResource(R.string.emulation_patches_widescreen),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White
+                            )
+                        }
+                        if (notice.noInterlacing) {
+                            Text(
+                                text = stringResource(R.string.emulation_patches_no_interlacing),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White
+                            )
+                        }
+                        if (notice.cheats) {
+                            Text(
+                                text = stringResource(R.string.emulation_patches_cheats),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White
+                            )
+                        }
+                        if (notice.userPatchCount > 0) {
+                            Text(
+                                text = stringResource(
+                                    R.string.emulation_patches_user_count,
+                                    notice.userPatchCount
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        val raNotificationAlignment = if (
+            uiState.showFps &&
+            uiState.fpsOverlayCorner == AppPreferences.FPS_OVERLAY_CORNER_TOP_LEFT
+        ) {
+            Alignment.TopEnd
+        } else {
+            Alignment.TopStart
+        }
+        AnimatedVisibility(
+            visible = retroAchievementsNotification != null && !uiState.showMenu && !showControlsEditor,
+            enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.92f, animationSpec = tween(180)),
+            exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.92f, animationSpec = tween(160)),
+            modifier = Modifier
+                .align(raNotificationAlignment)
+                .padding(
+                    start = if (raNotificationAlignment == Alignment.TopStart) overlayHorizontalSafeInset + 12.dp else 0.dp,
+                    top = overlayTopSafeInset + 12.dp,
+                    end = if (raNotificationAlignment == Alignment.TopEnd) overlayHorizontalSafeInset + 12.dp else 0.dp
+                )
+                .zIndex(35f)
+        ) {
+            retroAchievementsNotification?.let { notification ->
+                RetroAchievementsNotificationToast(
+                    notification = notification,
+                    isRightAligned = raNotificationAlignment == Alignment.TopEnd,
+                    onDismiss = { RetroAchievementsLiveStateManager.dismissNotification(notification.id) }
+                )
+            }
+        }
+
+        // Full screen loading overlay specifically for loading save state
+        AnimatedVisibility(
+            visible = (uiState.isActionInProgress && uiState.actionLabel == "loading") || uiState.statusMessage == "status_loading_state",
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(200)),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.85f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {} 
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .clip(neonShape(24.dp))
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
+                        .padding(horizontal = 32.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(48.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 4.dp
+                    )
+                    Text(
+                        text = stringResource(R.string.emulation_status_loading_state),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = uiState.statusMessage != null && !uiState.isActionInProgress && uiState.statusMessage != "status_loading_state",
+            enter = fadeIn(tween(250)) + scaleIn(initialScale = 0.9f, animationSpec = tween(250)),
+            exit = fadeOut(tween(200)) + scaleOut(targetScale = 0.9f, animationSpec = tween(200)),
+            modifier = Modifier
+                .align(Alignment.Center)
+        ) {
+            val statusText = when (uiState.statusMessage) {
+                "status_preparing" -> stringResource(R.string.emulation_status_preparing)
+                "status_checking_bios" -> stringResource(R.string.emulation_status_checking_bios)
+                "status_loading_game" -> stringResource(R.string.emulation_status_loading_game)
+                "status_starting_core" -> stringResource(R.string.emulation_status_starting_core)
+                "status_waiting_vm" -> stringResource(R.string.emulation_status_waiting_vm)
+                "status_running" -> stringResource(R.string.emulation_status_running)
+                "status_applying_config" -> stringResource(R.string.emulation_status_applying_config)
+                "status_saving" -> stringResource(R.string.emulation_status_saving)
+                "status_loading_state" -> stringResource(R.string.emulation_status_loading_state)
+                else -> ""
+            }
+            val isRunningStatus = uiState.statusMessage == "status_running"
+            Box(
+                modifier = Modifier
+                    .clip(neonShape(18.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = if (isRunningStatus) listOf(
+                                Color(0xFF50D9A0).copy(alpha = 0.85f),
+                                Color(0xFF3ABB88).copy(alpha = 0.85f)
+                            ) else listOf(
+                                Color.Black.copy(alpha = 0.7f),
+                                Color.Black.copy(alpha = 0.55f)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = if (isRunningStatus) Color(0xFF50D9A0).copy(alpha = 0.4f)
+                                else Color.White.copy(alpha = 0.12f),
+                        shape = neonShape(18.dp)
+                    )
+                    .padding(horizontal = 28.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (!isRunningStatus) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = Color.White.copy(alpha = 0.85f),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.3.sp
+                        ),
+                        color = Color.White
+                    )
+                }
+            }
+        }
+
+        EmulationPerformanceOverlay(
+            viewModel = viewModel,
+            uiState = uiState,
+            showControlsEditor = showControlsEditor,
+            overlayHorizontalSafeInset = overlayHorizontalSafeInset,
+            overlayTopSafeInset = overlayTopSafeInset,
+            overlayBottomSafeInset = overlayBottomSafeInset
+        )
+
+        AnimatedVisibility(
+            visible = uiState.transportMode != EmulationTransportMode.None && !uiState.showMenu && !showControlsEditor,
+            enter = fadeIn(tween(120)) + scaleIn(initialScale = 0.94f, animationSpec = tween(120)),
+            exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.94f, animationSpec = tween(120)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = overlayTopSafeInset + 14.dp)
+                .zIndex(32f)
+        ) {
+            TransportStatusOverlay(uiState.transportMode)
+        }
+
+        // Light-gun aim cursor: the gyroscope drives an absolute pointer, so players must
+        // see where they aim, especially in arcade shooters that draw no reticle.
+        val lightGunAimPosition = lightGunAim
+        if (
+            lightGunInputContext &&
+            uiState.lightGunCursorEnabled &&
+            uiState.isRunning &&
+            !uiState.isPaused &&
+            !uiState.showMenu &&
+            !showControlsEditor &&
+            lightGunAimPosition != null
+        ) {
+            val cursorSize = 22.dp
+            val cursorDensity = LocalDensity.current
+            Box(
+                modifier = Modifier
+                    .offset {
+                        val half = with(cursorDensity) { cursorSize.toPx() } / 2f
+                        IntOffset(
+                            (lightGunAimPosition.x * gyroView.width - half).roundToInt(),
+                            (lightGunAimPosition.y * gyroView.height - half).roundToInt()
+                        )
+                    }
+                    .size(cursorSize)
+                    .zIndex(30f)
+            ) {
+                LightGunCursor()
+            }
+        }
+
+        // On-screen controls
+        if (shouldShowOverlay && !uiState.showMenu && !showControlsEditor) {
+            val scaleFactor = uiState.overlayScale / 100f
+            val alpha = uiState.overlayOpacity / 100f
+            // A gamepad is a physical control surface, so its layout must not mirror with
+            // the app's RTL locale. The touch hit boxes use absolute screen coordinates;
+            // keeping the visual overlay LTR guarantees that visible and logical buttons
+            // stay aligned in Arabic, Persian, and every other RTL language.
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                if (uiState.localMultiplayerMode == AppPreferences.LOCAL_MULTIPLAYER_OFF) {
+                    OnScreenControls(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(20f)
+                        .graphicsLayer(alpha = alpha),
+                    scaleFactor = scaleFactor,
+                    stickScaleFactor = uiState.stickScale / 100f,
+                    leftStickSensitivity = uiState.leftStickSensitivity / 100f,
+                    rightStickSensitivity = uiState.rightStickSensitivity / 100f,
+                    invertLeftStick = uiState.invertLeftStick,
+                    invertRightStick = uiState.invertRightStick,
+                    invertLeftStickHorizontal = uiState.invertLeftStickHorizontal,
+                    invertRightStickHorizontal = uiState.invertRightStickHorizontal,
+                    rightStickUpToR2 = uiState.gamepadRightStickUpToR2,
+                    rightStickDownToL2 = uiState.gamepadRightStickDownToL2,
+                    touchscreenRightStick = uiState.touchscreenRightStick,
+                    touchscreenRightStickSensitivity = uiState.touchscreenRightStickSensitivity / 100f,
+                    touchscreenLeftStick = uiState.touchscreenLeftStick,
+                    touchscreenLeftStickSensitivity = uiState.touchscreenLeftStickSensitivity / 100f,
+                    touchHaptics = uiState.touchHaptics,
+                    touchHapticsPreset = uiState.touchHapticsPreset,
+                    touchHapticsStrength = uiState.touchHapticsStrength,
+                    visualStyle = uiState.touchControlVisualStyle,
+                    pressEffect = uiState.touchControlPressEffect,
+                    customControls = uiState.customTouchControls.controls,
+                    dpadOffset = uiState.dpadOffset,
+                    lstickOffset = uiState.lstickOffset,
+                    rstickOffset = uiState.rstickOffset,
+                    actionOffset = uiState.actionOffset,
+                    lbtnOffset = uiState.lbtnOffset,
+                    rbtnOffset = uiState.rbtnOffset,
+                    centerOffset = uiState.centerOffset,
+                    controlLayouts = uiState.controlLayouts,
+                    racingMode = uiState.racingMode,
+                    stickyButtons = uiState.stickyButtons,
+                    stickToggleTarget = uiState.stickToggleTarget,
+                    lightGunAimSource = if (lightGunInputContext) uiState.lightGunAim
+                        else AppPreferences.LIGHT_GUN_AIM_GYRO,
+                    onLightGunStickAim = ::applyLightGunStickAim,
+                    onLightGunRecalibrate = {
+                        gyroController.recalibrate()
+                        publishLightGunAim(0.5f, 0.5f)
+                    },
+                    onToggleSelectedStick = viewModel::toggleSelectedStick,
+                    onFastForwardHoldChange = viewModel::setFastForwardHeld,
+                    onPadInput = { keyCode, range, pressed ->
+                        viewModel.onPadInput(overlayPadIndex, keyCode, range, pressed)
+                    },
+                    // Controls always avoid the camera cutout and system bars,
+                    // independently of the game image cutout option.
+                    safeInsets = PaddingValues(
+                        start = overlayLeftSafeInset,
+                        top = overlayTopSafeInset,
+                        end = overlayRightSafeInset,
+                        bottom = overlayBottomSafeInset
+                    )
+                    )
+                } else {
+                    LocalMultiplayerTouchControls(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(20f),
+                        mode = uiState.localMultiplayerMode,
+                        uiState = uiState,
+                        scaleFactor = scaleFactor,
+                        alpha = alpha,
+                        onToggleSelectedStick = viewModel::toggleSelectedStick,
+                        onFastForwardHoldChange = viewModel::setFastForwardHeld,
+                        onPadInput = viewModel::onPadInput
+                    )
+                }
+            }
+        }
+        }
+
+        if (floatingQuickActionsEnabled && !uiState.showMenu && !showControlsEditor) {
+            FloatingQuickActionsLayer(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(26f),
+                savePosition = floatingQuickSavePosition
+                    ?: Offset(
+                        persistedFloatingQuickSavePosition.first,
+                        persistedFloatingQuickSavePosition.second
+                    ),
+                loadPosition = floatingQuickLoadPosition
+                    ?: Offset(
+                        persistedFloatingQuickLoadPosition.first,
+                        persistedFloatingQuickLoadPosition.second
+                    ),
+                saveEnabled = !uiState.isActionInProgress,
+                loadEnabled = !uiState.isActionInProgress,
+                saveInProgress = uiState.actionLabel == "saving",
+                loadInProgress = uiState.actionLabel == "loading",
+                onSavePositionChange = { floatingQuickSavePosition = it },
+                onLoadPositionChange = { floatingQuickLoadPosition = it },
+                onSavePositionCommit = {
+                    floatingQuickSavePosition?.let { position ->
+                        scope.launch {
+                            preferences.setFloatingQuickSavePosition(position.x, position.y)
+                        }
+                    }
+                },
+                onLoadPositionCommit = {
+                    floatingQuickLoadPosition?.let { position ->
+                        scope.launch {
+                            preferences.setFloatingQuickLoadPosition(position.x, position.y)
+                        }
+                    }
+                },
+                onSave = requestQuickSaveClick,
+                onLoad = requestQuickLoadClick
+            )
+        }
+
+        if (showControlsEditor) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                ControlsEditorScreen(
+                    state = uiState.toControlsEditorState(),
+                    onBackClick = { showControlsEditor = false },
+                    manageActivityOrientation = false,
+                    overlayLeftSafeInset = overlayLeftSafeInset,
+                    overlayRightSafeInset = overlayRightSafeInset,
+                    overlayTopSafeInset = overlayTopSafeInset,
+                    overlayBottomSafeInset = overlayBottomSafeInset,
+                    onUpdateControlOffset = viewModel::updateTouchControlOffset,
+                    onUpdateControlOffsets = viewModel::updateTouchControlOffsets,
+                    onUpdateControlScale = viewModel::updateTouchControlScale,
+                    onUpdateControlWidthScale = viewModel::updateTouchControlWidthScale,
+                    onUpdateControlOpacity = viewModel::updateTouchControlOpacity,
+                    onUpdateControlSecondaryAction = viewModel::updateTouchControlSecondaryAction,
+                    onSetControlVisible = viewModel::setTouchControlVisible,
+                    onSetStickSurfaceMode = viewModel::setTouchStickSurfaceMode,
+                    onResetLayout = viewModel::resetTouchControlsLayout,
+                    onCustomControlsChange = viewModel::setCustomTouchControls
+                )
+            }
+        }
+
+        // The menu is removed from composition while it is closed. Keep its
+        // saveable state (selected tab and per-tab scroll positions) so opening
+        // it again resumes exactly where the player left it.
+        val gameMenuStateHolder = rememberSaveableStateHolder()
+
+        // Game menu open/close sound (no-op unless enabled in Settings -> Customization).
+        val gameMenuVisible = uiState.showMenu && !showControlsEditor
+        LaunchedEffect(gameMenuVisible) {
+            UiSoundManager.setGameMenuOpen(gameMenuVisible)
+        }
+
+        // Sidebar Menu
+        AnimatedVisibility(
+            visible = uiState.showMenu && !showControlsEditor,
+            enter = androidx.compose.animation.slideInHorizontally(initialOffsetX = { fullWidth -> fullWidth }) + fadeIn(tween(300)),
+            exit = androidx.compose.animation.slideOutHorizontally(targetOffsetX = { fullWidth -> fullWidth }) + fadeOut(tween(250)),
+            modifier = Modifier.fillMaxHeight()
+        ) {
+            gameMenuStateHolder.SaveableStateProvider("emulation_game_menu") {
+            Box(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = toggleMenuClick
+                        )
+                )
+
+                EmulationSidebarMenu(
+                    uiState = uiState,
+                    gamepadConnected = gamepadConnected,
+                    currentGamePath = gamePath,
+                    retroState = retroAchievementsState,
+                    globalDefaults = globalDefaults,
+                    overlayDefaults = overlayDefaults,
+                    onClose = toggleMenuClick,
+                    onPauseToggle = togglePauseClick,
+                    onSwapDisc = { swapDiscPicker.launch(DISC_SWAP_MIME_TYPES) },
+                    onQuickSave = requestQuickSaveClick,
+                    onQuickLoad = requestQuickLoadClick,
+                    onLoadAutoSave = requestAutoSaveLoadClick,
+                    onSetAutoSaveEnabled = { viewModel.setAutoSaveEnabled(it) },
+                    onSetAutoSaveIntervalMinutes = { viewModel.setAutoSaveIntervalMinutes(it) },
+                    onSetAutoSaveOnExit = { viewModel.setAutoSaveOnExit(it) },
+                    onSetAutoLoadOnStart = { viewModel.setAutoLoadOnStart(it) },
+                    onResetGameSettingsProfile = { viewModel.resetCurrentGameSettingsProfile() },
+                    onNextSlot = { viewModel.setSlot(uiState.currentSlot + 1) },
+                    onPrevSlot = { viewModel.setSlot(uiState.currentSlot - 1) },
+                    onToggleFps = { viewModel.toggleFpsVisibility() },
+                    onSetFpsOverlayMode = { viewModel.setFpsOverlayMode(it) },
+                    onSetFpsOverlayCorner = { viewModel.setFpsOverlayCorner(it) },
+                    onSetFpsOverlayScale = { viewModel.setFpsOverlayScale(it) },
+                    onSetFpsOverlayMetrics = { viewModel.setFpsOverlayMetrics(it) },
+                    onSetOverlayScale = { viewModel.setOverlayScale(it) },
+                    onSetOverlayOpacity = { viewModel.setOverlayOpacity(it) },
+                    onSetHideOverlayOnGamepad = { viewModel.setHideOverlayOnGamepad(it) },
+                    onSetCompactControls = { viewModel.setCompactControls(it) },
+                    onSetKeepScreenOn = { viewModel.setKeepScreenOn(it) },
+                    onSetStickToggleTarget = viewModel::setStickToggleTarget,
+                    onSetStickScale = { viewModel.setStickScale(it) },
+                    onSetLeftStickSensitivity = { viewModel.setLeftStickSensitivity(it) },
+                    onSetRightStickSensitivity = { viewModel.setRightStickSensitivity(it) },
+                    onSetInvertLeftStick = { viewModel.setInvertLeftStick(it) },
+                    onSetInvertRightStick = { viewModel.setInvertRightStick(it) },
+                    onSetInvertLeftStickHorizontal = { viewModel.setInvertLeftStickHorizontal(it) },
+                    onSetInvertRightStickHorizontal = { viewModel.setInvertRightStickHorizontal(it) },
+                    onSetGamepadStickDeadzone = { viewModel.setGamepadStickDeadzone(it) },
+                    onSetGamepadLeftStickSensitivity = { viewModel.setGamepadLeftStickSensitivity(it) },
+                    onSetGamepadRightStickSensitivity = { viewModel.setGamepadRightStickSensitivity(it) },
+                    onSetGamepadLeftStickNegativeDeadzone = { viewModel.setGamepadLeftStickNegativeDeadzone(it) },
+                    onSetGamepadRightStickNegativeDeadzone = { viewModel.setGamepadRightStickNegativeDeadzone(it) },
+                    onSetGamepadLeftStickAntiDeadzone = { viewModel.setGamepadLeftStickAntiDeadzone(it) },
+                    onSetGamepadRightStickAntiDeadzone = { viewModel.setGamepadRightStickAntiDeadzone(it) },
+                    onSetGamepadLeftStickCurve = { viewModel.setGamepadLeftStickCurve(it) },
+                    onSetGamepadRightStickCurve = { viewModel.setGamepadRightStickCurve(it) },
+                    onSetGamepadRightStickUpToR2 = { viewModel.setGamepadRightStickUpToR2(it) },
+                    onSetGamepadRightStickDownToL2 = { viewModel.setGamepadRightStickDownToL2(it) },
+                    onSetTouchscreenRightStick = { viewModel.setTouchscreenRightStick(it) },
+                    onSetTouchscreenRightStickSensitivity = { viewModel.setTouchscreenRightStickSensitivity(it) },
+                    onSetTouchscreenLeftStick = { viewModel.setTouchscreenLeftStick(it) },
+                    onSetTouchscreenLeftStickSensitivity = { viewModel.setTouchscreenLeftStickSensitivity(it) },
+                    onToggleControls = toggleControlsClick,
+                    onOpenControlsEditor = { showControlsEditor = true },
+                    onOpenGamepadMapping = { showGamepadMappingDialog = true },
+                    onOpenKeyboardMouseSettings = { showKeyboardMouseSettingsDialog = true },
+                    onSetRenderer = { viewModel.setRenderer(it) },
+                    onSetFrameGeneration = viewModel::setFrameGeneration,
+                    onSetUpscale = { viewModel.setUpscale(it) },
+                    onSetAspectRatio = { viewModel.setAspectRatio(it) },
+                    onSetDisplayCrop = { viewModel.setDisplayCrop(it) },
+                    onSetLocalMultiplayerMode = viewModel::setLocalMultiplayerMode,
+                    onSetMtvu = { viewModel.setMtvu(it) },
+                    onSetIopThread = { viewModel.setIopThread(it) },
+                    onSetVUAot = { viewModel.setVUAot(it) },
+                    onSetThreadPinning = { viewModel.setThreadPinning(it) },
+                    onSetFastCdvd = { viewModel.setFastCdvd(it) },
+                    onSetEnableCheats = { viewModel.setEnableCheats(it) },
+                    onToggleCheat = { id, enabled -> viewModel.setCheatEnabled(id, enabled) },
+                    onSetCheatGroupEnabled = { ids, enabled -> viewModel.setCheatGroupEnabled(ids, enabled) },
+                    onSetAllCheatsEnabled = { viewModel.setAllCheatsEnabled(it) },
+                    onRefreshCheats = { viewModel.refreshAvailableCheats() },
+                    cheatPackBrowserState = cheatPackBrowserState,
+                    onLoadCheatPacks = { forceRefresh -> viewModel.loadCheatPacks(forceRefresh) },
+                    onInstallCheatPack = { pack -> viewModel.installCheatPack(pack) },
+                    onImportCheatPack = { contents, fallbackName ->
+                        viewModel.importCheatPackText(contents, fallbackName)
+                    },
+                    shaderBrowserState = shaderBrowserState,
+                    onRefreshShaders = { viewModel.refreshShaderBrowser() },
+                    onDownloadShaderPack = { viewModel.downloadOfficialShaderPack() },
+                    onImportShaderPack = { viewModel.importShaderPack(it) },
+                    onSelectShaderPreset = { viewModel.selectShaderPreset(it) },
+                    onUseGlobalShader = { viewModel.useGlobalShaderSettings() },
+                    onSetInGameShadersEnabled = { viewModel.setInGameShadersEnabled(it) },
+                    onSetHwDownloadMode = { viewModel.setHwDownloadMode(it) },
+                    onSetEeCycleRate = { viewModel.setEeCycleRate(it) },
+                    onSetEeCycleSkip = { viewModel.setEeCycleSkip(it) },
+                    onSetFrameSkip = { viewModel.setFrameSkip(it) },
+                    onSetSkipDuplicateFrames = { viewModel.setSkipDuplicateFrames(it) },
+                    onSetLowLatencyMode = { viewModel.setLowLatencyMode(it) },
+                    onSetFrameLimitEnabled = { viewModel.setFrameLimitEnabled(it) },
+                    onSetTargetFps = { viewModel.setTargetFps(it) },
+                    onSetTextureFiltering = { viewModel.setTextureFiltering(it) },
+                    onSetTrilinearFiltering = { viewModel.setTrilinearFiltering(it) },
+                    onSetBlendingAccuracy = { viewModel.setBlendingAccuracy(it) },
+                    onSetTexturePreloading = { viewModel.setTexturePreloading(it) },
+                    onSetEnableFxaa = { viewModel.setEnableFxaa(it) },
+                    onSetCasMode = { viewModel.setCasMode(it) },
+                    onSetSgsrMode = { viewModel.setSgsrMode(it) },
+                    onSetCasSharpness = { viewModel.setCasSharpness(it) },
+                    onSetTvShader = { viewModel.setTvShader(it) },
+                    onSetShadeBoostBrightness = { viewModel.setShadeBoostBrightness(it) },
+                    onSetShadeBoostContrast = { viewModel.setShadeBoostContrast(it) },
+                    onSetShadeBoostSaturation = { viewModel.setShadeBoostSaturation(it) },
+                    onSetShadeBoostGamma = { viewModel.setShadeBoostGamma(it) },
+                    onSetEnableWidescreenPatches = { viewModel.setEnableWidescreenPatches(it) },
+                    onSetEnableNoInterlacingPatches = { viewModel.setEnableNoInterlacingPatches(it) },
+                    onSetAntiBlur = { viewModel.setAntiBlur(it) },
+                    onSetAnisotropicFiltering = { viewModel.setAnisotropicFiltering(it) },
+                    onSetEnableHwMipmapping = { viewModel.setEnableHwMipmapping(it) },
+                    onSetCpuSpriteRenderSize = { viewModel.setCpuSpriteRenderSize(it) },
+                    onSetCpuSpriteRenderLevel = { viewModel.setCpuSpriteRenderLevel(it) },
+                    onSetSoftwareClutRender = { viewModel.setSoftwareClutRender(it) },
+                    onSetGpuTargetClutMode = { viewModel.setGpuTargetClutMode(it) },
+                    onSetSkipDrawStart = { viewModel.setSkipDrawStart(it) },
+                    onSetSkipDrawEnd = { viewModel.setSkipDrawEnd(it) },
+                    onSetAutoFlushHardware = { viewModel.setAutoFlushHardware(it) },
+                    onSetCpuFramebufferConversion = { viewModel.setCpuFramebufferConversion(it) },
+                    onSetDisableDepthConversion = { viewModel.setDisableDepthConversion(it) },
+                    onSetDisableSafeFeatures = { viewModel.setDisableSafeFeatures(it) },
+                    onSetDisableRenderFixes = { viewModel.setDisableRenderFixes(it) },
+                    onSetPreloadFrameData = { viewModel.setPreloadFrameData(it) },
+                    onSetDisablePartialInvalidation = { viewModel.setDisablePartialInvalidation(it) },
+                    onSetTextureInsideRt = { viewModel.setTextureInsideRt(it) },
+                    onSetReadTargetsOnClose = { viewModel.setReadTargetsOnClose(it) },
+                    onSetEstimateTextureRegion = { viewModel.setEstimateTextureRegion(it) },
+                    onSetGpuPaletteConversion = { viewModel.setGpuPaletteConversion(it) },
+                    onSetHalfPixelOffset = { viewModel.setHalfPixelOffset(it) },
+                    onSetNativeScaling = { viewModel.setNativeScaling(it) },
+                    onSetRoundSprite = { viewModel.setRoundSprite(it) },
+                    onSetBilinearUpscale = { viewModel.setBilinearUpscale(it) },
+                    onSetTextureOffsetX = { viewModel.setTextureOffsetX(it) },
+                    onSetTextureOffsetY = { viewModel.setTextureOffsetY(it) },
+                    onSetAlignSprite = { viewModel.setAlignSprite(it) },
+                    onSetMergeSprite = { viewModel.setMergeSprite(it) },
+                    onSetForceEvenSpritePosition = { viewModel.setForceEvenSpritePosition(it) },
+                    onSetNativePaletteDraw = { viewModel.setNativePaletteDraw(it) },
+                    onExit = requestExitClick,
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth()
+                )
+                if (LocalNeonTheme.current) {
+                    NeonCrtOverlay()
+                }
+            }
+            }
+        }
+    }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = dismissExitClick,
+            icon = {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ExitToApp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = stringResource(R.string.emulation_exit_confirm),
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.emulation_exit_confirm_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = confirmExitClick) {
+                    Text(
+                        text = stringResource(R.string.yes),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = dismissExitClick) {
+                    Text(stringResource(R.string.no))
+                }
+            }
+        )
+    }
+
+    if (showQuickSaveDialog) {
+        AlertDialog(
+            onDismissRequest = dismissQuickSaveClick,
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = neonShape(24.dp),
+            title = {
+                Text(
+                    stringResource(R.string.emulation_quick_save_confirm_title),
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Text(
+                    stringResource(R.string.emulation_quick_save_confirm_desc, uiState.currentSlot),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = confirmQuickSaveClick) {
+                    Text(stringResource(R.string.emulation_quick_save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = dismissQuickSaveClick) {
+                    Text(stringResource(R.string.no))
+                }
+            }
+        )
+    }
+
+    if (showQuickLoadDialog) {
+        AlertDialog(
+            onDismissRequest = dismissQuickLoadClick,
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = neonShape(24.dp),
+            title = {
+                Text(
+                    stringResource(R.string.emulation_quick_load_confirm_title),
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Text(
+                    stringResource(R.string.emulation_quick_load_confirm_desc, uiState.currentSlot),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = confirmQuickLoadClick) {
+                    Text(stringResource(R.string.emulation_quick_load))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = dismissQuickLoadClick) {
+                    Text(stringResource(R.string.no))
+                }
+            }
+        )
+    }
+
+    if (showAutoSaveLoadDialog) {
+        AlertDialog(
+            onDismissRequest = dismissAutoSaveLoadClick,
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = neonShape(24.dp),
+            title = {
+                Text(
+                    stringResource(R.string.emulation_quick_load_confirm_title),
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Text(
+                    stringResource(R.string.emulation_quick_load_confirm_desc, 0),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = confirmAutoSaveLoadClick) {
+                    Text(stringResource(R.string.emulation_quick_load))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = dismissAutoSaveLoadClick) {
+                    Text(stringResource(R.string.no))
+                }
+            }
+        )
+    }
+
+    if (showGamepadMappingDialog) {
+        val connectedControllerName = GamepadManager.connectedControllerName(selectedGamepadPadIndex)
+        val selectedBindings = effectiveGamepadBindingsByPad[selectedGamepadPadIndex].orEmpty()
+        SettingsStyledDialog(
+            title = stringResource(R.string.settings_gamepad_mapping_title),
+            eyebrow = stringResource(R.string.app_name),
+            icon = Icons.Rounded.Gamepad,
+            onDismissRequest = dismissGamepadMappingDialog,
+            edgeToEdgeContent = true
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                            listOf(0, 1).forEach { padIndex ->
+                                FilterChip(
+                                    shape = neonChipShape(),
+                                    selected = selectedGamepadPadIndex == padIndex,
+                                    onClick = { selectedGamepadPadIndex = padIndex },
+                                    colors = premiumFilterChipColors(),
+                                    label = { Text(gamepadPlayerLabel(padIndex)) }
+                                )
+                            }
+                        }
+            Text(
+                text = connectedControllerName?.let {
+                    stringResource(
+                        R.string.settings_gamepad_mapping_player_connected,
+                        gamepadPlayerLabel(selectedGamepadPadIndex),
+                        it
+                    )
+                } ?: stringResource(
+                    R.string.settings_gamepad_mapping_player_disconnected,
+                    gamepadPlayerLabel(selectedGamepadPadIndex)
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                        gamepadActions.forEach { action ->
+                            val assignedKeyCode = GamepadManager.resolveBindingForAction(
+                                actionId = action.id,
+                                customBindings = selectedBindings
+                            )
+                            val isMappedBinding = selectedBindings.containsKey(action.id)
+                            val isCustomBinding = if (uiState.gameSettingsProfileActive) {
+                                uiState.gamepadBindingsByPad[selectedGamepadPadIndex]
+                                    .orEmpty().containsKey(action.id)
+                            } else isMappedBinding
+                            EmulationGamepadBindingRow(
+                                title = gamepadActionLabel(action.id),
+                                value = assignedKeyCode?.let(GamepadManager::keyCodeLabel)
+                                    ?: stringResource(R.string.settings_not_set),
+                                autoLabel = if (isMappedBinding || action.defaultKeyCodes.isEmpty()) {
+                                    null
+                                } else {
+                                    stringResource(R.string.settings_gamepad_mapping_auto_format)
+                                },
+                                onBindClick = {
+                                    pendingGamepadPadIndex = selectedGamepadPadIndex
+                                    pendingGamepadActionId = action.id
+                                },
+                                onClearClick = if (isCustomBinding) {
+                                    {
+                                        scope.launch {
+                                            if (uiState.gameSettingsProfileActive) {
+                                                val currentBindings = uiState.gamepadBindingsByPad.toMutableMap()
+                                                val padBindings = currentBindings[selectedGamepadPadIndex].orEmpty().toMutableMap()
+                                                padBindings.remove(action.id)
+                                                if (padBindings.isEmpty()) {
+                                                    currentBindings.remove(selectedGamepadPadIndex)
+                                                } else {
+                                                    currentBindings[selectedGamepadPadIndex] = padBindings
+                                                }
+                                                viewModel.setGamepadBindingsByPad(currentBindings)
+                                            } else {
+                                                preferences.clearGamepadBinding(selectedGamepadPadIndex, action.id)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    null
+                                }
+                            )
+                        }
+        }
+        EmulationGamepadBindingRow(
+            title = stringResource(R.string.settings_gamepad_mapping_reset_title),
+            value = stringResource(R.string.settings_gamepad_mapping_reset_desc),
+            autoLabel = null,
+            icon = Icons.Rounded.SettingsSuggest,
+            valueColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            onBindClick = {
+                scope.launch {
+                    if (uiState.gameSettingsProfileActive) {
+                        val currentBindings = uiState.gamepadBindingsByPad.toMutableMap()
+                        currentBindings.remove(selectedGamepadPadIndex)
+                        viewModel.setGamepadBindingsByPad(currentBindings)
+                    } else {
+                        preferences.resetGamepadBindingsForPad(selectedGamepadPadIndex)
+                    }
+                }
+            },
+            onClearClick = null
+        )
+        Button(
+            onClick = dismissGamepadMappingDialogClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            shape = neonShape(18.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.close),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(vertical = 6.dp)
+            )
+        }
+    }
+    }
+
+    if (showKeyboardMouseSettingsDialog) {
+        KeyboardMouseSettingsDialog(
+            settings = keyboardMouseOverride ?: globalKeyboardMouseSettings,
+            onSettingsChange = viewModel::setKeyboardMouseSettings,
+            onUseGlobal = if (keyboardMouseOverride != null) {
+                { viewModel.setKeyboardMouseSettings(null) }
+            } else {
+                null
+            },
+            onDismiss = { showKeyboardMouseSettingsDialog = false }
+        )
+    }
+
+    if (pendingGamepadActionId != null) {
+        val dialogFocusRequester = remember { FocusRequester() }
+
+        LaunchedEffect(Unit) {
+            dialogFocusRequester.requestFocus()
+        }
+
+        AlertDialog(
+            onDismissRequest = { pendingGamepadActionId = null },
+            modifier = Modifier
+                .focusRequester(dialogFocusRequester)
+                .focusable()
+                .onPreviewKeyEvent { keyEvent ->
+                    GamepadManager.handleBindingCapture(keyEvent.nativeKeyEvent)
+                },
+            title = { Text(stringResource(R.string.settings_gamepad_mapping_listening_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.settings_gamepad_mapping_listening_player_desc,
+                        gamepadPlayerLabel(pendingGamepadPadIndex),
+                        gamepadActionLabel(pendingGamepadActionId.orEmpty())
+                    )
+                )
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { pendingGamepadActionId = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun BoxScope.EmulationPerformanceOverlay(
+    viewModel: EmulationViewModel,
+    uiState: EmulationUiState,
+    showControlsEditor: Boolean,
+    overlayHorizontalSafeInset: Dp,
+    overlayTopSafeInset: Dp,
+    overlayBottomSafeInset: Dp
+) {
+    // Metrics change four times per second; keep their state reads below the
+    // screen's restart scope so they only recompose the monitoring overlay.
+    val performance by viewModel.performanceState.collectAsState()
+    val showPerformanceHud = uiState.showFps &&
+        !uiState.showMenu &&
+        !showControlsEditor &&
+        (uiState.fpsOverlayMode == FPS_OVERLAY_MODE_SIMPLE || performance.overlayText.isNotBlank())
+    AnimatedVisibility(
+        visible = showPerformanceHud,
+        enter = fadeIn(tween(160)),
+        exit = fadeOut(tween(160)),
+        modifier = Modifier
+            .align(uiState.fpsOverlayCorner.toOverlayAlignment())
+            .padding(
+                start = if (uiState.fpsOverlayCorner.isRightOverlayCorner()) 0.dp else overlayHorizontalSafeInset + 12.dp,
+                top = if (uiState.fpsOverlayCorner.isTopOverlayCorner()) overlayTopSafeInset + 12.dp else 0.dp,
+                end = if (uiState.fpsOverlayCorner.isRightOverlayCorner()) overlayHorizontalSafeInset + 12.dp else 0.dp,
+                bottom = if (uiState.fpsOverlayCorner.isBottomOverlayCorner()) overlayBottomSafeInset + 12.dp else 0.dp
+            )
+            .zIndex(30f)
+    ) {
+        if (uiState.fpsOverlayMode == FPS_OVERLAY_MODE_SIMPLE) {
+            SimpleFpsCounter(
+                fps = performance.fps,
+                fontScale = uiState.fpsOverlayScale / 100f
+            )
+        } else {
+            SystemPerformanceHud(
+                speedPercent = performance.speedPercent,
+                text = performance.overlayText,
+                fixedHeaderLine = uiState.performanceOverlayHeader,
+                isRightCorner = uiState.fpsOverlayCorner.isRightOverlayCorner(),
+                fontScale = uiState.fpsOverlayScale / 100f,
+                metricsMask = uiState.fpsOverlayMetrics
+            )
+        }
+    }
+}
+
+private fun GameMenuTabId.toEmulationMenuTab(): EmulationMenuTab = when (this) {
+    GameMenuTabId.SESSION -> EmulationMenuTab.Session
+    GameMenuTabId.CONTROLS -> EmulationMenuTab.Controls
+    GameMenuTabId.EMULATION -> EmulationMenuTab.Emulation
+    GameMenuTabId.CHEATS -> EmulationMenuTab.Cheats
+    GameMenuTabId.SHADERS -> EmulationMenuTab.Shaders
+    GameMenuTabId.GRAPHICS -> EmulationMenuTab.Graphics
+    GameMenuTabId.FIXES -> EmulationMenuTab.Fixes
+    GameMenuTabId.ACHIEVEMENTS -> EmulationMenuTab.Achievements
+}
+
+@Composable
+private fun LightGunCursor(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = size.minDimension / 2f
+        val dotRadius = (radius * 0.32f).coerceAtLeast(1.6f)
+        val ringRadius = (radius * 0.8f).coerceAtLeast(dotRadius + 1.5f)
+        // Thin ring plus a small dot: readable on light and dark scenes without
+        // covering the target the way a full crosshair does.
+        drawCircle(
+            color = Color.Black.copy(alpha = 0.45f),
+            radius = ringRadius + 1.5f,
+            center = center
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = 0.88f),
+            radius = ringRadius,
+            center = center,
+            style = Stroke(width = 1.5f)
+        )
+        drawCircle(
+            color = Color.Black.copy(alpha = 0.55f),
+            radius = dotRadius + 1f,
+            center = center
+        )
+        drawCircle(
+            color = Color(0xFF45E6FF),
+            radius = dotRadius,
+            center = center
+        )
+    }
+}
+
+@Composable
+private fun TransportStatusOverlay(mode: EmulationTransportMode) {
+    if (mode == EmulationTransportMode.None) return
+    Surface(
+        shape = neonShape(8.dp),
+        color = Color(0xDD10131A),
+        tonalElevation = 8.dp,
+        shadowElevation = 10.dp,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = ">>",
+                color = Color.White,
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.sp
+                )
+            )
+            Text(
+                text = stringResource(R.string.emulation_transport_fast_forward),
+                color = Color.White.copy(alpha = 0.9f),
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.sp
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun LocalMultiplayerTouchControls(
+    modifier: Modifier,
+    mode: Int,
+    uiState: EmulationUiState,
+    scaleFactor: Float,
+    alpha: Float,
+    onToggleSelectedStick: () -> Unit,
+    onFastForwardHoldChange: (Boolean) -> Unit,
+    onPadInput: (Int, Int, Int, Boolean) -> Unit
+) {
+    val sideBySide = mode == AppPreferences.LOCAL_MULTIPLAYER_SIDE_BY_SIDE
+    val (firstPad, secondPad) = localMultiplayerPadOrder(mode)
+
+    if (sideBySide) {
+        Row(modifier = modifier) {
+            LocalMultiplayerTouchZone(
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                padIndex = firstPad,
+                uiState = uiState,
+                scaleFactor = scaleFactor * 0.58f,
+                alpha = alpha,
+                onToggleSelectedStick = onToggleSelectedStick,
+                onFastForwardHoldChange = onFastForwardHoldChange,
+                onPadInput = onPadInput
+            )
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(Color.White.copy(alpha = 0.16f))
+            )
+            LocalMultiplayerTouchZone(
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                padIndex = secondPad,
+                uiState = uiState,
+                scaleFactor = scaleFactor * 0.58f,
+                alpha = alpha,
+                onToggleSelectedStick = onToggleSelectedStick,
+                onFastForwardHoldChange = {},
+                onPadInput = onPadInput
+            )
+        }
+    } else {
+        Column(modifier = modifier) {
+            LocalMultiplayerTouchZone(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                padIndex = firstPad,
+                uiState = uiState,
+                scaleFactor = scaleFactor * 0.50f,
+                alpha = alpha,
+                onToggleSelectedStick = onToggleSelectedStick,
+                onFastForwardHoldChange = onFastForwardHoldChange,
+                onPadInput = onPadInput
+            )
+            HorizontalDivider(color = Color.White.copy(alpha = 0.16f))
+            LocalMultiplayerTouchZone(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                padIndex = secondPad,
+                uiState = uiState,
+                scaleFactor = scaleFactor * 0.50f,
+                alpha = alpha,
+                onToggleSelectedStick = onToggleSelectedStick,
+                onFastForwardHoldChange = {},
+                onPadInput = onPadInput
+            )
+        }
+    }
+}
+
+internal fun localMultiplayerPadOrder(mode: Int): Pair<Int, Int> {
+    return if (mode == AppPreferences.LOCAL_MULTIPLAYER_HORIZONTAL_CROP_SWAPPED) {
+        1 to 0
+    } else {
+        0 to 1
+    }
+}
+
+@Composable
+private fun LocalMultiplayerTouchZone(
+    modifier: Modifier,
+    padIndex: Int,
+    uiState: EmulationUiState,
+    scaleFactor: Float,
+    alpha: Float,
+    onToggleSelectedStick: () -> Unit,
+    onFastForwardHoldChange: (Boolean) -> Unit,
+    onPadInput: (Int, Int, Int, Boolean) -> Unit
+) {
+    Box(modifier = modifier) {
+        OnScreenControls(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(alpha = alpha),
+            scaleFactor = scaleFactor,
+            stickScaleFactor = uiState.stickScale / 100f,
+            leftStickSensitivity = uiState.leftStickSensitivity / 100f,
+            rightStickSensitivity = uiState.rightStickSensitivity / 100f,
+            invertLeftStick = uiState.invertLeftStick,
+            invertRightStick = uiState.invertRightStick,
+            invertLeftStickHorizontal = uiState.invertLeftStickHorizontal,
+            invertRightStickHorizontal = uiState.invertRightStickHorizontal,
+            rightStickUpToR2 = uiState.gamepadRightStickUpToR2,
+            rightStickDownToL2 = uiState.gamepadRightStickDownToL2,
+            touchscreenRightStick = uiState.touchscreenRightStick,
+            touchscreenRightStickSensitivity = uiState.touchscreenRightStickSensitivity / 100f,
+            touchscreenLeftStick = uiState.touchscreenLeftStick,
+            touchscreenLeftStickSensitivity = uiState.touchscreenLeftStickSensitivity / 100f,
+            touchHaptics = uiState.touchHaptics,
+            touchHapticsPreset = uiState.touchHapticsPreset,
+            touchHapticsStrength = uiState.touchHapticsStrength,
+            visualStyle = uiState.touchControlVisualStyle,
+            pressEffect = uiState.touchControlPressEffect,
+            customControls = uiState.customTouchControls.controls,
+            dpadOffset = uiState.dpadOffset,
+            lstickOffset = uiState.lstickOffset,
+            rstickOffset = uiState.rstickOffset,
+            actionOffset = uiState.actionOffset,
+            lbtnOffset = uiState.lbtnOffset,
+            rbtnOffset = uiState.rbtnOffset,
+            centerOffset = uiState.centerOffset,
+            controlLayouts = uiState.controlLayouts,
+            racingMode = uiState.racingMode,
+            stickyButtons = uiState.stickyButtons,
+            stickToggleTarget = uiState.stickToggleTarget,
+            onToggleSelectedStick = onToggleSelectedStick,
+            onFastForwardHoldChange = onFastForwardHoldChange,
+            onPadInput = { key, range, pressed -> onPadInput(padIndex, key, range, pressed) },
+            respectSystemInsets = false
+        )
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(8.dp)
+                .zIndex(30f),
+            shape = RoundedCornerShape(999.dp),
+            color = Color.Black.copy(alpha = 0.56f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f))
+        ) {
+            Text(
+                text = stringResource(
+                    if (padIndex == 0) R.string.settings_gamepad_player_1
+                    else R.string.settings_gamepad_player_2
+                ),
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = Color.White
+            )
+        }
+    }
+}
+
+@SuppressLint("ConfigurationScreenWidthHeight")
+@Composable
+private fun OnScreenControls(
+    modifier: Modifier = Modifier,
+    scaleFactor: Float,
+    stickScaleFactor: Float = 1.0f,
+    leftStickSensitivity: Float = 1.0f,
+    rightStickSensitivity: Float = 1.0f,
+    invertLeftStick: Boolean = false,
+    invertRightStick: Boolean = false,
+    invertLeftStickHorizontal: Boolean = false,
+    invertRightStickHorizontal: Boolean = false,
+    rightStickUpToR2: Boolean = false,
+    rightStickDownToL2: Boolean = false,
+    touchscreenRightStick: Boolean = AppPreferences.DEFAULT_TOUCHSCREEN_RIGHT_STICK,
+    touchscreenRightStickSensitivity: Float = 1.0f,
+    touchscreenLeftStick: Boolean = AppPreferences.DEFAULT_TOUCHSCREEN_LEFT_STICK,
+    touchscreenLeftStickSensitivity: Float = 1.0f,
+    touchHaptics: Boolean = false,
+    touchHapticsPreset: Int = AppPreferences.DEFAULT_TOUCH_HAPTICS_PRESET,
+    touchHapticsStrength: Int = AppPreferences.DEFAULT_TOUCH_HAPTICS_STRENGTH,
+    visualStyle: TouchControlVisualStyle = TouchControlVisualStyle.CLASSIC,
+    pressEffect: TouchControlPressEffect = TouchControlPressEffect.GROW,
+    customControls: List<CustomTouchControl> = emptyList(),
+    dpadOffset: Pair<Float, Float>,
+    lstickOffset: Pair<Float, Float>,
+    rstickOffset: Pair<Float, Float>,
+    actionOffset: Pair<Float, Float>,
+    lbtnOffset: Pair<Float, Float>,
+    rbtnOffset: Pair<Float, Float>,
+    centerOffset: Pair<Float, Float>,
+    controlLayouts: Map<String, OverlayControlLayout>,
+    racingMode: Boolean,
+    stickyButtons: Set<String> = emptySet(),
+    stickToggleTarget: Int = AppPreferences.DEFAULT_STICK_TOGGLE_TARGET,
+    lightGunAimSource: Int = AppPreferences.DEFAULT_LIGHT_GUN_AIM,
+    onLightGunStickAim: ((Float, Float) -> Unit)? = null,
+    onLightGunRecalibrate: () -> Unit = {},
+    onToggleSelectedStick: () -> Unit,
+    onFastForwardHoldChange: (Boolean) -> Unit,
+    onPadInput: (Int, Int, Boolean) -> Unit,
+    respectSystemInsets: Boolean = true,
+    safeInsets: PaddingValues? = null
+) {
+    val density = LocalDensity.current
+    val safeDrawingPadding = safeInsets ?: WindowInsets.safeDrawing.asPaddingValues()
+    val safeLeft = if (respectSystemInsets) {
+        safeDrawingPadding.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr)
+    } else 0.dp
+    val safeRight = if (respectSystemInsets) {
+        safeDrawingPadding.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr)
+    } else 0.dp
+    val safeTop = if (respectSystemInsets) safeDrawingPadding.calculateTopPadding() else 0.dp
+    val safeBottom = if (respectSystemInsets) safeDrawingPadding.calculateBottomPadding() else 0.dp
+    val context = LocalContext.current
+    val hapticView = LocalView.current
+    val currentOnPadInput by rememberUpdatedState(onPadInput)
+    var touchL2Pressed by remember { mutableStateOf(false) }
+    var touchR2Pressed by remember { mutableStateOf(false) }
+
+    fun performTouchHaptic(phase: ButtonPhase) {
+        if (touchHaptics) {
+            AndroidTouchHaptics.playButton(
+                context = context,
+                view = hapticView,
+                strengthPercent = touchHapticsStrength,
+                preset = touchHapticsPreset,
+                phase = phase
+            )
+        }
+    }
+
+    fun dispatchTouchL2() {
+        dispatchTouchTrigger(touchL2Pressed, rightStickDownToL2, PadKey.L2, PadKey.RIGHT_STICK_DOWN, currentOnPadInput)
+    }
+
+    fun dispatchTouchR2() {
+        dispatchTouchTrigger(touchR2Pressed, rightStickUpToR2, PadKey.R2, PadKey.RIGHT_STICK_UP, currentOnPadInput)
+    }
+
+    LaunchedEffect(rightStickUpToR2) {
+        currentOnPadInput(PadKey.R2, 0, false)
+        currentOnPadInput(PadKey.RIGHT_STICK_UP, 0, false)
+        dispatchTouchR2()
+    }
+
+    LaunchedEffect(rightStickDownToL2) {
+        currentOnPadInput(PadKey.L2, 0, false)
+        currentOnPadInput(PadKey.RIGHT_STICK_DOWN, 0, false)
+        dispatchTouchL2()
+    }
+
+    fun buttonPressHandler(id: String): ((Boolean) -> Unit)? = when (id) {
+        "l2" -> { pressed ->
+            touchL2Pressed = pressed
+            dispatchTouchL2()
+        }
+        "l1" -> { pressed -> onPadInput(PadKey.L1, 0, pressed) }
+        "r2" -> { pressed ->
+            touchR2Pressed = pressed
+            dispatchTouchR2()
+        }
+        "r1" -> { pressed -> onPadInput(PadKey.R1, 0, pressed) }
+        "dpad_up", "up" -> { pressed -> onPadInput(PadKey.UP, 0, pressed) }
+        "dpad_down", "down" -> { pressed -> onPadInput(PadKey.DOWN, 0, pressed) }
+        "dpad_left", "left" -> { pressed -> onPadInput(PadKey.LEFT, 0, pressed) }
+        "dpad_right", "right" -> { pressed -> onPadInput(PadKey.RIGHT, 0, pressed) }
+        "triangle" -> { pressed -> onPadInput(PadKey.TRIANGLE, 0, pressed) }
+        "cross" -> { pressed -> onPadInput(PadKey.CROSS, 0, pressed) }
+        "square" -> { pressed -> onPadInput(PadKey.SQUARE, 0, pressed) }
+        "circle" -> { pressed -> onPadInput(PadKey.CIRCLE, 0, pressed) }
+        "select" -> { pressed -> onPadInput(PadKey.SELECT, 0, pressed) }
+        "start" -> { pressed -> onPadInput(PadKey.START, 0, pressed) }
+        "pressure" -> { pressed -> onPadInput(PadKey.PRESSURE, 0, pressed) }
+        "l3" -> { pressed -> onPadInput(PadKey.L3, 0, pressed) }
+        "r3" -> { pressed -> onPadInput(PadKey.R3, 0, pressed) }
+        "gun_trigger" -> { pressed -> onPadInput(PadKey.GUN_TRIGGER, 0, pressed) }
+        "gun_pedal" -> { pressed -> onPadInput(PadKey.GUN_PEDAL, 0, pressed) }
+        "gun_reload" -> { pressed -> onPadInput(PadKey.GUN_RELOAD, 0, pressed) }
+        "gun_recalibrate" -> { pressed ->
+            if (pressed) onLightGunRecalibrate()
+            onPadInput(PadKey.GUN_RECALIBRATE, 0, pressed)
+        }
+        "coin" -> { pressed -> onPadInput(PadKey.COIN, 0, pressed) }
+        "service" -> { pressed -> onPadInput(PadKey.SERVICE, 0, pressed) }
+        "fast_forward" -> { pressed -> onFastForwardHoldChange(pressed) }
+        else -> null
+    }
+
+    fun isRacingTapToHoldButton(id: String): Boolean = id in setOf(
+        "l2", "l1", "r2", "r1",
+        "triangle", "cross", "square", "circle"
+    )
+
+    BoxWithConstraints(modifier = modifier) {
+        val layout = buildOverlayCanvasLayout(
+            canvasWidth = maxWidth,
+            canvasHeight = maxHeight,
+            density = density,
+            scaleFactor = scaleFactor,
+            stickScaleFactor = stickScaleFactor,
+            dpadOffset = dpadOffset,
+            lstickOffset = lstickOffset,
+            rstickOffset = rstickOffset,
+            actionOffset = actionOffset,
+            lbtnOffset = lbtnOffset,
+            rbtnOffset = rbtnOffset,
+            centerOffset = centerOffset,
+            controlLayouts = controlLayouts,
+            safeLeftInset = safeLeft,
+            safeRightInset = safeRight,
+            safeTopInset = safeTop,
+            safeBottomInset = safeBottom,
+            stickToggleTarget = stickToggleTarget
+        )
+        var extraDpadDirections by remember { mutableStateOf(emptySet<OverlayDpadDirection>()) }
+        val currentExtraDpadDirections by rememberUpdatedState(extraDpadDirections)
+        var toggleDpadDirections by remember { mutableStateOf(emptySet<OverlayDpadDirection>()) }
+        val currentToggleDpadDirections by rememberUpdatedState(toggleDpadDirections)
+
+        fun dpadKeyFor(direction: OverlayDpadDirection): Int = when (direction) {
+            OverlayDpadDirection.Up -> PadKey.UP
+            OverlayDpadDirection.Down -> PadKey.DOWN
+            OverlayDpadDirection.Left -> PadKey.LEFT
+            OverlayDpadDirection.Right -> PadKey.RIGHT
+        }
+
+        fun updateExtraDpadDirections(next: Set<OverlayDpadDirection>) {
+            val released = extraDpadDirections - next
+            val pressed = next - extraDpadDirections
+            released.forEach { direction -> currentOnPadInput(dpadKeyFor(direction), 0, false) }
+            if (pressed.isNotEmpty()) {
+                performTouchHaptic(ButtonPhase.PRESS)
+            } else if (released.isNotEmpty()) {
+                performTouchHaptic(ButtonPhase.RELEASE)
+            }
+            pressed.forEach { direction -> currentOnPadInput(dpadKeyFor(direction), 0, true) }
+            extraDpadDirections = next
+        }
+
+        fun updateToggleDpadDirections(next: Set<OverlayDpadDirection>) {
+            val released = toggleDpadDirections - next
+            val pressed = next - toggleDpadDirections
+            released.forEach { direction -> currentOnPadInput(dpadKeyFor(direction), 0, false) }
+            if (pressed.isNotEmpty()) {
+                performTouchHaptic(ButtonPhase.PRESS)
+            } else if (released.isNotEmpty()) {
+                performTouchHaptic(ButtonPhase.RELEASE)
+            }
+            pressed.forEach { direction -> currentOnPadInput(dpadKeyFor(direction), 0, true) }
+            toggleDpadDirections = next
+        }
+
+        DisposableEffect(Unit) {
+            onDispose {
+                currentExtraDpadDirections.forEach { direction ->
+                    currentOnPadInput(dpadKeyFor(direction), 0, false)
+                }
+                currentToggleDpadDirections.forEach { direction ->
+                    currentOnPadInput(dpadKeyFor(direction), 0, false)
+                }
+            }
+        }
+
+        fun runtimeSpecs(specs: List<com.sbro.emucorex.ui.common.OverlayCanvasButtonSpec>): List<TouchButtonSpec> {
+            return specs.filter { it.visible }.map { spec ->
+                val pressActions = listOfNotNull(
+                    buttonPressHandler(spec.id)?.let { TouchButtonPressAction(touchButtonActionOwner(spec.id), it) },
+                    controlLayouts[spec.id]?.secondaryActionId?.let { actionId ->
+                        buttonPressHandler(actionId)?.let { TouchButtonPressAction(touchButtonActionOwner(actionId), it) }
+                    }
+                )
+                TouchButtonSpec(
+                    id = spec.id,
+                    drawableRes = spec.drawableRes,
+                    width = spec.width,
+                    height = spec.height,
+                    x = spec.x,
+                    y = spec.y,
+                    shape = spec.shape,
+                    opacity = spec.opacity / 100f,
+                    pressActions = pressActions,
+                    onClick = if (spec.id == "left_input_toggle") onToggleSelectedStick else null,
+                    tapToHold = (racingMode && isRacingTapToHoldButton(spec.id)) ||
+                        spec.id in stickyButtons,
+                    longPressDelayMs = if (spec.id == "start") TRANSPORT_HOLD_DELAY_MS else 0L,
+                    onLongPressChange = if (spec.id == "start") onFastForwardHoldChange else null
+                )
+            }
+        }
+
+        fun stickIsSurfaceOnly(stick: com.sbro.emucorex.ui.common.OverlayCanvasStickSpec): Boolean {
+            return controlLayouts[stick.id]?.surfaceOnly == true
+        }
+
+        fun stickPanelWidth(stick: com.sbro.emucorex.ui.common.OverlayCanvasStickSpec): Dp {
+            return if (stickIsSurfaceOnly(stick)) stick.size * (stick.widthScale / 100f) else stick.size
+        }
+
+        fun stickPanelX(stick: com.sbro.emucorex.ui.common.OverlayCanvasStickSpec): Dp {
+            val width = stickPanelWidth(stick)
+            return if (stickIsSurfaceOnly(stick)) stick.x - ((width - stick.size) / 2f) else stick.x
+        }
+
+        val rightStickTriggerVisualY = (
+            (if (rightStickDownToL2 && touchL2Pressed) 1f else 0f) -
+                (if (rightStickUpToR2 && touchR2Pressed) 1f else 0f)
+            ).coerceIn(-1f, 1f)
+
+        val allButtonSpecs = runtimeSpecs(
+            layout.leftShoulders +
+                layout.rightShoulders +
+                layout.dpadButtons +
+                layout.actionButtons +
+                layout.centerButtons
+        ) + customControls
+            .asSequence()
+            .filter(CustomTouchControl::enabled)
+            .mapNotNull(CustomTouchControl::sanitized)
+            .map { control ->
+                val width = control.widthDp.dp
+                val height = control.heightDp.dp
+                val travelX = (maxWidth - safeLeft - safeRight - width).coerceAtLeast(0.dp)
+                val travelY = (maxHeight - safeTop - safeBottom - height).coerceAtLeast(0.dp)
+                val pressActions = listOfNotNull(
+                    buttonPressHandler(control.actionId)?.let {
+                        TouchButtonPressAction(touchButtonActionOwner(control.actionId), it)
+                    },
+                    control.secondaryActionId?.let { actionId ->
+                        buttonPressHandler(actionId)?.let { TouchButtonPressAction(touchButtonActionOwner(actionId), it) }
+                    }
+                )
+                TouchButtonSpec(
+                    id = "custom:${control.id}",
+                    width = width,
+                    height = height,
+                    x = safeLeft + travelX * control.positionX,
+                    y = safeTop + travelY * control.positionY,
+                    shape = control.composeShape(),
+                    customControl = control,
+                    haptics = control.haptics,
+                    pressActions = pressActions,
+                    tapToHold = control.pressMode == CustomTouchControlPressMode.TOGGLE
+                )
+            }
+            .toList()
+        if (allButtonSpecs.isNotEmpty() || touchscreenRightStick || touchscreenLeftStick) {
+            TouchButtonGroup(
+                specs = allButtonSpecs,
+                inputWidth = maxWidth,
+                inputHeight = maxHeight,
+                touchscreenRightStick = touchscreenRightStick,
+                touchscreenRightStickSensitivity = touchscreenRightStickSensitivity,
+                touchscreenLeftStick = touchscreenLeftStick,
+                touchscreenLeftStickSensitivity = touchscreenLeftStickSensitivity,
+                invertRightStick = invertRightStick,
+                invertRightStickHorizontal = invertRightStickHorizontal,
+                invertLeftStick = invertLeftStick,
+                invertLeftStickHorizontal = invertLeftStickHorizontal,
+                onPadInput = onPadInput,
+                visualStyle = visualStyle,
+                pressEffect = pressEffect,
+                onTouchHaptic = ::performTouchHaptic
+            )
+        }
+
+        layout.dpadCluster?.takeIf { it.visible }?.let { cluster ->
+            val surface = cluster.surface
+            VectorDpadCluster(
+                size = cluster.size,
+                alpha = cluster.opacity / 100f,
+                visualStyle = visualStyle,
+                pressEffect = pressEffect,
+                directionOffsets = cluster.directionOffsets,
+                surface = surface,
+                onDirectionsChange = ::updateExtraDpadDirections,
+                modifier = Modifier.offset {
+                    IntOffset(
+                        (cluster.x + surface.offset.x).roundToPx(),
+                        (cluster.y + surface.offset.y).roundToPx()
+                    )
+                }
+            )
+        }
+
+        layout.toggleDpad?.takeIf { it.visible }?.let { cluster ->
+            val surface = cluster.surface
+            VectorDpadCluster(
+                size = cluster.size,
+                alpha = cluster.opacity / 100f,
+                visualStyle = visualStyle,
+                pressEffect = pressEffect,
+                surface = surface,
+                onDirectionsChange = ::updateToggleDpadDirections,
+                modifier = Modifier.offset {
+                    IntOffset(
+                        (cluster.x + surface.offset.x).roundToPx(),
+                        (cluster.y + surface.offset.y).roundToPx()
+                    )
+                }
+            )
+        }
+
+        layout.leftStick?.takeIf { it.visible }?.let { stick ->
+            val panelWidth = stickPanelWidth(stick)
+            VectorAnalogStick(
+                analogSize = stick.size,
+                analogWidth = panelWidth,
+                analogHeight = stick.size,
+                alpha = stick.opacity / 100f,
+                surfaceOnly = stickIsSurfaceOnly(stick),
+                visualStyle = visualStyle,
+                pressEffect = pressEffect,
+                onValueChange = { x, y ->
+                    if (lightGunAimSource == AppPreferences.LIGHT_GUN_AIM_LEFT_STICK) {
+                        val (aimX, aimY) = adjustLightGunStickInput(
+                            x, y, invertLeftStickHorizontal, invertLeftStick, leftStickSensitivity
+                        )
+                        onLightGunStickAim?.invoke(aimX, aimY)
+                    } else {
+                        updateAnalogStick(
+                            x = if (invertLeftStickHorizontal) -x else x,
+                            y = if (invertLeftStick) -y else y,
+                            sensitivity = leftStickSensitivity,
+                            upKey = PadKey.LEFT_STICK_UP,
+                            rightKey = PadKey.LEFT_STICK_RIGHT,
+                            downKey = PadKey.LEFT_STICK_DOWN,
+                            leftKey = PadKey.LEFT_STICK_LEFT,
+                            onPadInput = onPadInput
+                        )
+                    }
+                },
+                modifier = Modifier.offset {
+                    IntOffset(stickPanelX(stick).roundToPx(), stick.y.roundToPx())
+                }
+            )
+        }
+
+        layout.rightStick?.takeIf { it.visible }?.let { stick ->
+            val panelWidth = stickPanelWidth(stick)
+            VectorAnalogStick(
+                analogSize = stick.size,
+                analogWidth = panelWidth,
+                analogHeight = stick.size,
+                alpha = stick.opacity / 100f,
+                surfaceOnly = stickIsSurfaceOnly(stick),
+                visualStyle = visualStyle,
+                pressEffect = pressEffect,
+                visualY = rightStickTriggerVisualY,
+                onValueChange = { x, y ->
+                    if (lightGunAimSource == AppPreferences.LIGHT_GUN_AIM_RIGHT_STICK) {
+                        val (aimX, aimY) = adjustLightGunStickInput(
+                            x, y, invertRightStickHorizontal, invertRightStick, rightStickSensitivity
+                        )
+                        onLightGunStickAim?.invoke(aimX, aimY)
+                    } else {
+                        updateRightAnalogStick(
+                            x = if (invertRightStickHorizontal) -x else x,
+                            y = if (invertRightStick) -y else y,
+                            sensitivity = rightStickSensitivity,
+                            onPadInput = onPadInput
+                        )
+                    }
+                },
+                modifier = Modifier.offset {
+                    IntOffset(stickPanelX(stick).roundToPx(), stick.y.roundToPx())
+                }
+            )
+        }
+
+    }
+}
+
+@Composable
+private fun RetroAchievementsNotificationToast(
+    notification: com.sbro.emucorex.core.utils.RetroAchievementsNotification,
+    isRightAligned: Boolean,
+    onDismiss: () -> Unit
+) {
+    val accent = when (notification.kind) {
+        "unlock", "mastery" -> Color(0xFFFFD35A)
+        "leaderboard" -> Color(0xFF86D7FF)
+        "hardcore" -> Color(0xFFFF7A7A)
+        "error" -> Color(0xFFFF6B83)
+        else -> Color(0xFF7DDFA8)
+    }
+
+    Surface(
+        onClick = onDismiss,
+        shape = neonShape(16.dp),
+        color = Color(0xE614151A),
+        tonalElevation = 6.dp,
+        shadowElevation = 10.dp,
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.42f)),
+        modifier = Modifier.widthIn(min = 260.dp, max = 420.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            BitmapPathImage(
+                imagePath = notification.imagePath,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(neonShape(10.dp))
+                    .background(accent.copy(alpha = 0.16f)),
+                fallback = {
+                    Icon(
+                        imageVector = Icons.Rounded.Star,
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            )
+
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = if (isRightAligned) Alignment.End else Alignment.Start,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = notification.title,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = if (isRightAligned) TextAlign.End else TextAlign.Start,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                if (notification.message.isNotBlank()) {
+                    Text(
+                        text = notification.message,
+                        color = Color.White.copy(alpha = 0.78f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = if (isRightAligned) TextAlign.End else TextAlign.Start,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun TouchButtonGroup(
+    specs: List<TouchButtonSpec>,
+    inputWidth: Dp,
+    inputHeight: Dp,
+    touchscreenRightStick: Boolean,
+    touchscreenRightStickSensitivity: Float,
+    touchscreenLeftStick: Boolean = false,
+    touchscreenLeftStickSensitivity: Float = 1f,
+    invertRightStick: Boolean,
+    invertRightStickHorizontal: Boolean,
+    invertLeftStick: Boolean = false,
+    invertLeftStickHorizontal: Boolean = false,
+    onPadInput: (Int, Int, Boolean) -> Unit,
+    visualStyle: TouchControlVisualStyle,
+    pressEffect: TouchControlPressEffect,
+    onTouchHaptic: (ButtonPhase) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current
+    val coroutineScope = rememberCoroutineScope()
+    val activeTargets = remember { mutableStateMapOf<Long, Set<String>>() }
+    val downTargets = remember { mutableMapOf<Long, Set<String>>() }
+    val latchedTargets = remember { mutableStateMapOf<String, Boolean>() }
+    val longPressJobs = remember { mutableMapOf<Pair<Long, String>, Job>() }
+    val longPressActiveTargets = remember { mutableStateMapOf<Long, Set<String>>() }
+    val shortTapSequence = remember { AtomicLong() }
+    val shortTapJobs = remember { mutableMapOf<String, Job>() }
+    val shortTapActionOwners = remember { mutableMapOf<String, Set<String>>() }
+    val specById = specs.associateBy { it.id }
+    val currentSpecById by rememberUpdatedState(specById)
+    val currentOnPadInput by rememberUpdatedState(onPadInput)
+    val currentTouchscreenRightStickSensitivity by rememberUpdatedState(touchscreenRightStickSensitivity)
+    val currentTouchscreenLeftStickSensitivity by rememberUpdatedState(touchscreenLeftStickSensitivity)
+    val currentInvertRightStick by rememberUpdatedState(invertRightStick)
+    val currentInvertRightStickHorizontal by rememberUpdatedState(invertRightStickHorizontal)
+    val currentInvertLeftStick by rememberUpdatedState(invertLeftStick)
+    val currentInvertLeftStickHorizontal by rememberUpdatedState(invertLeftStickHorizontal)
+    // One independent pointer per gesture stick so both can be dragged at the same time.
+    var leftGesturePointerId by remember { mutableStateOf<Long?>(null) }
+    var rightGesturePointerId by remember { mutableStateOf<Long?>(null) }
+    var leftGestureOrigin by remember { mutableStateOf(Offset.Zero) }
+    var rightGestureOrigin by remember { mutableStateOf(Offset.Zero) }
+    val gestureRadiusPx = with(density) { 96.dp.toPx() }
+    val layoutKey = specs.map { spec ->
+        TouchButtonLayoutKey(
+            id = spec.id,
+            width = spec.width,
+            height = spec.height,
+            x = spec.x,
+            y = spec.y,
+            tapToHold = spec.tapToHold,
+            hasLongPressAction = spec.onLongPressChange != null && spec.longPressDelayMs > 0L
+        )
+    }
+    val actionOwnersByTarget = specs.associate { spec ->
+        spec.id to spec.pressActions.mapTo(LinkedHashSet(), TouchButtonPressAction::ownerId)
+    }
+    val pointerActionTargets = specs.asSequence()
+        .filterNot { it.tapToHold || (it.onLongPressChange != null && it.longPressDelayMs > 0L) }
+        .mapTo(LinkedHashSet(), TouchButtonSpec::id)
+    val pointerState = remember(layoutKey, actionOwnersByTarget, pointerActionTargets) {
+        TouchButtonPointerState(actionOwnersByTarget, pointerActionTargets)
+    }
+    val routingKey = Triple(layoutKey, actionOwnersByTarget, pointerActionTargets)
+    val pressActionsByOwner = specs.flatMap(TouchButtonSpec::pressActions)
+        .associateBy(TouchButtonPressAction::ownerId)
+    val currentPressActionsByOwner by rememberUpdatedState(pressActionsByOwner)
+    val bounds = remember(layoutKey, density) {
+        with(density) {
+            val rects = specs.associate { spec ->
+                spec.id to Rect(
+                    left = spec.x.toPx(),
+                    top = spec.y.toPx(),
+                    right = spec.x.toPx() + spec.width.toPx(),
+                    bottom = spec.y.toPx() + spec.height.toPx()
+                )
+            }
+            Triple(rects, Unit, Unit)
+        }
+    }
+    val rects = bounds.first
+    val groupRect = remember(inputWidth, inputHeight, density) {
+        with(density) {
+            Rect(
+                left = 0f,
+                top = 0f,
+                right = inputWidth.toPx(),
+                bottom = inputHeight.toPx()
+            )
+        }
+    }
+    val groupWidth = inputWidth
+    val groupHeight = inputHeight
+
+    fun hitTargets(x: Float, y: Float): List<String> =
+        selectTouchButtonHitTargets(
+            specs.asSequence()
+                .filter { spec -> rects.getValue(spec.id).contains(Offset(x, y)) }
+                .map { spec ->
+                    TouchButtonHitCandidate(
+                        id = spec.id,
+                        clickOnlyUtility = spec.onClick != null && spec.pressActions.isEmpty()
+                    )
+                }
+                .toList()
+        )
+
+    fun TouchButtonSpec.hasLongPressAction(): Boolean {
+        return onLongPressChange != null && longPressDelayMs > 0L
+    }
+
+    fun TouchButtonSpec.hasTapToHoldAction(): Boolean {
+        return tapToHold && pressActions.isNotEmpty()
+    }
+
+    fun dispatchActionTransition(
+        transition: TouchButtonPointerTransition,
+        handlers: Map<String, TouchButtonPressAction> = currentPressActionsByOwner
+    ) {
+        transition.releasedActionOwners.forEach { ownerId -> handlers[ownerId]?.onPressChange?.invoke(false) }
+        transition.pressedActionOwners.forEach { ownerId -> handlers[ownerId]?.onPressChange?.invoke(true) }
+    }
+
+    fun cancelLongPress(pointerId: Long, targetId: String) {
+        longPressJobs.remove(pointerId to targetId)?.cancel()
+        val activeForPointer = longPressActiveTargets[pointerId].orEmpty()
+        if (targetId in activeForPointer) {
+            val remaining = activeForPointer - targetId
+            if (remaining.isEmpty()) longPressActiveTargets.remove(pointerId) else longPressActiveTargets[pointerId] = remaining
+            if (longPressActiveTargets.values.none { targetId in it }) {
+                currentSpecById[targetId]?.onLongPressChange?.invoke(false)
+            }
+        }
+    }
+
+    fun startLongPress(pointerId: Long, targetId: String) {
+        val spec = currentSpecById[targetId] ?: return
+        if (!spec.hasLongPressAction()) return
+        val key = pointerId to targetId
+        longPressJobs.remove(key)?.cancel()
+        longPressJobs[key] = coroutineScope.launch {
+            delay(spec.longPressDelayMs.milliseconds)
+            if (targetId !in activeTargets[pointerId].orEmpty()) return@launch
+            val wasAlreadyActive = longPressActiveTargets.values.any { targetId in it }
+            longPressActiveTargets[pointerId] = longPressActiveTargets[pointerId].orEmpty() + targetId
+            if (!wasAlreadyActive) {
+                spec.onLongPressChange?.invoke(true)
+            }
+        }
+    }
+
+    fun scheduleShortTapRelease(sourceId: String) {
+        shortTapJobs[sourceId] = coroutineScope.launch {
+            delay(70.milliseconds)
+            dispatchActionTransition(pointerState.setTransientActionOwners(sourceId, emptySet()))
+            shortTapActionOwners.remove(sourceId)
+            shortTapJobs.remove(sourceId)
+        }
+    }
+
+    fun completePointerTargets(
+        pointerId: Long,
+        latchedUpdates: Map<String, Boolean> = emptyMap(),
+        transientActionOwners: Map<String, Set<String>> = emptyMap()
+    ) {
+        val transition = pointerState.completePointer(pointerId, latchedUpdates, transientActionOwners)
+        activeTargets.remove(pointerId)
+        downTargets.remove(pointerId)
+        transition.exitedTargets.forEach { targetId -> cancelLongPress(pointerId, targetId) }
+        latchedUpdates.forEach { (targetId, latched) ->
+            if (latched) latchedTargets[targetId] = true else latchedTargets.remove(targetId)
+        }
+        transientActionOwners.forEach { (sourceId, owners) ->
+            shortTapActionOwners[sourceId] = owners
+        }
+        dispatchActionTransition(transition)
+        if (transition.deactivatedTargets.any { currentSpecById[it]?.haptics != false }) {
+            onTouchHaptic(ButtonPhase.RELEASE)
+        }
+        transientActionOwners.keys.forEach(::scheduleShortTapRelease)
+    }
+
+    fun updatePointerTargets(pointerId: Long, newTargets: Collection<String>, emitHaptics: Boolean = true) {
+        val transition = pointerState.update(pointerId, newTargets)
+        if (newTargets.isEmpty()) {
+            activeTargets.remove(pointerId)
+        } else {
+            activeTargets[pointerId] = newTargets.toCollection(LinkedHashSet())
+        }
+
+        transition.exitedTargets.forEach { targetId -> cancelLongPress(pointerId, targetId) }
+        transition.enteredTargets.forEach { targetId ->
+            if (currentSpecById[targetId]?.hasLongPressAction() == true) startLongPress(pointerId, targetId)
+        }
+        dispatchActionTransition(transition)
+
+        if (emitHaptics && transition.activatedTargets.any { currentSpecById[it]?.haptics != false }) {
+            onTouchHaptic(ButtonPhase.PRESS)
+        }
+        if (emitHaptics && transition.deactivatedTargets.any { currentSpecById[it]?.haptics != false }) {
+            onTouchHaptic(ButtonPhase.RELEASE)
+        }
+    }
+
+    fun releaseTouchscreenStick(target: TouchscreenStickGestureTarget) {
+        when (target) {
+            TouchscreenStickGestureTarget.LEFT -> {
+                if (leftGesturePointerId == null) return
+                updateLeftAnalogStick(
+                    x = 0f,
+                    y = 0f,
+                    sensitivity = currentTouchscreenLeftStickSensitivity,
+                    onPadInput = currentOnPadInput
+                )
+                leftGesturePointerId = null
+            }
+            TouchscreenStickGestureTarget.RIGHT -> {
+                if (rightGesturePointerId == null) return
+                updateRightAnalogStick(
+                    x = 0f,
+                    y = 0f,
+                    sensitivity = currentTouchscreenRightStickSensitivity,
+                    onPadInput = currentOnPadInput
+                )
+                rightGesturePointerId = null
+            }
+            TouchscreenStickGestureTarget.NONE -> Unit
+        }
+    }
+
+    fun releaseTouchscreenGestures() {
+        releaseTouchscreenStick(TouchscreenStickGestureTarget.LEFT)
+        releaseTouchscreenStick(TouchscreenStickGestureTarget.RIGHT)
+    }
+
+    DisposableEffect(routingKey, touchscreenRightStick, touchscreenLeftStick) {
+        val stateAtStart = pointerState
+        val specsAtStart = specById
+        val pressActionsAtStart = pressActionsByOwner
+        onDispose {
+            longPressJobs.values.forEach { it.cancel() }
+            longPressActiveTargets.values.flatten().toSet().forEach { targetId ->
+                specsAtStart[targetId]?.onLongPressChange?.invoke(false)
+            }
+            longPressActiveTargets.clear()
+            shortTapJobs.values.forEach { it.cancel() }
+            shortTapActionOwners.keys.toList().forEach { sourceId ->
+                dispatchActionTransition(
+                    stateAtStart.setTransientActionOwners(sourceId, emptySet()),
+                    pressActionsAtStart
+                )
+            }
+            shortTapActionOwners.clear()
+            shortTapJobs.clear()
+            latchedTargets.keys.toList().forEach { targetId ->
+                dispatchActionTransition(stateAtStart.setLatched(targetId, latched = false), pressActionsAtStart)
+            }
+            latchedTargets.clear()
+            (activeTargets.keys + downTargets.keys).toSet().forEach { pointerId ->
+                dispatchActionTransition(stateAtStart.update(pointerId, emptyList()), pressActionsAtStart)
+            }
+            activeTargets.clear()
+            downTargets.clear()
+            latchedTargets.clear()
+            longPressJobs.clear()
+            longPressActiveTargets.clear()
+            releaseTouchscreenGestures()
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .offset {
+                IntOffset(groupRect.left.roundToInt(), groupRect.top.roundToInt())
+            }
+            .size(groupWidth, groupHeight)
+            // Use Compose pointerInput instead of pointerInteropFilter:
+            // - pointerInput delivers proper per-pointer press/move/release events and cancellation
+            // - pointerInteropFilter could miss ACTION_UP under rapid multitouch / Samsung OneUI
+            //   which caused stuck keys and completely dead overlay on some devices (e.g., Samsung S26)
+            .pointerInput(routingKey, touchscreenRightStick, touchscreenLeftStick) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val isNativeCancel = event.motionEvent?.actionMasked == MotionEvent.ACTION_CANCEL
+                        event.changes.forEach { change ->
+                            val pointerId = change.id.value
+                            val isDown = change.pressed && !change.previousPressed
+                            val isUp = !change.pressed && change.previousPressed
+                            if (isDown && !change.isConsumed) {
+                                val targets = hitTargets(change.position.x, change.position.y)
+                                if (targets.isNotEmpty()) {
+                                    downTargets[pointerId] = targets.toCollection(LinkedHashSet())
+                                    updatePointerTargets(pointerId, targets)
+                                    change.consume()
+                                } else {
+                                    val target = resolveTouchscreenStickGestureTarget(
+                                        leftEnabled = touchscreenLeftStick,
+                                        rightEnabled = touchscreenRightStick,
+                                        startX = change.position.x,
+                                        widthPx = groupRect.width
+                                    )
+                                    val targetFree = when (target) {
+                                        TouchscreenStickGestureTarget.LEFT -> leftGesturePointerId == null
+                                        TouchscreenStickGestureTarget.RIGHT -> rightGesturePointerId == null
+                                        TouchscreenStickGestureTarget.NONE -> false
+                                    }
+                                    if (targetFree) {
+                                        when (target) {
+                                            TouchscreenStickGestureTarget.LEFT -> {
+                                                leftGesturePointerId = pointerId
+                                                leftGestureOrigin = change.position
+                                            }
+                                            TouchscreenStickGestureTarget.RIGHT -> {
+                                                rightGesturePointerId = pointerId
+                                                rightGestureOrigin = change.position
+                                            }
+                                            TouchscreenStickGestureTarget.NONE -> Unit
+                                        }
+                                        change.consume()
+                                    }
+                                }
+                            } else if (isUp) {
+                                val downTargetSet = downTargets.remove(pointerId)
+                                if (downTargetSet != null) {
+                                    // Compose synthesizes cancellation changes with isConsumed=true and
+                                    // no native MotionEvent; use both cancellation signals before consuming this up.
+                                    if (isNativeCancel || change.isConsumed) {
+                                        completePointerTargets(pointerId)
+                                    } else {
+                                        val upTargets = hitTargets(change.position.x, change.position.y).toSet()
+                                        val matchingTargets = matchingTouchButtonReleaseTargets(downTargetSet, upTargets)
+                                        val consumedByLongPress = longPressActiveTargets[pointerId].orEmpty()
+                                        val latchedUpdates = mutableMapOf<String, Boolean>()
+                                        val transientOwners = mutableMapOf<String, Set<String>>()
+                                        val clickTargets = mutableListOf<TouchButtonSpec>()
+                                        matchingTargets.forEach { targetId ->
+                                            val downSpec = currentSpecById[targetId] ?: return@forEach
+                                            if (downSpec.hasLongPressAction()) {
+                                                if (targetId !in consumedByLongPress && downSpec.pressActions.isNotEmpty()) {
+                                                    val sourceId = "tap:$pointerId:${downSpec.id}:${shortTapSequence.incrementAndGet()}"
+                                                    transientOwners[sourceId] = downSpec.pressActions
+                                                        .mapTo(LinkedHashSet(), TouchButtonPressAction::ownerId)
+                                                }
+                                            } else if (downSpec.hasTapToHoldAction()) {
+                                                latchedUpdates[targetId] = latchedTargets[targetId] != true
+                                            } else if (downSpec.onClick != null) {
+                                                clickTargets += downSpec
+                                            }
+                                        }
+                                        completePointerTargets(pointerId, latchedUpdates, transientOwners)
+                                        clickTargets.forEach { it.onClick?.invoke() }
+                                    }
+                                    change.consume()
+                                } else if (pointerId == leftGesturePointerId) {
+                                    releaseTouchscreenStick(TouchscreenStickGestureTarget.LEFT)
+                                    change.consume()
+                                } else if (pointerId == rightGesturePointerId) {
+                                    releaseTouchscreenStick(TouchscreenStickGestureTarget.RIGHT)
+                                    change.consume()
+                                }
+                            } else if (change.pressed) {
+                                if (downTargets.containsKey(pointerId)) {
+                                    val newTargets = hitTargets(change.position.x, change.position.y)
+                                    updatePointerTargets(pointerId, newTargets)
+                                    change.consume()
+                                } else if (pointerId == leftGesturePointerId) {
+                                    val value = calculateRightStickGestureValue(
+                                        deltaX = change.position.x - leftGestureOrigin.x,
+                                        deltaY = change.position.y - leftGestureOrigin.y,
+                                        radiusPx = gestureRadiusPx
+                                    )
+                                    updateLeftAnalogStick(
+                                        x = if (currentInvertLeftStickHorizontal) -value.x else value.x,
+                                        y = if (currentInvertLeftStick) -value.y else value.y,
+                                        sensitivity = currentTouchscreenLeftStickSensitivity,
+                                        onPadInput = currentOnPadInput
+                                    )
+                                    change.consume()
+                                } else if (pointerId == rightGesturePointerId) {
+                                    val value = calculateRightStickGestureValue(
+                                        deltaX = change.position.x - rightGestureOrigin.x,
+                                        deltaY = change.position.y - rightGestureOrigin.y,
+                                        radiusPx = gestureRadiusPx
+                                    )
+                                    updateRightAnalogStick(
+                                        x = if (currentInvertRightStickHorizontal) -value.x else value.x,
+                                        y = if (currentInvertRightStick) -value.y else value.y,
+                                        sensitivity = currentTouchscreenRightStickSensitivity,
+                                        onPadInput = currentOnPadInput
+                                    )
+                                    change.consume()
+                                }
+                            }
+                        }
+                        // Stuck-key guard: clean up pointers that disappeared without explicit up (missed cancel)
+                        val presentIds = event.changes.map { it.id.value }.toSet()
+                        val staleActive = (activeTargets.keys + downTargets.keys).toSet().filter { it !in presentIds }
+                        if (staleActive.isNotEmpty()) {
+                            staleActive.forEach { pid ->
+                                updatePointerTargets(pid, emptyList(), emitHaptics = false)
+                                downTargets.remove(pid)
+                            }
+                        }
+                        if (leftGesturePointerId != null && leftGesturePointerId !in presentIds) {
+                            releaseTouchscreenStick(TouchscreenStickGestureTarget.LEFT)
+                        }
+                        if (rightGesturePointerId != null && rightGesturePointerId !in presentIds) {
+                            releaseTouchscreenStick(TouchscreenStickGestureTarget.RIGHT)
+                        }
+                    }
+                }
+            }
+    ) {
+        specs.forEach { spec ->
+            val controlModifier = Modifier.offset {
+                    IntOffset(
+                        (spec.x.roundToPx() - groupRect.left.roundToInt()),
+                        (spec.y.roundToPx() - groupRect.top.roundToInt())
+                    )
+                }
+            val pressed = activeTargets.values.any { spec.id in it } || latchedTargets[spec.id] == true
+            val vectorDrawable = spec.customControl
+                ?.takeIf { it.usesVectorStyle }
+                ?.let { actionDrawableRes(it.actionId) }
+            if (spec.customControl != null && vectorDrawable == null) {
+                CustomControlVisual(
+                    control = spec.customControl,
+                    pressed = pressed,
+                    modifier = controlModifier.size(spec.width, spec.height)
+                )
+            } else {
+                VectorOverlayButton(
+                    drawableRes = vectorDrawable ?: requireNotNull(spec.drawableRes),
+                    width = spec.width,
+                    height = spec.height,
+                    shape = spec.shape,
+                    alpha = spec.opacity,
+                    interactive = false,
+                    pressed = pressed,
+                    visualStyle = visualStyle,
+                    pressEffect = pressEffect,
+                    modifier = controlModifier
+                )
+            }
+        }
+    }
+}
+
+internal fun dispatchTouchTrigger(
+    pressed: Boolean,
+    mappedToStick: Boolean,
+    triggerKey: Int,
+    stickKey: Int,
+    onPadInput: (Int, Int, Boolean) -> Unit
+) {
+    onPadInput(if (mappedToStick) stickKey else triggerKey, if (pressed) 255 else 0, pressed)
+}
+
+private fun updateAnalogStick(
+    x: Float, y: Float,
+    sensitivity: Float = 1f,
+    upKey: Int, rightKey: Int, downKey: Int, leftKey: Int,
+    onPadInput: (Int, Int, Boolean) -> Unit
+) {
+    val scaledX = (x * sensitivity.coerceIn(0.5f, 2f)).coerceIn(-1f, 1f)
+    val scaledY = (y * sensitivity.coerceIn(0.5f, 2f)).coerceIn(-1f, 1f)
+    val right = (scaledX.coerceAtLeast(0f) * 255f).roundToInt()
+    val left = ((-scaledX).coerceAtLeast(0f) * 255f).roundToInt()
+    val down = (scaledY.coerceAtLeast(0f) * 255f).roundToInt()
+    val up = ((-scaledY).coerceAtLeast(0f) * 255f).roundToInt()
+    onPadInput(upKey, up, up > 0)
+    onPadInput(rightKey, right, right > 0)
+    onPadInput(downKey, down, down > 0)
+    onPadInput(leftKey, left, left > 0)
+}
+
+private fun updateRightAnalogStick(
+    x: Float,
+    y: Float,
+    sensitivity: Float = 1f,
+    onPadInput: (Int, Int, Boolean) -> Unit
+) {
+    updateAnalogStick(
+        x = x,
+        y = y,
+        sensitivity = sensitivity,
+        upKey = PadKey.RIGHT_STICK_UP,
+        rightKey = PadKey.RIGHT_STICK_RIGHT,
+        downKey = PadKey.RIGHT_STICK_DOWN,
+        leftKey = PadKey.RIGHT_STICK_LEFT,
+        onPadInput = onPadInput
+    )
+}
+
+private fun updateLeftAnalogStick(
+    x: Float,
+    y: Float,
+    sensitivity: Float = 1f,
+    onPadInput: (Int, Int, Boolean) -> Unit
+) {
+    updateAnalogStick(
+        x = x,
+        y = y,
+        sensitivity = sensitivity,
+        upKey = PadKey.LEFT_STICK_UP,
+        rightKey = PadKey.LEFT_STICK_RIGHT,
+        downKey = PadKey.LEFT_STICK_DOWN,
+        leftKey = PadKey.LEFT_STICK_LEFT,
+        onPadInput = onPadInput
+    )
+}
+
+private fun formatSaveTimestamp(timestamp: Long): String {
+    if (timestamp <= 0L) return ""
+    return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(timestamp))
+}
+
+private fun formatPlayTime(milliseconds: Long): String {
+    val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0L) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%02d:%02d".format(minutes, seconds)
+    }
+}
+
+@Composable
+private fun EmulationSidebarMenu(
+    uiState: EmulationUiState,
+    gamepadConnected: Boolean,
+    currentGamePath: String?,
+    retroState: com.sbro.emucorex.core.utils.RetroAchievementsLiveUiState,
+    globalDefaults: SettingsSnapshot,
+    overlayDefaults: OverlayLayoutSnapshot,
+    onClose: () -> Unit,
+    onPauseToggle: () -> Unit,
+    onSwapDisc: () -> Unit,
+    onQuickSave: () -> Unit,
+    onQuickLoad: () -> Unit,
+    onLoadAutoSave: () -> Unit,
+    onSetAutoSaveEnabled: (Boolean) -> Unit,
+    onSetAutoSaveIntervalMinutes: (Int) -> Unit,
+    onSetAutoSaveOnExit: (Boolean) -> Unit,
+    onSetAutoLoadOnStart: (Boolean) -> Unit,
+    onResetGameSettingsProfile: () -> Unit,
+    onNextSlot: () -> Unit,
+    onPrevSlot: () -> Unit,
+    onToggleFps: () -> Unit,
+    onSetFpsOverlayMode: (Int) -> Unit,
+    onSetFpsOverlayCorner: (Int) -> Unit,
+    onSetFpsOverlayScale: (Int) -> Unit,
+    onSetFpsOverlayMetrics: (Int) -> Unit,
+    onSetOverlayScale: (Int) -> Unit,
+    onSetOverlayOpacity: (Int) -> Unit,
+    onSetHideOverlayOnGamepad: (Boolean) -> Unit,
+    onSetCompactControls: (Boolean) -> Unit,
+    onSetKeepScreenOn: (Boolean) -> Unit,
+    onSetStickToggleTarget: (Int) -> Unit,
+    onSetStickScale: (Int) -> Unit,
+    onSetLeftStickSensitivity: (Int) -> Unit,
+    onSetRightStickSensitivity: (Int) -> Unit,
+    onSetInvertLeftStick: (Boolean) -> Unit,
+    onSetInvertRightStick: (Boolean) -> Unit,
+    onSetInvertLeftStickHorizontal: (Boolean) -> Unit,
+    onSetInvertRightStickHorizontal: (Boolean) -> Unit,
+    onSetGamepadStickDeadzone: (Int) -> Unit,
+    onSetGamepadLeftStickSensitivity: (Int) -> Unit,
+    onSetGamepadRightStickSensitivity: (Int) -> Unit,
+    onSetGamepadLeftStickNegativeDeadzone: (Int) -> Unit,
+    onSetGamepadRightStickNegativeDeadzone: (Int) -> Unit,
+    onSetGamepadLeftStickAntiDeadzone: (Int) -> Unit,
+    onSetGamepadRightStickAntiDeadzone: (Int) -> Unit,
+    onSetGamepadLeftStickCurve: (Int) -> Unit,
+    onSetGamepadRightStickCurve: (Int) -> Unit,
+    onSetGamepadRightStickUpToR2: (Boolean) -> Unit,
+    onSetGamepadRightStickDownToL2: (Boolean) -> Unit,
+    onSetTouchscreenRightStick: (Boolean) -> Unit,
+    onSetTouchscreenRightStickSensitivity: (Int) -> Unit,
+    onSetTouchscreenLeftStick: (Boolean) -> Unit,
+    onSetTouchscreenLeftStickSensitivity: (Int) -> Unit,
+    onToggleControls: () -> Unit,
+    onOpenControlsEditor: () -> Unit,
+    onOpenGamepadMapping: () -> Unit,
+    onOpenKeyboardMouseSettings: () -> Unit,
+    onSetRenderer: (Int) -> Unit,
+    onSetFrameGeneration: (FrameGenerationSettings) -> Unit,
+    onSetUpscale: (Float) -> Unit,
+    onSetAspectRatio: (Int) -> Unit,
+    onSetDisplayCrop: (DisplayCrop) -> Unit,
+    onSetLocalMultiplayerMode: (Int) -> Unit,
+    onSetMtvu: (Boolean) -> Unit,
+    onSetIopThread: (Boolean) -> Unit,
+    onSetVUAot: (Boolean) -> Unit,
+    onSetThreadPinning: (Boolean) -> Unit,
+    onSetFastCdvd: (Boolean) -> Unit,
+    onSetEnableCheats: (Boolean) -> Unit,
+    onToggleCheat: (String, Boolean) -> Unit,
+    onSetCheatGroupEnabled: (List<String>, Boolean) -> Unit,
+    onSetAllCheatsEnabled: (Boolean) -> Unit,
+    onRefreshCheats: () -> Unit,
+    cheatPackBrowserState: CheatPackBrowserState,
+    onLoadCheatPacks: (Boolean) -> Unit,
+    onInstallCheatPack: (RemoteCheatPack) -> Unit,
+    onImportCheatPack: (String, String?) -> Unit,
+    shaderBrowserState: ShaderBrowserState,
+    onRefreshShaders: () -> Unit,
+    onDownloadShaderPack: () -> Unit,
+    onImportShaderPack: (android.net.Uri) -> Unit,
+    onSelectShaderPreset: (String) -> Unit,
+    onUseGlobalShader: () -> Unit,
+    onSetInGameShadersEnabled: (Boolean) -> Unit,
+    onSetHwDownloadMode: (Int) -> Unit,
+    onSetEeCycleRate: (Int) -> Unit,
+    onSetEeCycleSkip: (Int) -> Unit,
+    onSetFrameSkip: (Int) -> Unit,
+    onSetSkipDuplicateFrames: (Boolean) -> Unit,
+    onSetLowLatencyMode: (Boolean) -> Unit,
+    onSetFrameLimitEnabled: (Boolean) -> Unit,
+    onSetTargetFps: (Int) -> Unit,
+    onSetTextureFiltering: (Int) -> Unit,
+    onSetTrilinearFiltering: (Int) -> Unit,
+    onSetBlendingAccuracy: (Int) -> Unit,
+    onSetTexturePreloading: (Int) -> Unit,
+    onSetEnableFxaa: (Boolean) -> Unit,
+    onSetCasMode: (Int) -> Unit,
+    onSetSgsrMode: (Int) -> Unit,
+    onSetCasSharpness: (Int) -> Unit,
+    onSetTvShader: (Int) -> Unit,
+    onSetShadeBoostBrightness: (Int) -> Unit,
+    onSetShadeBoostContrast: (Int) -> Unit,
+    onSetShadeBoostSaturation: (Int) -> Unit,
+    onSetShadeBoostGamma: (Int) -> Unit,
+    onSetEnableWidescreenPatches: (Boolean) -> Unit,
+    onSetEnableNoInterlacingPatches: (Boolean) -> Unit,
+    onSetAntiBlur: (Boolean) -> Unit,
+    onSetAnisotropicFiltering: (Int) -> Unit,
+    onSetEnableHwMipmapping: (Boolean) -> Unit,
+    onSetCpuSpriteRenderSize: (Int) -> Unit,
+    onSetCpuSpriteRenderLevel: (Int) -> Unit,
+    onSetSoftwareClutRender: (Int) -> Unit,
+    onSetGpuTargetClutMode: (Int) -> Unit,
+    onSetSkipDrawStart: (Int) -> Unit,
+    onSetSkipDrawEnd: (Int) -> Unit,
+    onSetAutoFlushHardware: (Int) -> Unit,
+    onSetCpuFramebufferConversion: (Boolean) -> Unit,
+    onSetDisableDepthConversion: (Boolean) -> Unit,
+    onSetDisableSafeFeatures: (Boolean) -> Unit,
+    onSetDisableRenderFixes: (Boolean) -> Unit,
+    onSetPreloadFrameData: (Boolean) -> Unit,
+    onSetDisablePartialInvalidation: (Boolean) -> Unit,
+    onSetTextureInsideRt: (Int) -> Unit,
+    onSetReadTargetsOnClose: (Boolean) -> Unit,
+    onSetEstimateTextureRegion: (Boolean) -> Unit,
+    onSetGpuPaletteConversion: (Boolean) -> Unit,
+    onSetHalfPixelOffset: (Int) -> Unit,
+    onSetNativeScaling: (Int) -> Unit,
+    onSetRoundSprite: (Int) -> Unit,
+    onSetBilinearUpscale: (Int) -> Unit,
+    onSetTextureOffsetX: (Int) -> Unit,
+    onSetTextureOffsetY: (Int) -> Unit,
+    onSetAlignSprite: (Boolean) -> Unit,
+    onSetMergeSprite: (Boolean) -> Unit,
+    onSetForceEvenSpritePosition: (Boolean) -> Unit,
+    onSetNativePaletteDraw: (Boolean) -> Unit,
+    onExit: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val sectionTitleColor = MaterialTheme.colorScheme.primary
+    val sectionSpacing = 16.dp
+    // This native capability is independent of tab visibility and scroll position.
+    val maxUpscaleMultiplier = remember(uiState.renderer) {
+        EmulatorBridge.getMaxUpscaleMultiplier(uiState.renderer)
+    }
+    val sectionLabelInset = 4.dp
+    val sectionLabelTopPadding = 8.dp
+    val navPadding = WindowInsets.navigationBars.asPaddingValues()
+    val animatedRightInset by animateDpAsState(
+        targetValue = navPadding.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
+        animationSpec = tween(durationMillis = 220),
+        label = "emulation_menu_right_inset"
+    )
+    val animatedBottomInset by animateDpAsState(
+        targetValue = navPadding.calculateBottomPadding(),
+        animationSpec = tween(durationMillis = 220),
+        label = "emulation_menu_bottom_inset"
+    )
+    val drawerBottomPadding = when {
+        !uiState.controlsVisible -> 0.dp
+        uiState.compactControls -> 28.dp
+        else -> 36.dp
+    }
+    var selectedMenuTabName by rememberSaveable { mutableStateOf(EmulationMenuTab.Session.name) }
+    val selectedMenuTab = remember(selectedMenuTabName) { EmulationMenuTab.valueOf(selectedMenuTabName) }
+    val firstMenuFocusRequester = remember { FocusRequester() }
+    val railFocusRequesters = remember {
+        EmulationMenuTab.entries.associateWith { FocusRequester() }
+    }
+    var autoSaveIntervalText by remember(uiState.autoSaveIntervalMinutes) {
+        mutableStateOf(uiState.autoSaveIntervalMinutes.toString())
+    }
+    val sessionListState = rememberLazyListState()
+    val controlsListState = rememberLazyListState()
+    val emulationListState = rememberLazyListState()
+    val cheatsListState = rememberLazyListState()
+    val shadersListState = rememberLazyListState()
+    val graphicsListState = rememberLazyListState()
+    val fixesListState = rememberLazyListState()
+    val achievementsListState = rememberLazyListState()
+    val selectedTabListState = when (selectedMenuTab) {
+        EmulationMenuTab.Session -> sessionListState
+        EmulationMenuTab.Controls -> controlsListState
+        EmulationMenuTab.Emulation -> emulationListState
+        EmulationMenuTab.Cheats -> cheatsListState
+        EmulationMenuTab.Shaders -> shadersListState
+        EmulationMenuTab.Graphics -> graphicsListState
+        EmulationMenuTab.Fixes -> fixesListState
+        EmulationMenuTab.Achievements -> achievementsListState
+    }
+    LaunchedEffect(selectedMenuTab) {
+        railFocusRequesters[selectedMenuTab]?.requestFocus()
+    }
+    // Cheats can be toggled or installed from the cheat manager; re-read the
+    // installed list every time the tab is opened so both stay in sync. The
+    // pack catalog is fetched at the same time (cached by the repository).
+    LaunchedEffect(selectedMenuTab) {
+        if (selectedMenuTab == EmulationMenuTab.Cheats) {
+            onRefreshCheats()
+            onLoadCheatPacks(false)
+        }
+    }
+    // The app-wide shader or the game manager can change the selected preset
+    // while the game is running, so re-resolve the effective selection whenever
+    // the Shaders tab is opened.
+    LaunchedEffect(selectedMenuTab) {
+        if (selectedMenuTab == EmulationMenuTab.Shaders) {
+            onRefreshShaders()
+        }
+    }
+    val menuTabs = remember(uiState.gameMenuTabOrder, uiState.hiddenGameMenuTabs) {
+        uiState.gameMenuTabOrder
+            .filterNot(uiState.hiddenGameMenuTabs::contains)
+            .map(GameMenuTabId::toEmulationMenuTab)
+            .ifEmpty { listOf(EmulationMenuTab.Session) }
+    }
+    LaunchedEffect(menuTabs, selectedMenuTab) {
+        if (selectedMenuTab !in menuTabs) {
+            selectedMenuTabName = menuTabs.first().name
+        }
+    }
+    fun selectRelativeMenuTab(offset: Int) {
+        val currentIndex = menuTabs.indexOf(selectedMenuTab).coerceAtLeast(0)
+        selectedMenuTabName = menuTabs[(currentIndex + offset + menuTabs.size) % menuTabs.size].name
+    }
+    ProvideGamepadShoulderActions(
+        onPrevious = { selectRelativeMenuTab(-1) },
+        onNext = { selectRelativeMenuTab(1) }
+    )
+
+    val menuContent: LazyListScope.() -> Unit = {
+            item(key = "game-header", contentType = "game-header") {
+                Surface(
+                    shape = neonShape(22.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(
+                                        GradientStart.copy(alpha = 0.14f),
+                                        GradientEnd.copy(alpha = 0.08f)
+                                    )
+                                )
+                            )
+                            .padding(horizontal = 18.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val gameTitle = uiState.currentGameTitle.ifBlank { stringResource(R.string.emulation_sidebar_title) }
+                        Box(
+                            modifier = Modifier
+                                .width(74.dp)
+                                .aspectRatio(GameCoverAspectRatio)
+                                .clip(neonShape(14.dp))
+                        ) {
+                            GameCoverArt(
+                                coverPath = uiState.currentGameCoverArtPath,
+                                fallbackTitle = gameTitle,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = gameTitle,
+                                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = uiState.currentGameSubtitle.ifBlank { stringResource(R.string.emulation_menu_subtitle) },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+                                ) {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.emulation_play_time_badge,
+                                            formatPlayTime(uiState.activePlayTimeMs)
+                                        ),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            when (selectedMenuTab) {
+                    EmulationMenuTab.Session -> {
+                        item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                MenuButton(
+                                    modifier = Modifier.focusRequester(firstMenuFocusRequester),
+                                    icon = if (uiState.isPaused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                                    text = stringResource(if (uiState.isPaused) R.string.emulation_resume else R.string.emulation_pause),
+                                    onClick = onPauseToggle,
+                                    enabled = !uiState.isActionInProgress,
+                                    containerColor = if (!uiState.isPaused) {
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.46f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                                    }
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                MenuButton(
+                                    icon = Icons.AutoMirrored.Rounded.ExitToApp,
+                                    text = stringResource(R.string.emulation_exit),
+                                    onClick = onExit,
+                                    enabled = !uiState.isActionInProgress,
+                                    isDestructive = true,
+                                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.28f)
+                                )
+                            }
+                        }
+                        }
+
+                        item {
+                        MenuButton(
+                            icon = Icons.Rounded.Album,
+                            text = stringResource(R.string.emulation_swap_disc),
+                            onClick = onSwapDisc,
+                            enabled = !uiState.isActionInProgress,
+                            showProgress = uiState.actionLabel == "swapping_disc",
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f)
+                        )
+                        }
+
+                        val visibleSessionSections = gameMenuSectionsForTab(
+                            GameMenuTabId.SESSION,
+                            uiState.gameMenuSectionOrder
+                        )
+                            .filterNot(uiState.hiddenGameMenuSections::contains)
+                        menuSectionIndexed(visibleSessionSections, sectionSpacing) { index, section ->
+                        val includeFollowingAutoSave = section == GameMenuSectionId.SAVE_STATES &&
+                            visibleSessionSections.getOrNull(index + 1) == GameMenuSectionId.AUTO_SAVE
+                        val mergedIntoPreviousSaveStates = section == GameMenuSectionId.AUTO_SAVE &&
+                            visibleSessionSections.getOrNull(index - 1) == GameMenuSectionId.SAVE_STATES
+                        if (!mergedIntoPreviousSaveStates &&
+                            (section == GameMenuSectionId.SAVE_STATES || section == GameMenuSectionId.AUTO_SAVE)
+                        ) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = neonShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                if (section == GameMenuSectionId.SAVE_STATES) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.detail_save_states),
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    androidx.compose.material3.IconButton(
+                                        onClick = onPrevSlot,
+                                        enabled = uiState.currentSlot > 1,
+                                        colors = androidx.compose.material3.IconButtonDefaults.iconButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.primary
+                                        )
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, null)
+                                    }
+                                    Text(
+                                        text = "${uiState.currentSlot}",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    )
+                                    androidx.compose.material3.IconButton(
+                                        onClick = onNextSlot,
+                                        enabled = uiState.currentSlot < 10,
+                                        colors = androidx.compose.material3.IconButtonDefaults.iconButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.primary
+                                        )
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null)
+                                    }
+                                }
+
+                                SaveSlotPreview(
+                                    slot = uiState.currentSlot,
+                                    previewPath = uiState.currentSlotPreviewPath,
+                                    lastModified = uiState.currentSlotLastModified,
+                                    isSaving = uiState.actionLabel == "saving",
+                                    gameTitle = uiState.currentGameTitle
+                                )
+
+                                }
+
+                                if (includeFollowingAutoSave) {
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                                }
+
+                                if (section == GameMenuSectionId.AUTO_SAVE || includeFollowingAutoSave) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    SaveSlotThumbnail(
+                                        previewPath = uiState.autoSavePreviewPath,
+                                        lastModified = uiState.autoSaveLastModified,
+                                        contentDescription = stringResource(R.string.emulation_auto_save_title),
+                                        modifier = Modifier
+                                            .width(74.dp)
+                                            .aspectRatio(16f / 9f)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = stringResource(R.string.emulation_auto_save_title),
+                                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = if (uiState.autoSaveLastModified > 0L) {
+                                                formatSaveTimestamp(uiState.autoSaveLastModified)
+                                            } else {
+                                                stringResource(R.string.emulation_auto_save_empty)
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Switch(
+                                        checked = uiState.autoSaveEnabled,
+                                        onCheckedChange = onSetAutoSaveEnabled,
+                                        enabled = !uiState.isActionInProgress
+                                    )
+                                }
+
+                                AnimatedVisibility(visible = uiState.autoSaveEnabled) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.emulation_auto_save_interval_label),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        OutlinedTextField(
+                                            value = autoSaveIntervalText,
+                                            onValueChange = { raw ->
+                                                val filtered = raw.filter(Char::isDigit).take(3)
+                                                autoSaveIntervalText = filtered
+                                                filtered.toIntOrNull()?.takeIf { it >= 1 }?.let { minutes ->
+                                                    onSetAutoSaveIntervalMinutes(minutes)
+                                                }
+                                            },
+                                            enabled = !uiState.isActionInProgress,
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            shape = neonShape(16.dp),
+                                            textStyle = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                            modifier = Modifier
+                                                .width(108.dp)
+                                                .height(48.dp)
+                                                .skipGamepadTextFieldFocus(),
+                                            suffix = {
+                                                Text(stringResource(R.string.emulation_auto_save_interval_suffix))
+                                            }
+                                        )
+                                    }
+                                }
+                                }
+                            }
+                        }
+
+                        }
+
+                        if ((section == GameMenuSectionId.AUTO_SAVE && !mergedIntoPreviousSaveStates) ||
+                            includeFollowingAutoSave
+                        ) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = neonShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                SaveSlotThumbnail(
+                                    previewPath = uiState.autoSavePreviewPath,
+                                    lastModified = uiState.autoSaveLastModified,
+                                    contentDescription = stringResource(R.string.emulation_auto_save_restore_title),
+                                    modifier = Modifier
+                                        .width(64.dp)
+                                        .aspectRatio(16f / 9f)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.emulation_auto_save_restore_title),
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = if (uiState.autoSaveLastModified > 0L) {
+                                            formatSaveTimestamp(uiState.autoSaveLastModified)
+                                        } else {
+                                            stringResource(R.string.emulation_auto_save_empty)
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                CompactIconActionButton(
+                                    icon = Icons.Rounded.Restore,
+                                    contentDescription = stringResource(R.string.emulation_quick_load_desc),
+                                    onClick = onLoadAutoSave,
+                                    enabled = !uiState.isActionInProgress && uiState.autoSaveLastModified > 0L,
+                                    showProgress = uiState.actionLabel == "loading"
+                                )
+                            }
+                        }
+
+                        }
+
+                        if (section == GameMenuSectionId.QUICK_ACTIONS) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                QuickIconActionButton(
+                                    icon = Icons.Rounded.Save,
+                                    contentDescription = stringResource(R.string.emulation_quick_save_desc),
+                                    onClick = onQuickSave,
+                                    enabled = !uiState.isActionInProgress,
+                                    showProgress = uiState.actionLabel == "saving",
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                QuickIconActionButton(
+                                    icon = Icons.Rounded.Restore,
+                                    contentDescription = stringResource(R.string.emulation_quick_load_desc),
+                                    onClick = onQuickLoad,
+                                    enabled = !uiState.isActionInProgress,
+                                    showProgress = uiState.actionLabel == "loading",
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
+                                )
+                            }
+                        }
+
+                        }
+
+                        if (section == GameMenuSectionId.AUTOMATION) {
+                        SettingsToggle(
+                            title = stringResource(R.string.emulation_auto_save_on_exit),
+                            checked = uiState.autoSaveOnExit,
+                            enabled = !uiState.isActionInProgress,
+                            onCheckedChange = onSetAutoSaveOnExit,
+                            helpText = stringResource(R.string.emulation_auto_save_on_exit_desc)
+                        )
+
+                        SettingsToggle(
+                            title = stringResource(R.string.emulation_auto_load_on_start),
+                            checked = uiState.autoLoadOnStart,
+                            enabled = !uiState.isActionInProgress,
+                            onCheckedChange = onSetAutoLoadOnStart,
+                            helpText = stringResource(R.string.emulation_auto_load_on_start_desc)
+                        )
+
+                        }
+
+                        if (section == GameMenuSectionId.GAME_PROFILE) {
+                        SidebarSectionTitle(
+                            text = stringResource(R.string.game_settings_overlay_section).uppercase(),
+                            color = sectionTitleColor,
+                            topPadding = sectionLabelTopPadding,
+                            horizontalInset = sectionLabelInset
+                        )
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = neonShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        if (uiState.gameSettingsProfileActive) {
+                                            R.string.game_settings_overlay_profile_active
+                                        } else {
+                                            R.string.game_settings_overlay_profile_inactive
+                                        }
+                                    ),
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = stringResource(R.string.game_settings_overlay_profile_note),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                MenuButton(
+                                    icon = Icons.Rounded.Restore,
+                                    text = stringResource(R.string.game_settings_overlay_reset),
+                                    onClick = onResetGameSettingsProfile,
+                                    enabled = !uiState.isActionInProgress && uiState.gameSettingsProfileActive,
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+                                )
+                            }
+                        }
+
+                        }
+                            }
+
+                    }
+
+                    EmulationMenuTab.Controls -> {
+                        val controlsSections = gameMenuSectionsForTab(
+                            GameMenuTabId.CONTROLS,
+                            uiState.gameMenuSectionOrder
+                        ).filterNot(uiState.hiddenGameMenuSections::contains)
+                        menuRows(controlsSections) { section ->
+                                when (section) {
+                                    GameMenuSectionId.CONTROLS_GENERAL -> {
+                                        row("settings_controls_tab", "SidebarSectionTitle") {
+                                            SidebarSectionTitle(
+                                                text = stringResource(R.string.settings_controls_tab).uppercase(),
+                                                color = sectionTitleColor,
+                                                topPadding = sectionLabelTopPadding,
+                                                horizontalInset = sectionLabelInset
+                                            )
+                                        }
+
+                                        row("settings_edit_controls", "MenuButton") {
+                                            MenuButton(
+                                                icon = Icons.Rounded.TouchApp,
+                                                text = stringResource(R.string.settings_edit_controls),
+                                                onClick = onOpenControlsEditor,
+                                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
+                                            )
+                                        }
+
+                                        row("emulation_hide_controls", "MenuButton") {
+                                            MenuButton(
+                                                icon = if (uiState.controlsVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                                text = stringResource(if (uiState.controlsVisible) R.string.emulation_hide_controls else R.string.emulation_show_controls),
+                                                onClick = onToggleControls,
+                                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f)
+                                            )
+                                        }
+
+                                        row("settings_gamepad_hide_overlay", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_gamepad_hide_overlay),
+                                                checked = uiState.hideOverlayOnGamepad,
+                                                onCheckedChange = onSetHideOverlayOnGamepad,
+                                                helpText = stringResource(R.string.settings_help_hide_overlay_on_gamepad),
+                                                onResetToDefault = { onSetHideOverlayOnGamepad(overlayDefaults.hideOverlayOnGamepad) }
+                                            )
+                                        }
+
+                                        row("settings_compact_controls", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_compact_controls),
+                                                checked = uiState.compactControls,
+                                                onCheckedChange = onSetCompactControls,
+                                                helpText = stringResource(R.string.settings_help_compact_controls),
+                                                onResetToDefault = { onSetCompactControls(globalDefaults.compactControls) }
+                                            )
+                                        }
+
+                                        row("settings_keep_screen_on", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_keep_screen_on),
+                                                checked = uiState.keepScreenOn,
+                                                onCheckedChange = onSetKeepScreenOn,
+                                                helpText = stringResource(R.string.settings_help_keep_screen_on),
+                                                onResetToDefault = { onSetKeepScreenOn(globalDefaults.keepScreenOn) }
+                                            )
+                                        }
+                                    }
+
+                                    GameMenuSectionId.CONTROLS_TOUCH -> {
+                                        row("settings_touch_controls_section", "OverlaySubsectionLabel") {
+                                            OverlaySubsectionLabel(text = stringResource(R.string.settings_touch_controls_section))
+                                        }
+
+                                        row("settings_overlay_scale", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_overlay_scale),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.overlayScale.toFloat(),
+                                                range = 50f..150f,
+                                                steps = 99,
+                                                onValueChange = { onSetOverlayScale(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_overlay_scale),
+                                                onResetToDefault = { onSetOverlayScale(overlayDefaults.overlayScale) }
+                                            )
+                                        }
+
+                                        row("settings_overlay_opacity", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_overlay_opacity),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.overlayOpacity.toFloat(),
+                                                range = AppPreferences.OVERLAY_OPACITY_MIN.toFloat()..
+                                                    AppPreferences.OVERLAY_OPACITY_MAX.toFloat(),
+                                                steps = AppPreferences.OVERLAY_OPACITY_MAX -
+                                                    AppPreferences.OVERLAY_OPACITY_MIN - 1,
+                                                onValueChange = { onSetOverlayOpacity(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_overlay_opacity),
+                                                onResetToDefault = { onSetOverlayOpacity(overlayDefaults.overlayOpacity) }
+                                            )
+                                        }
+
+                                        row("settings_stick_toggle_target", "LiveSelectionRow") {
+                                            LiveSelectionRow(
+                                                title = stringResource(R.string.settings_stick_toggle_target),
+                                                options = listOf(
+                                                    LiveSelectionOption(AppPreferences.STICK_TOGGLE_LEFT, stringResource(R.string.settings_stick_toggle_left)),
+                                                    LiveSelectionOption(AppPreferences.STICK_TOGGLE_RIGHT, stringResource(R.string.settings_stick_toggle_right))
+                                                ),
+                                                currentValue = uiState.stickToggleTarget,
+                                                onValueChange = onSetStickToggleTarget,
+                                                helpText = stringResource(R.string.settings_help_stick_toggle_target),
+                                                onResetToDefault = { onSetStickToggleTarget(globalDefaults.stickToggleTarget) }
+                                            )
+                                        }
+
+                                        row("emulation_stick_scale", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.emulation_stick_scale),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.stickScale.toFloat(),
+                                                range = AppPreferences.OVERLAY_CONTROL_SCALE_MIN.toFloat()..
+                                                    AppPreferences.OVERLAY_CONTROL_SCALE_MAX.toFloat(),
+                                                steps = AppPreferences.OVERLAY_CONTROL_SCALE_MAX -
+                                                    AppPreferences.OVERLAY_CONTROL_SCALE_MIN - 1,
+                                                onValueChange = { onSetStickScale(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_stick_scale),
+                                                onResetToDefault = { onSetStickScale(overlayDefaults.stickScale) }
+                                            )
+                                        }
+
+                                        row("settings_left_stick_sensitivity", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_left_stick_sensitivity),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.leftStickSensitivity.toFloat(),
+                                                range = 50f..200f,
+                                                steps = 149,
+                                                onValueChange = { onSetLeftStickSensitivity(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_left_stick_sensitivity),
+                                                onResetToDefault = { onSetLeftStickSensitivity(overlayDefaults.leftStickSensitivity) }
+                                            )
+                                        }
+
+                                        row("settings_right_stick_sensitivity", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_right_stick_sensitivity),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.rightStickSensitivity.toFloat(),
+                                                range = 50f..200f,
+                                                steps = 149,
+                                                onValueChange = { onSetRightStickSensitivity(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_right_stick_sensitivity),
+                                                onResetToDefault = { onSetRightStickSensitivity(overlayDefaults.rightStickSensitivity) }
+                                            )
+                                        }
+
+                                        row("settings_invert_left_stick", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_invert_left_stick),
+                                                checked = uiState.invertLeftStick,
+                                                onCheckedChange = onSetInvertLeftStick,
+                                                helpText = stringResource(R.string.settings_help_invert_left_stick),
+                                                onResetToDefault = { onSetInvertLeftStick(overlayDefaults.invertLeftStick) }
+                                            )
+                                        }
+
+                                        row("settings_invert_left_stick_horizontal", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_invert_left_stick_horizontal),
+                                                checked = uiState.invertLeftStickHorizontal,
+                                                onCheckedChange = onSetInvertLeftStickHorizontal,
+                                                helpText = stringResource(R.string.settings_help_invert_left_stick_horizontal),
+                                                onResetToDefault = { onSetInvertLeftStickHorizontal(overlayDefaults.invertLeftStickHorizontal) }
+                                            )
+                                        }
+
+                                        row("settings_invert_right_stick", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_invert_right_stick),
+                                                checked = uiState.invertRightStick,
+                                                onCheckedChange = onSetInvertRightStick,
+                                                helpText = stringResource(R.string.settings_help_invert_right_stick),
+                                                onResetToDefault = { onSetInvertRightStick(overlayDefaults.invertRightStick) }
+                                            )
+                                        }
+
+                                        row("settings_invert_right_stick_horizontal", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_invert_right_stick_horizontal),
+                                                checked = uiState.invertRightStickHorizontal,
+                                                onCheckedChange = onSetInvertRightStickHorizontal,
+                                                helpText = stringResource(R.string.settings_help_invert_right_stick_horizontal),
+                                                onResetToDefault = { onSetInvertRightStickHorizontal(overlayDefaults.invertRightStickHorizontal) }
+                                            )
+                                        }
+                                    }
+
+                                    GameMenuSectionId.CONTROLS_GAMEPAD -> {
+                                        row("settings_gamepad_controls_section", "OverlaySubsectionLabel") {
+                                            OverlaySubsectionLabel(text = stringResource(R.string.settings_gamepad_controls_section))
+                                        }
+
+                                        if (!gamepadConnected) {
+                                            row("settings_gamepad_controls_disconnected_hint", "Text") {
+                                                Text(
+                                                    text = stringResource(R.string.settings_gamepad_controls_disconnected_hint),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        row("settings_gamepad_stick_deadzone", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_gamepad_stick_deadzone),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.gamepadStickDeadzone.toFloat(),
+                                                range = 0f..35f,
+                                                steps = 34,
+                                                enabled = gamepadConnected,
+                                                onValueChange = { onSetGamepadStickDeadzone(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_gamepad_stick_deadzone),
+                                                onResetToDefault = { onSetGamepadStickDeadzone(globalDefaults.gamepadStickDeadzone) }
+                                            )
+                                        }
+
+                                        row("settings_gamepad_left_stick_sensitivity", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_gamepad_left_stick_sensitivity),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.gamepadLeftStickSensitivity.toFloat(),
+                                                range = 50f..200f,
+                                                steps = 149,
+                                                enabled = gamepadConnected,
+                                                onValueChange = { onSetGamepadLeftStickSensitivity(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_gamepad_left_stick_sensitivity),
+                                                onResetToDefault = { onSetGamepadLeftStickSensitivity(globalDefaults.gamepadLeftStickSensitivity) }
+                                            )
+                                        }
+
+                                        row("settings_gamepad_right_stick_sensitivity", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_gamepad_right_stick_sensitivity),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.gamepadRightStickSensitivity.toFloat(),
+                                                range = 50f..200f,
+                                                steps = 149,
+                                                enabled = gamepadConnected,
+                                                onValueChange = { onSetGamepadRightStickSensitivity(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_gamepad_right_stick_sensitivity),
+                                                onResetToDefault = { onSetGamepadRightStickSensitivity(globalDefaults.gamepadRightStickSensitivity) }
+                                            )
+                                        }
+
+                                        row("settings_gamepad_left_stick_negative_deadzone", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_gamepad_left_stick_negative_deadzone),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.gamepadLeftStickNegativeDeadzone.toFloat(),
+                                                range = 0f..AppPreferences.GAMEPAD_STICK_NEGATIVE_DEADZONE_MAX.toFloat(),
+                                                steps = AppPreferences.GAMEPAD_STICK_NEGATIVE_DEADZONE_MAX - 1,
+                                                enabled = gamepadConnected,
+                                                onValueChange = { onSetGamepadLeftStickNegativeDeadzone(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_gamepad_stick_negative_deadzone),
+                                                onResetToDefault = { onSetGamepadLeftStickNegativeDeadzone(globalDefaults.gamepadLeftStickNegativeDeadzone) }
+                                            )
+                                        }
+
+                                        row("settings_gamepad_right_stick_negative_deadzone", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_gamepad_right_stick_negative_deadzone),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.gamepadRightStickNegativeDeadzone.toFloat(),
+                                                range = 0f..AppPreferences.GAMEPAD_STICK_NEGATIVE_DEADZONE_MAX.toFloat(),
+                                                steps = AppPreferences.GAMEPAD_STICK_NEGATIVE_DEADZONE_MAX - 1,
+                                                enabled = gamepadConnected,
+                                                onValueChange = { onSetGamepadRightStickNegativeDeadzone(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_gamepad_stick_negative_deadzone),
+                                                onResetToDefault = { onSetGamepadRightStickNegativeDeadzone(globalDefaults.gamepadRightStickNegativeDeadzone) }
+                                            )
+                                        }
+
+                                        row("settings_gamepad_left_stick_anti_deadzone", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_gamepad_left_stick_anti_deadzone),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.gamepadLeftStickAntiDeadzone.toFloat(),
+                                                range = 0f..AppPreferences.GAMEPAD_STICK_ANTI_DEADZONE_MAX.toFloat(),
+                                                steps = AppPreferences.GAMEPAD_STICK_ANTI_DEADZONE_MAX - 1,
+                                                enabled = gamepadConnected,
+                                                onValueChange = { onSetGamepadLeftStickAntiDeadzone(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_gamepad_stick_anti_deadzone),
+                                                onResetToDefault = { onSetGamepadLeftStickAntiDeadzone(globalDefaults.gamepadLeftStickAntiDeadzone) }
+                                            )
+                                        }
+
+                                        row("settings_gamepad_right_stick_anti_deadzone", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_gamepad_right_stick_anti_deadzone),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.gamepadRightStickAntiDeadzone.toFloat(),
+                                                range = 0f..AppPreferences.GAMEPAD_STICK_ANTI_DEADZONE_MAX.toFloat(),
+                                                steps = AppPreferences.GAMEPAD_STICK_ANTI_DEADZONE_MAX - 1,
+                                                enabled = gamepadConnected,
+                                                onValueChange = { onSetGamepadRightStickAntiDeadzone(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_gamepad_stick_anti_deadzone),
+                                                onResetToDefault = { onSetGamepadRightStickAntiDeadzone(globalDefaults.gamepadRightStickAntiDeadzone) }
+                                            )
+                                        }
+
+                                        row("settings_gamepad_left_stick_curve", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_gamepad_left_stick_curve),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.gamepadLeftStickCurve.toFloat(),
+                                                range = AppPreferences.GAMEPAD_STICK_CURVE_MIN.toFloat()..AppPreferences.GAMEPAD_STICK_CURVE_MAX.toFloat(),
+                                                steps = AppPreferences.GAMEPAD_STICK_CURVE_MAX - AppPreferences.GAMEPAD_STICK_CURVE_MIN - 1,
+                                                enabled = gamepadConnected,
+                                                onValueChange = { onSetGamepadLeftStickCurve(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_gamepad_stick_curve),
+                                                onResetToDefault = { onSetGamepadLeftStickCurve(globalDefaults.gamepadLeftStickCurve) }
+                                            )
+                                        }
+
+                                        row("settings_gamepad_right_stick_curve", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_gamepad_right_stick_curve),
+                                                valueLabelForValue = { "$it%" },
+                                                value = uiState.gamepadRightStickCurve.toFloat(),
+                                                range = AppPreferences.GAMEPAD_STICK_CURVE_MIN.toFloat()..AppPreferences.GAMEPAD_STICK_CURVE_MAX.toFloat(),
+                                                steps = AppPreferences.GAMEPAD_STICK_CURVE_MAX - AppPreferences.GAMEPAD_STICK_CURVE_MIN - 1,
+                                                enabled = gamepadConnected,
+                                                onValueChange = { onSetGamepadRightStickCurve(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_gamepad_stick_curve),
+                                                onResetToDefault = { onSetGamepadRightStickCurve(globalDefaults.gamepadRightStickCurve) }
+                                            )
+                                        }
+
+                                        row("settings_gamepad_right_stick_up_to_r2", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_gamepad_right_stick_up_to_r2),
+                                                checked = uiState.gamepadRightStickUpToR2,
+                                                onCheckedChange = onSetGamepadRightStickUpToR2,
+                                                helpText = stringResource(R.string.settings_help_gamepad_right_stick_up_to_r2),
+                                                onResetToDefault = { onSetGamepadRightStickUpToR2(globalDefaults.gamepadRightStickUpToR2) }
+                                            )
+                                        }
+
+                                        row("settings_gamepad_right_stick_down_to_l2", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_gamepad_right_stick_down_to_l2),
+                                                checked = uiState.gamepadRightStickDownToL2,
+                                                onCheckedChange = onSetGamepadRightStickDownToL2,
+                                                helpText = stringResource(R.string.settings_help_gamepad_right_stick_down_to_l2),
+                                                onResetToDefault = { onSetGamepadRightStickDownToL2(globalDefaults.gamepadRightStickDownToL2) }
+                                            )
+                                        }
+
+                                        row("settings_touchscreen_left_stick", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_touchscreen_left_stick),
+                                                checked = uiState.touchscreenLeftStick,
+                                                onCheckedChange = onSetTouchscreenLeftStick,
+                                                helpText = stringResource(R.string.settings_help_touchscreen_left_stick),
+                                                onResetToDefault = { onSetTouchscreenLeftStick(globalDefaults.touchscreenLeftStick) }
+                                            )
+                                        }
+
+                                        if (uiState.touchscreenLeftStick) {
+                                            row("settings_touchscreen_left_stick_sensitivity", "LiveSliderRow") {
+                                                LiveSliderRow(
+                                                    title = stringResource(R.string.settings_touchscreen_left_stick_sensitivity),
+                                                    valueLabelForValue = { "$it%" },
+                                                    value = uiState.touchscreenLeftStickSensitivity.toFloat(),
+                                                    range = AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN.toFloat()..
+                                                        AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX.toFloat(),
+                                                    steps = AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX -
+                                                        AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN - 1,
+                                                    onValueChange = { onSetTouchscreenLeftStickSensitivity(it.toInt()) },
+                                                    helpText = stringResource(R.string.settings_help_touchscreen_left_stick_sensitivity),
+                                                    onResetToDefault = {
+                                                        onSetTouchscreenLeftStickSensitivity(
+                                                            globalDefaults.touchscreenLeftStickSensitivity
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
+
+                                        row("settings_touchscreen_right_stick", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_touchscreen_right_stick),
+                                                checked = uiState.touchscreenRightStick,
+                                                onCheckedChange = onSetTouchscreenRightStick,
+                                                helpText = stringResource(R.string.settings_help_touchscreen_right_stick),
+                                                onResetToDefault = { onSetTouchscreenRightStick(globalDefaults.touchscreenRightStick) }
+                                            )
+                                        }
+
+                                        if (uiState.touchscreenRightStick) {
+                                            row("settings_touchscreen_right_stick_sensitivity", "LiveSliderRow") {
+                                                LiveSliderRow(
+                                                    title = stringResource(R.string.settings_touchscreen_right_stick_sensitivity),
+                                                    valueLabelForValue = { "$it%" },
+                                                    value = uiState.touchscreenRightStickSensitivity.toFloat(),
+                                                    range = AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN.toFloat()..
+                                                        AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX.toFloat(),
+                                                    steps = AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MAX -
+                                                        AppPreferences.TOUCHSCREEN_RIGHT_STICK_SENSITIVITY_MIN - 1,
+                                                    onValueChange = { onSetTouchscreenRightStickSensitivity(it.toInt()) },
+                                                    helpText = stringResource(R.string.settings_help_touchscreen_right_stick_sensitivity),
+                                                    onResetToDefault = {
+                                                        onSetTouchscreenRightStickSensitivity(
+                                                            globalDefaults.touchscreenRightStickSensitivity
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
+
+                                        row("settings_gamepad_mapping_title", "MenuButton") {
+                                            MenuButton(
+                                                icon = Icons.Rounded.Gamepad,
+                                                text = stringResource(R.string.settings_gamepad_mapping_title),
+                                                onClick = onOpenGamepadMapping,
+                                                enabled = gamepadConnected,
+                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
+                                            )
+                                        }
+
+                                        row("settings_keyboard_mouse_section", "MenuButton") {
+                                            MenuButton(
+                                                icon = Icons.Rounded.Keyboard,
+                                                text = stringResource(R.string.settings_keyboard_mouse_section),
+                                                onClick = onOpenKeyboardMouseSettings,
+                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
+                                            )
+                                        }
+                                    }
+
+                                    else -> Unit
+                                }
+                            }
+                    }
+
+                    EmulationMenuTab.Emulation -> {
+                        val emulationSections = gameMenuSectionsForTab(
+                            GameMenuTabId.EMULATION,
+                            uiState.gameMenuSectionOrder
+                        ).filterNot(uiState.hiddenGameMenuSections::contains)
+                        menuRows(emulationSections) { section ->
+                                when (section) {
+                                    GameMenuSectionId.EMULATION_PERFORMANCE -> {
+                                        row("settings_emulation_tab", "SidebarSectionTitle") {
+                                            SidebarSectionTitle(
+                                                text = stringResource(R.string.settings_emulation_tab).uppercase(),
+                                                color = sectionTitleColor,
+                                                topPadding = sectionLabelTopPadding,
+                                                horizontalInset = sectionLabelInset
+                                            )
+                                        }
+
+                                        row("emulation_performance_stats", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.emulation_performance_stats),
+                                                checked = uiState.showFps,
+                                                onCheckedChange = { onToggleFps() },
+                                                helpText = stringResource(R.string.settings_help_show_fps),
+                                                onResetToDefault = {
+                                                    if (uiState.showFps != globalDefaults.showFps) {
+                                                        onToggleFps()
+                                                    }
+                                                }
+                                            )
+                                        }
+
+                                        row("settings_fps_overlay_mode", "LiveSelectionRow") {
+                                            LiveSelectionRow(
+                                                title = stringResource(R.string.settings_fps_overlay_mode),
+                                                options = listOf(
+                                                    LiveSelectionOption(FPS_OVERLAY_MODE_SIMPLE, stringResource(R.string.settings_fps_overlay_mode_simple)),
+                                                    LiveSelectionOption(FPS_OVERLAY_MODE_DETAILED, stringResource(R.string.settings_fps_overlay_mode_detailed))
+                                                ),
+                                                currentValue = uiState.fpsOverlayMode,
+                                                onValueChange = onSetFpsOverlayMode,
+                                                helpText = stringResource(R.string.settings_help_fps_overlay_mode),
+                                                onResetToDefault = { onSetFpsOverlayMode(globalDefaults.fpsOverlayMode) }
+                                            )
+                                        }
+
+                                        row("settings_fps_overlay_position", "LiveSelectionRow") {
+                                            LiveSelectionRow(
+                                                title = stringResource(R.string.settings_fps_overlay_position),
+                                                options = fpsOverlayCornerLiveOptions(),
+                                                currentValue = uiState.fpsOverlayCorner,
+                                                onValueChange = onSetFpsOverlayCorner,
+                                                allowWrap = false,
+                                                horizontalScrolling = true,
+                                                helpText = stringResource(R.string.settings_help_fps_overlay_position),
+                                                onResetToDefault = { onSetFpsOverlayCorner(globalDefaults.fpsOverlayCorner) }
+                                            )
+                                        }
+
+                                        row("settings_fps_overlay_scale", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_fps_overlay_scale),
+                                                valueLabelResId = R.string.settings_fps_overlay_scale_value,
+                                                valueLabelForValue = { scale -> "$scale%" },
+                                                value = uiState.fpsOverlayScale.toFloat(),
+                                                range = AppPreferences.MIN_FPS_OVERLAY_SCALE.toFloat()..AppPreferences.MAX_FPS_OVERLAY_SCALE.toFloat(),
+                                                steps = 24,
+                                                onValueChange = { onSetFpsOverlayScale(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_fps_overlay_scale),
+                                                onResetToDefault = { onSetFpsOverlayScale(globalDefaults.fpsOverlayScale) }
+                                            )
+                                        }
+
+                                        if (uiState.fpsOverlayMode == FPS_OVERLAY_MODE_DETAILED) {
+                                            row("settings_fps_overlay_metrics", "LiveBitmaskChoiceRow") {
+                                                LiveBitmaskChoiceRow(
+                                                    title = stringResource(R.string.settings_fps_overlay_metrics),
+                                                    options = fpsOverlayMetricLiveOptions(),
+                                                    selectedMask = uiState.fpsOverlayMetrics,
+                                                    onToggle = { metric -> onSetFpsOverlayMetrics(uiState.fpsOverlayMetrics xor metric) },
+                                                    helpText = stringResource(R.string.settings_help_fps_overlay_metrics),
+                                                    onResetToDefault = { onSetFpsOverlayMetrics(globalDefaults.fpsOverlayMetrics) }
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    GameMenuSectionId.EMULATION_SPEED -> {
+                                        row("settings_speed_hacks", "SidebarSectionTitle") {
+                                            SidebarSectionTitle(
+                                                text = stringResource(R.string.settings_speed_hacks).uppercase(),
+                                                color = sectionTitleColor,
+                                                topPadding = sectionLabelTopPadding,
+                                                horizontalInset = sectionLabelInset
+                                            )
+                                        }
+
+                                        row("settings_ee_cycle_rate", "LiveSelectionRow") {
+                                            LiveSelectionRow(
+                                                title = stringResource(R.string.settings_ee_cycle_rate),
+                                                options = eeCycleRateLiveOptions(),
+                                                currentValue = uiState.eeCycleRate,
+                                                onValueChange = onSetEeCycleRate,
+                                                allowWrap = false,
+                                                horizontalScrolling = true,
+                                                helpText = stringResource(R.string.settings_help_ee_cycle_rate),
+                                                onResetToDefault = { onSetEeCycleRate(globalDefaults.eeCycleRate) }
+                                            )
+                                        }
+
+                                        row("settings_ee_cycle_skip", "LiveSelectionRow") {
+                                            LiveSelectionRow(
+                                                title = stringResource(R.string.settings_ee_cycle_skip),
+                                                options = eeCycleSkipLiveOptions(),
+                                                currentValue = uiState.eeCycleSkip,
+                                                onValueChange = onSetEeCycleSkip,
+                                                allowWrap = false,
+                                                horizontalScrolling = true,
+                                                helpText = stringResource(R.string.settings_help_ee_cycle_skip),
+                                                onResetToDefault = { onSetEeCycleSkip(globalDefaults.eeCycleSkip) }
+                                            )
+                                        }
+
+                                        row("settings_frame_limiter", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_frame_limiter),
+                                                checked = uiState.frameLimitEnabled,
+                                                onCheckedChange = onSetFrameLimitEnabled,
+                                                helpText = stringResource(R.string.settings_help_frame_limiter),
+                                                onResetToDefault = { onSetFrameLimitEnabled(globalDefaults.frameLimitEnabled) }
+                                            )
+                                        }
+
+                                        row("settings_target_fps_mode", "LiveSelectionRow") {
+                                            LiveSelectionRow(
+                                                title = stringResource(R.string.settings_target_fps_mode),
+                                                options = listOf(
+                                                    LiveSelectionOption(0, stringResource(R.string.settings_target_fps_auto)),
+                                                    LiveSelectionOption(1, stringResource(R.string.settings_target_fps_manual))
+                                                ),
+                                                currentValue = if (uiState.targetFps <= 0) 0 else 1,
+                                                onValueChange = { mode ->
+                                                    onSetTargetFps(
+                                                        if (mode == 0) 0 else resolveManualTargetFps(uiState.targetFps, globalDefaults.targetFps)
+                                                    )
+                                                },
+                                                allowWrap = false,
+                                                helpText = stringResource(R.string.settings_help_target_fps),
+                                                onResetToDefault = { onSetTargetFps(globalDefaults.targetFps) }
+                                            )
+                                        }
+
+                                        if (uiState.targetFps > 0) {
+                                            row("settings_target_fps", "LiveSliderRow") {
+                                                LiveSliderRow(
+                                                    title = stringResource(R.string.settings_target_fps),
+                                                    valueLabelResId = R.string.settings_target_fps_desc,
+                                                    valueLabelForValue = { fps -> fps.toString() },
+                                                    value = uiState.targetFps.toFloat(),
+                                                    range = 20f..120f,
+                                                    steps = 99,
+                                                    onValueChange = { onSetTargetFps(it.toInt()) },
+                                                    helpText = stringResource(R.string.settings_help_target_fps),
+                                                    onResetToDefault = { onSetTargetFps(globalDefaults.targetFps) }
+                                                )
+                                            }
+                                        }
+
+                                        row("settings_mtvu", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_mtvu),
+                                                checked = uiState.enableMtvu,
+                                                onCheckedChange = onSetMtvu,
+                                                helpText = stringResource(R.string.settings_help_mtvu),
+                                                onResetToDefault = { onSetMtvu(globalDefaults.enableMtvu) }
+                                            )
+                                        }
+
+                                        row("settings_iop_thread", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_iop_thread),
+                                                checked = uiState.enableIopThread,
+                                                onCheckedChange = onSetIopThread,
+                                                helpText = stringResource(R.string.settings_help_iop_thread),
+                                                onResetToDefault = { onSetIopThread(globalDefaults.enableIopThread) }
+                                            )
+                                        }
+
+                                        row("settings_vu_aot", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_vu_aot),
+                                                checked = uiState.enableVUAot,
+                                                onCheckedChange = onSetVUAot,
+                                                helpText = stringResource(R.string.settings_help_vu_aot),
+                                                onResetToDefault = { onSetVUAot(globalDefaults.enableVUAot) }
+                                            )
+                                        }
+
+                                        row("settings_thread_pinning", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_thread_pinning),
+                                                checked = uiState.enableThreadPinning,
+                                                onCheckedChange = onSetThreadPinning,
+                                                helpText = stringResource(R.string.settings_help_thread_pinning),
+                                                onResetToDefault = { onSetThreadPinning(globalDefaults.enableThreadPinning) }
+                                            )
+                                        }
+
+                                        row("settings_fast_cdvd", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_fast_cdvd),
+                                                checked = uiState.enableFastCdvd,
+                                                onCheckedChange = onSetFastCdvd,
+                                                helpText = stringResource(R.string.settings_help_fast_cdvd),
+                                                onResetToDefault = { onSetFastCdvd(globalDefaults.enableFastCdvd) }
+                                            )
+                                        }
+
+                                        row("settings_low_latency_mode", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_low_latency_mode),
+                                                checked = uiState.lowLatencyMode,
+                                                onCheckedChange = onSetLowLatencyMode,
+                                                helpText = stringResource(R.string.settings_help_low_latency_mode),
+                                                onResetToDefault = { onSetLowLatencyMode(globalDefaults.lowLatencyMode) }
+                                            )
+                                        }
+
+                                        row("settings_skip_duplicate_frames", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_skip_duplicate_frames),
+                                                checked = uiState.skipDuplicateFrames,
+                                                onCheckedChange = onSetSkipDuplicateFrames,
+                                                helpText = stringResource(R.string.settings_help_skip_duplicate_frames),
+                                                onResetToDefault = { onSetSkipDuplicateFrames(globalDefaults.skipDuplicateFrames) }
+                                            )
+                                        }
+
+                                        row("settings_frame_skip", "LiveSelectionRow") {
+                                            LiveSelectionRow(
+                                                title = stringResource(R.string.settings_frame_skip),
+                                                options = listOf(
+                                                    LiveSelectionOption(0, stringResource(R.string.settings_frame_skip_off)),
+                                                    LiveSelectionOption(1, "1/2"),
+                                                    LiveSelectionOption(2, "1/4")
+                                                ),
+                                                currentValue = uiState.frameSkip,
+                                                onValueChange = onSetFrameSkip,
+                                                helpText = stringResource(R.string.settings_help_frame_skip),
+                                                onResetToDefault = { onSetFrameSkip(globalDefaults.frameSkip) }
+                                            )
+                                        }
+                                    }
+
+                                    else -> Unit
+                                }
+                            }
+                    }
+
+                    EmulationMenuTab.Cheats -> {
+                        val cheatsSections = gameMenuSectionsForTab(
+                            GameMenuTabId.CHEATS,
+                            uiState.gameMenuSectionOrder
+                        ).filterNot(uiState.hiddenGameMenuSections::contains)
+                        menuSection(cheatsSections, sectionSpacing) { section ->
+                                when (section) {
+                                    GameMenuSectionId.EMULATION_CHEATS -> {
+                        SidebarSectionTitle(
+                            text = stringResource(R.string.emulation_cheats_title).uppercase(),
+                            color = sectionTitleColor,
+                            topPadding = sectionLabelTopPadding,
+                            horizontalInset = sectionLabelInset
+                        )
+
+                        SettingsToggle(
+                            title = stringResource(R.string.settings_enable_cheats),
+                            checked = uiState.enableCheats,
+                            onCheckedChange = onSetEnableCheats,
+                            helpText = stringResource(R.string.settings_help_cheats),
+                            onResetToDefault = { onSetEnableCheats(globalDefaults.enableCheats) }
+                        )
+
+                        EmulationCheatPacksSection(
+                            state = cheatPackBrowserState,
+                            hasInstalledCheats = uiState.availableCheats.isNotEmpty(),
+                            onLoad = onLoadCheatPacks,
+                            onInstallPack = onInstallCheatPack,
+                            onImportText = onImportCheatPack
+                        )
+
+                        EmulationCheatsSection(
+                            blocks = uiState.availableCheats,
+                            onCheatToggle = onToggleCheat,
+                            onGroupToggle = onSetCheatGroupEnabled,
+                            onSetAllEnabled = onSetAllCheatsEnabled
+                        )
+                                    }
+
+                                    else -> Unit
+                                }
+                            }
+                    }
+
+                    EmulationMenuTab.Shaders -> {
+                        val shaderSections = gameMenuSectionsForTab(
+                            GameMenuTabId.SHADERS,
+                            uiState.gameMenuSectionOrder
+                        ).filterNot(uiState.hiddenGameMenuSections::contains)
+                        menuSection(shaderSections, sectionSpacing) { section ->
+                                when (section) {
+                                    GameMenuSectionId.SHADERS_LIBRARY -> {
+                                        SidebarSectionTitle(
+                                            text = stringResource(R.string.emulation_shaders_tab).uppercase(),
+                                            color = sectionTitleColor,
+                                            topPadding = sectionLabelTopPadding,
+                                            horizontalInset = sectionLabelInset
+                                        )
+
+                                        EmulationShadersSection(
+                                            state = shaderBrowserState,
+                                            onDownloadPack = onDownloadShaderPack,
+                                            onImportPack = onImportShaderPack,
+                                            onSelectPreset = onSelectShaderPreset,
+                                            onUseGlobal = onUseGlobalShader,
+                                            onSetEnabled = onSetInGameShadersEnabled
+                                        )
+                                    }
+
+                                    else -> Unit
+                                }
+                            }
+                    }
+
+                    EmulationMenuTab.Graphics -> {
+                        val graphicsSections = gameMenuSectionsForTab(
+                            GameMenuTabId.GRAPHICS,
+                            uiState.gameMenuSectionOrder
+                        ).filterNot(uiState.hiddenGameMenuSections::contains)
+                        menuRows(graphicsSections) { section ->
+                                when (section) {
+                                    GameMenuSectionId.GRAPHICS_DISPLAY -> {
+                                        row("settings_graphics_tab", "SidebarSectionTitle") {
+                                            SidebarSectionTitle(
+                                                text = stringResource(R.string.settings_graphics_tab).uppercase(),
+                                                color = sectionTitleColor,
+                                                topPadding = sectionLabelTopPadding,
+                                                horizontalInset = sectionLabelInset
+                                            )
+                                        }
+
+                                        row("settings_renderer", "LiveSelectionRow") {
+                                            LiveSelectionRow(
+                                                title = stringResource(R.string.settings_renderer),
+                                                options = listOf(
+                                                    LiveSelectionOption(12, stringResource(R.string.settings_renderer_opengl)),
+                                                    LiveSelectionOption(14, stringResource(R.string.settings_renderer_vulkan)),
+                                                    LiveSelectionOption(13, stringResource(R.string.settings_renderer_software))
+                                                ),
+                                                currentValue = uiState.renderer,
+                                                onValueChange = onSetRenderer,
+                                                allowWrap = false,
+                                                helpText = stringResource(R.string.settings_help_renderer),
+                                                onResetToDefault = { onSetRenderer(globalDefaults.renderer) }
+                                            )
+                                        }
+
+                                        if (uiState.frameGenerationReady) {
+                                            row("frame_generation_enable", "SettingsToggle") {
+                                                SettingsToggle(
+                                                    title = stringResource(R.string.frame_generation_enable),
+                                                    checked = uiState.frameGenerationEnabled,
+                                                    onCheckedChange = {
+                                                        onSetFrameGeneration(
+                                                            FrameGenerationSettings(
+                                                                enabled = it,
+                                                                multiplier = uiState.frameGenerationMultiplier,
+                                                                performanceMode = uiState.frameGenerationPerformance,
+                                                                flowScalePercent = uiState.frameGenerationFlowScale,
+                                                                targetRefreshRate = uiState.frameGenerationTargetRate
+                                                            )
+                                                        )
+                                                    },
+                                                    helpText = stringResource(R.string.frame_generation_requirements_ready)
+                                                )
+                                            }
+
+                                            row("frame_generation_multiplier", "LiveChipsSelectionRow") {
+                                                LiveChipsSelectionRow(
+                                                    title = stringResource(R.string.frame_generation_multiplier),
+                                                    options = listOf(2 to "×2", 3 to "×3", 4 to "×4"),
+                                                    currentValue = uiState.frameGenerationMultiplier,
+                                                    onValueChange = {
+                                                        onSetFrameGeneration(
+                                                            FrameGenerationSettings(
+                                                                enabled = uiState.frameGenerationEnabled,
+                                                                multiplier = it,
+                                                                performanceMode = uiState.frameGenerationPerformance,
+                                                                flowScalePercent = uiState.frameGenerationFlowScale,
+                                                                targetRefreshRate = uiState.frameGenerationTargetRate
+                                                            )
+                                                        )
+                                                    }
+                                                )
+                                            }
+
+                                            row("frame_generation_flow_scale", "LiveChipsSelectionRow") {
+                                                LiveChipsSelectionRow(
+                                                    title = stringResource(R.string.frame_generation_flow_scale),
+                                                    options = listOf(25, 50, 75).map { it to "$it%" } +
+                                                        listOf(100 to stringResource(R.string.settings_auto)),
+                                                    currentValue = uiState.frameGenerationFlowScale,
+                                                    onValueChange = {
+                                                        onSetFrameGeneration(
+                                                            FrameGenerationSettings(
+                                                                enabled = uiState.frameGenerationEnabled,
+                                                                multiplier = uiState.frameGenerationMultiplier,
+                                                                performanceMode = uiState.frameGenerationPerformance,
+                                                                flowScalePercent = it,
+                                                                targetRefreshRate = uiState.frameGenerationTargetRate
+                                                            )
+                                                        )
+                                                    },
+                                                    helpText = stringResource(R.string.frame_generation_flow_hint)
+                                                )
+                                            }
+
+                                            row("frame_generation_performance", "SettingsToggle") {
+                                                SettingsToggle(
+                                                    title = stringResource(R.string.frame_generation_performance),
+                                                    checked = uiState.frameGenerationPerformance,
+                                                    onCheckedChange = {
+                                                        onSetFrameGeneration(
+                                                            FrameGenerationSettings(
+                                                                enabled = uiState.frameGenerationEnabled,
+                                                                multiplier = uiState.frameGenerationMultiplier,
+                                                                performanceMode = it,
+                                                                flowScalePercent = uiState.frameGenerationFlowScale,
+                                                                targetRefreshRate = uiState.frameGenerationTargetRate
+                                                            )
+                                                        )
+                                                    },
+                                                    helpText = stringResource(R.string.frame_generation_performance_desc)
+                                                )
+                                            }
+
+                                            row("frame_generation_target_rate", "LiveChipsSelectionRow") {
+                                                LiveChipsSelectionRow(
+                                                    title = stringResource(R.string.frame_generation_target_rate),
+                                                    options = listOf(0 to stringResource(R.string.frame_generation_fixed)) +
+                                                        listOf(60, 90, 120, 144).map { it to "$it Hz" },
+                                                    currentValue = uiState.frameGenerationTargetRate,
+                                                    onValueChange = {
+                                                        onSetFrameGeneration(
+                                                            FrameGenerationSettings(
+                                                                enabled = uiState.frameGenerationEnabled,
+                                                                multiplier = uiState.frameGenerationMultiplier,
+                                                                performanceMode = uiState.frameGenerationPerformance,
+                                                                flowScalePercent = uiState.frameGenerationFlowScale,
+                                                                targetRefreshRate = it
+                                                            )
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
+
+                                        row("settings_upscale", "LiveChipsSelectionRow") {
+                                            val nativeUpscaleLabel = stringResource(R.string.settings_upscale_native)
+                                            val upscaleOptions = remember(nativeUpscaleLabel, maxUpscaleMultiplier) {
+                                                buildUpscaleOptions(nativeUpscaleLabel, maxUpscaleMultiplier)
+                                            }
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_upscale),
+                                                options = upscaleOptions,
+                                                currentValue = upscaleMultiplierValue(uiState.upscale),
+                                                onValueChange = { onSetUpscale(upscaleKeyToMultiplier(it)) },
+                                                helpText = stringResource(R.string.settings_help_upscale),
+                                                onResetToDefault = { onSetUpscale(globalDefaults.upscaleMultiplier) }
+                                            )
+                                        }
+
+                                        row("settings_aspect_ratio", "LiveSelectionRow") {
+                                            LiveSelectionRow(
+                                                title = stringResource(R.string.settings_aspect_ratio).replace(":", ""),
+                                                options = listOf(
+                                                    LiveSelectionOption(1, stringResource(R.string.emulation_aspect_auto)),
+                                                    LiveSelectionOption(2, "4:3"),
+                                                    LiveSelectionOption(3, "16:9"),
+                                                    LiveSelectionOption(4, stringResource(R.string.settings_aspect_ratio_107)),
+                                                    LiveSelectionOption(5, stringResource(R.string.settings_aspect_ratio_219)),
+                                                    LiveSelectionOption(6, stringResource(R.string.settings_aspect_ratio_209)),
+                                                    LiveSelectionOption(7, stringResource(R.string.settings_aspect_ratio_1959)),
+                                                    LiveSelectionOption(
+                                                        value = 0,
+                                                        icon = Icons.Rounded.Fullscreen,
+                                                        contentDescription = stringResource(R.string.emulation_aspect_stretch)
+                                                    )
+                                                ),
+                                                currentValue = uiState.aspectRatio,
+                                                onValueChange = onSetAspectRatio,
+                                                allowWrap = false,
+                                                horizontalScrolling = true,
+                                                helpText = stringResource(R.string.settings_help_aspect_ratio),
+                                                onResetToDefault = { onSetAspectRatio(globalDefaults.aspectRatio) }
+                                            )
+                                        }
+
+                                        row("emulation_local_multiplayer_title", "LiveSelectionRow") {
+                                            LiveSelectionRow(
+                                                title = stringResource(R.string.emulation_local_multiplayer_title),
+                                                options = listOf(
+                                                    LiveSelectionOption(
+                                                        AppPreferences.LOCAL_MULTIPLAYER_OFF,
+                                                        stringResource(R.string.emulation_local_multiplayer_off)
+                                                    ),
+                                                    LiveSelectionOption(
+                                                        AppPreferences.LOCAL_MULTIPLAYER_SIDE_BY_SIDE,
+                                                        stringResource(R.string.emulation_local_multiplayer_side_by_side)
+                                                    ),
+                                                    LiveSelectionOption(
+                                                        AppPreferences.LOCAL_MULTIPLAYER_STACKED,
+                                                        stringResource(R.string.emulation_local_multiplayer_stacked)
+                                                    ),
+                                                    LiveSelectionOption(
+                                                        AppPreferences.LOCAL_MULTIPLAYER_HORIZONTAL_CROP,
+                                                        stringResource(R.string.emulation_local_multiplayer_crop)
+                                                    ),
+                                                    LiveSelectionOption(
+                                                        AppPreferences.LOCAL_MULTIPLAYER_HORIZONTAL_CROP_SWAPPED,
+                                                        stringResource(R.string.emulation_local_multiplayer_crop_swapped)
+                                                    )
+                                                ),
+                                                currentValue = uiState.localMultiplayerMode,
+                                                onValueChange = onSetLocalMultiplayerMode,
+                                                allowWrap = false,
+                                                horizontalScrolling = true,
+                                                helpText = stringResource(R.string.emulation_local_multiplayer_help),
+                                                onResetToDefault = {
+                                                    onSetLocalMultiplayerMode(globalDefaults.localMultiplayerMode)
+                                                }
+                                            )
+                                        }
+
+                                        row("settings_display_crop", "LiveChipsSelectionRow") {
+                                            val crop = uiState.displayCrop
+                                            val cropPreset = when (crop) {
+                                                DisplayCrop.None -> 0
+                                                DisplayCrop.ThinEdges -> 2
+                                                DisplayCrop.SafeEdges -> 4
+                                                else -> -1
+                                            }
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_display_crop),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_display_crop_off),
+                                                    2 to stringResource(R.string.settings_display_crop_thin),
+                                                    4 to stringResource(R.string.settings_display_crop_safe),
+                                                    -1 to stringResource(R.string.settings_display_crop_custom)
+                                                ),
+                                                currentValue = cropPreset,
+                                                onValueChange = { preset ->
+                                                    when (preset) {
+                                                        0 -> onSetDisplayCrop(DisplayCrop.None)
+                                                        2 -> onSetDisplayCrop(DisplayCrop.ThinEdges)
+                                                        4 -> onSetDisplayCrop(DisplayCrop.SafeEdges)
+                                                    }
+                                                },
+                                                helpText = stringResource(R.string.settings_help_display_crop),
+                                                onResetToDefault = { onSetDisplayCrop(globalDefaults.displayCrop) }
+                                            )
+                                        }
+                                    }
+
+                                    GameMenuSectionId.GRAPHICS_RENDERING -> {
+                                        row("settings_rendering_section", "SidebarSectionTitle") {
+                                            SidebarSectionTitle(
+                                                text = stringResource(R.string.settings_rendering_section).uppercase(),
+                                                color = sectionTitleColor,
+                                                topPadding = sectionLabelTopPadding,
+                                                horizontalInset = sectionLabelInset
+                                            )
+                                        }
+
+                                        row("settings_hw_download_mode", "LiveSelectionRow") {
+                                            LiveSelectionRow(
+                                                title = stringResource(R.string.settings_hw_download_mode),
+                                                options = listOf(
+                                                    LiveSelectionOption(0, stringResource(R.string.settings_hw_download_mode_accurate)),
+                                                    LiveSelectionOption(1, stringResource(R.string.settings_hw_download_mode_force_full)),
+                                                    LiveSelectionOption(2, stringResource(R.string.settings_hw_download_mode_no_readbacks)),
+                                                    LiveSelectionOption(3, stringResource(R.string.settings_hw_download_mode_unsynchronized)),
+                                                    LiveSelectionOption(4, stringResource(R.string.settings_hw_download_mode_disabled)),
+                                                    LiveSelectionOption(5, stringResource(R.string.settings_hw_download_mode_asynchronous))
+                                                ),
+                                                currentValue = uiState.hwDownloadMode,
+                                                onValueChange = onSetHwDownloadMode,
+                                                allowWrap = false,
+                                                horizontalScrolling = true,
+                                                helpText = stringResource(R.string.settings_help_hw_download_mode),
+                                                onResetToDefault = { onSetHwDownloadMode(globalDefaults.hwDownloadMode) }
+                                            )
+                                        }
+
+                                        row("settings_blending_accuracy", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_blending_accuracy),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_blending_accuracy_minimum),
+                                                    1 to stringResource(R.string.settings_blending_accuracy_basic),
+                                                    2 to stringResource(R.string.settings_blending_accuracy_medium),
+                                                    3 to stringResource(R.string.settings_blending_accuracy_high),
+                                                    4 to stringResource(R.string.settings_blending_accuracy_full),
+                                                    5 to stringResource(R.string.settings_blending_accuracy_maximum)
+                                                ),
+                                                currentValue = uiState.blendingAccuracy,
+                                                onValueChange = onSetBlendingAccuracy,
+                                                helpText = stringResource(R.string.settings_help_blending_accuracy),
+                                                onResetToDefault = { onSetBlendingAccuracy(globalDefaults.blendingAccuracy) }
+                                            )
+                                        }
+
+                                        row("settings_texture_preloading", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_texture_preloading),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_texture_preloading_none),
+                                                    1 to stringResource(R.string.settings_texture_preloading_partial),
+                                                    2 to stringResource(R.string.settings_texture_preloading_full)
+                                                ),
+                                                currentValue = uiState.texturePreloading,
+                                                onValueChange = onSetTexturePreloading,
+                                                helpText = stringResource(R.string.settings_help_texture_preloading),
+                                                onResetToDefault = { onSetTexturePreloading(globalDefaults.texturePreloading) }
+                                            )
+                                        }
+
+                                        row("settings_bilinear_filtering", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_bilinear_filtering),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_bilinear_filtering_nearest),
+                                                    1 to stringResource(R.string.settings_bilinear_filtering_forced),
+                                                    2 to stringResource(R.string.settings_bilinear_filtering_ps2),
+                                                    3 to stringResource(R.string.settings_bilinear_filtering_no_sprite)
+                                                ),
+                                                currentValue = uiState.textureFiltering,
+                                                onValueChange = onSetTextureFiltering,
+                                                helpText = stringResource(R.string.settings_help_bilinear_filtering),
+                                                onResetToDefault = { onSetTextureFiltering(globalDefaults.textureFiltering) }
+                                            )
+                                        }
+
+                                        row("settings_trilinear_filtering", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_trilinear_filtering),
+                                                options = listOf(
+                                                    -1 to stringResource(R.string.settings_trilinear_filtering_auto),
+                                                    0 to stringResource(R.string.settings_trilinear_filtering_off),
+                                                    1 to stringResource(R.string.settings_trilinear_filtering_ps2),
+                                                    2 to stringResource(R.string.settings_trilinear_filtering_forced)
+                                                ),
+                                                currentValue = uiState.trilinearFiltering,
+                                                onValueChange = onSetTrilinearFiltering,
+                                                helpText = stringResource(R.string.settings_help_trilinear_filtering),
+                                                onResetToDefault = { onSetTrilinearFiltering(globalDefaults.trilinearFiltering) }
+                                            )
+                                        }
+
+                                        row("settings_anisotropic_filtering", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_anisotropic_filtering),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_aniso_off),
+                                                    2 to "2x",
+                                                    4 to "4x",
+                                                    8 to "8x",
+                                                    16 to "16x"
+                                                ),
+                                                currentValue = uiState.anisotropicFiltering,
+                                                onValueChange = onSetAnisotropicFiltering,
+                                                helpText = stringResource(R.string.settings_help_anisotropic_filtering),
+                                                onResetToDefault = { onSetAnisotropicFiltering(globalDefaults.anisotropicFiltering) }
+                                            )
+                                        }
+
+                                        row("settings_fxaa", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_fxaa),
+                                                checked = uiState.enableFxaa,
+                                                onCheckedChange = onSetEnableFxaa,
+                                                helpText = stringResource(R.string.settings_help_fxaa),
+                                                onResetToDefault = { onSetEnableFxaa(globalDefaults.enableFxaa) }
+                                            )
+                                        }
+
+                                        row("settings_sgsr", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_sgsr),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_sgsr_off),
+                                                    1 to stringResource(R.string.settings_sgsr_quality),
+                                                    2 to stringResource(R.string.settings_sgsr_balanced),
+                                                    3 to stringResource(R.string.settings_sgsr_performance)
+                                                ),
+                                                currentValue = uiState.sgsrMode,
+                                                onValueChange = onSetSgsrMode,
+                                                helpText = stringResource(R.string.settings_help_sgsr),
+                                                onResetToDefault = { onSetSgsrMode(globalDefaults.sgsrMode) }
+                                            )
+                                        }
+
+                                        row("settings_cas", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_cas),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_cas_mode_off),
+                                                    1 to stringResource(R.string.settings_cas_mode_sharpen_only),
+                                                    2 to stringResource(R.string.settings_cas_mode_sharpen_resize)
+                                                ),
+                                                currentValue = uiState.casMode,
+                                                onValueChange = onSetCasMode,
+                                                helpText = stringResource(R.string.settings_help_cas),
+                                                onResetToDefault = { onSetCasMode(globalDefaults.casMode) }
+                                            )
+                                        }
+
+                                        if (uiState.casMode != 0) {
+                                            row("settings_cas_sharpness", "LiveSliderRow") {
+                                                LiveSliderRow(
+                                                    title = stringResource(R.string.settings_cas_sharpness),
+                                                    valueLabelForValue = { "$it%" },
+                                                    value = uiState.casSharpness.toFloat(),
+                                                    range = 0f..100f,
+                                                    steps = 99,
+                                                    onValueChange = { onSetCasSharpness(it.toInt()) },
+                                                    helpText = stringResource(R.string.settings_help_cas_sharpness),
+                                                    onResetToDefault = { onSetCasSharpness(globalDefaults.casSharpness) }
+                                                )
+                                            }
+                                        }
+
+                                        row("settings_tv_shader", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_tv_shader),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_tv_shader_none),
+                                                    1 to stringResource(R.string.settings_tv_shader_scanline),
+                                                    2 to stringResource(R.string.settings_tv_shader_diagonal),
+                                                    3 to stringResource(R.string.settings_tv_shader_triangular),
+                                                    4 to stringResource(R.string.settings_tv_shader_wave),
+                                                    5 to stringResource(R.string.settings_tv_shader_lottes_crt),
+                                                    6 to stringResource(R.string.settings_tv_shader_4x_rgss),
+                                                    7 to stringResource(R.string.settings_tv_shader_nx_agss)
+                                                ),
+                                                currentValue = uiState.tvShader,
+                                                onValueChange = onSetTvShader,
+                                                helpText = stringResource(R.string.settings_help_tv_shader),
+                                                onResetToDefault = { onSetTvShader(globalDefaults.tvShader) }
+                                            )
+                                        }
+
+                                        row("settings_hw_mipmapping", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_hw_mipmapping),
+                                                checked = uiState.enableHwMipmapping,
+                                                onCheckedChange = onSetEnableHwMipmapping,
+                                                helpText = stringResource(R.string.settings_help_hw_mipmapping),
+                                                onResetToDefault = { onSetEnableHwMipmapping(globalDefaults.enableHwMipmapping) }
+                                            )
+                                        }
+                                    }
+
+                                    GameMenuSectionId.GRAPHICS_SCREEN -> {
+                                        row("emulation_screen_tab", "SidebarSectionTitle") {
+                                            SidebarSectionTitle(
+                                                text = stringResource(R.string.emulation_screen_tab).uppercase(),
+                                                color = sectionTitleColor,
+                                                topPadding = sectionLabelTopPadding,
+                                                horizontalInset = sectionLabelInset
+                                            )
+                                        }
+
+                                        row("screen_settings_menu_desc", "Surface") {
+                                            Surface(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = neonShape(18.dp),
+                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+                                            ) {
+                                                Text(
+                                                    text = stringResource(R.string.screen_settings_menu_desc),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        row("settings_shadeboost_brightness", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_shadeboost_brightness),
+                                                valueLabelForValue = { it.toString() },
+                                                value = uiState.shadeBoostBrightness.toFloat(),
+                                                range = 1f..100f,
+                                                steps = 98,
+                                                onValueChange = { onSetShadeBoostBrightness(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_shadeboost_brightness),
+                                                onResetToDefault = { onSetShadeBoostBrightness(globalDefaults.shadeBoostBrightness) }
+                                            )
+                                        }
+
+                                        row("settings_shadeboost_contrast", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_shadeboost_contrast),
+                                                valueLabelForValue = { it.toString() },
+                                                value = uiState.shadeBoostContrast.toFloat(),
+                                                range = 1f..100f,
+                                                steps = 98,
+                                                onValueChange = { onSetShadeBoostContrast(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_shadeboost_contrast),
+                                                onResetToDefault = { onSetShadeBoostContrast(globalDefaults.shadeBoostContrast) }
+                                            )
+                                        }
+
+                                        row("settings_shadeboost_saturation", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_shadeboost_saturation),
+                                                valueLabelForValue = { it.toString() },
+                                                value = uiState.shadeBoostSaturation.toFloat(),
+                                                range = 1f..100f,
+                                                steps = 98,
+                                                onValueChange = { onSetShadeBoostSaturation(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_shadeboost_saturation),
+                                                onResetToDefault = { onSetShadeBoostSaturation(globalDefaults.shadeBoostSaturation) }
+                                            )
+                                        }
+
+                                        row("settings_shadeboost_gamma", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_shadeboost_gamma),
+                                                valueLabelForValue = { it.toString() },
+                                                value = uiState.shadeBoostGamma.toFloat(),
+                                                range = 1f..100f,
+                                                steps = 98,
+                                                onValueChange = { onSetShadeBoostGamma(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_shadeboost_gamma),
+                                                onResetToDefault = { onSetShadeBoostGamma(globalDefaults.shadeBoostGamma) }
+                                            )
+                                        }
+                                    }
+
+                                    else -> Unit
+                                }
+                            }
+                    }
+
+                    EmulationMenuTab.Fixes -> {
+                        val fixesSections = gameMenuSectionsForTab(
+                            GameMenuTabId.FIXES,
+                            uiState.gameMenuSectionOrder
+                        ).filterNot(uiState.hiddenGameMenuSections::contains)
+                        menuRows(fixesSections) { section ->
+                                when (section) {
+                                    GameMenuSectionId.FIXES_PATCHES -> {
+                                        row("settings_patches_section", "SidebarSectionTitle") {
+                                            SidebarSectionTitle(
+                                                text = stringResource(R.string.settings_patches_section).uppercase(),
+                                                color = sectionTitleColor,
+                                                topPadding = sectionLabelTopPadding,
+                                                horizontalInset = sectionLabelInset
+                                            )
+                                        }
+
+                                        row("settings_widescreen_patches", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_widescreen_patches),
+                                                checked = uiState.widescreenPatches,
+                                                onCheckedChange = onSetEnableWidescreenPatches,
+                                                helpText = stringResource(R.string.settings_help_widescreen_patches),
+                                                onResetToDefault = { onSetEnableWidescreenPatches(globalDefaults.enableWidescreenPatches) }
+                                            )
+                                        }
+
+                                        row("settings_no_interlacing_patches", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_no_interlacing_patches),
+                                                checked = uiState.noInterlacingPatches,
+                                                onCheckedChange = onSetEnableNoInterlacingPatches,
+                                                helpText = stringResource(R.string.settings_help_no_interlacing_patches),
+                                                onResetToDefault = { onSetEnableNoInterlacingPatches(globalDefaults.enableNoInterlacingPatches) }
+                                            )
+                                        }
+
+                                        row("settings_anti_blur", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_anti_blur),
+                                                checked = uiState.antiBlur,
+                                                onCheckedChange = onSetAntiBlur,
+                                                helpText = stringResource(R.string.settings_help_anti_blur),
+                                                onResetToDefault = { onSetAntiBlur(globalDefaults.antiBlur) }
+                                            )
+                                        }
+                                    }
+
+                                    GameMenuSectionId.FIXES_HARDWARE -> {
+                                        row("settings_hardware_fixes", "SidebarSectionTitle") {
+                                            SidebarSectionTitle(
+                                                text = stringResource(R.string.settings_hardware_fixes).uppercase(),
+                                                color = sectionTitleColor,
+                                                topPadding = sectionLabelTopPadding,
+                                                horizontalInset = sectionLabelInset
+                                            )
+                                        }
+
+                                        row("settings_cpu_sprite_render_size", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_cpu_sprite_render_size),
+                                                options = (0..10).map { value ->
+                                                    value to if (value == 0) {
+                                                        stringResource(R.string.settings_disabled_short)
+                                                    } else {
+                                                        value.toString()
+                                                    }
+                                                },
+                                                currentValue = uiState.cpuSpriteRenderSize,
+                                                onValueChange = onSetCpuSpriteRenderSize,
+                                                helpText = stringResource(R.string.settings_help_cpu_sprite_render_size),
+                                                onResetToDefault = { onSetCpuSpriteRenderSize(globalDefaults.cpuSpriteRenderSize) }
+                                            )
+                                        }
+
+                                        row("settings_cpu_sprite_render_level", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_cpu_sprite_render_level),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_cpu_sprite_render_level_sprites),
+                                                    1 to stringResource(R.string.settings_cpu_sprite_render_level_triangles),
+                                                    2 to stringResource(R.string.settings_cpu_sprite_render_level_blended)
+                                                ),
+                                                currentValue = uiState.cpuSpriteRenderLevel,
+                                                onValueChange = onSetCpuSpriteRenderLevel,
+                                                helpText = stringResource(R.string.settings_help_cpu_sprite_render_level),
+                                                onResetToDefault = { onSetCpuSpriteRenderLevel(globalDefaults.cpuSpriteRenderLevel) }
+                                            )
+                                        }
+
+                                        row("settings_software_clut_render", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_software_clut_render),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_disabled_short),
+                                                    1 to stringResource(R.string.settings_normal_short),
+                                                    2 to stringResource(R.string.settings_aggressive_short)
+                                                ),
+                                                currentValue = uiState.softwareClutRender,
+                                                onValueChange = onSetSoftwareClutRender,
+                                                helpText = stringResource(R.string.settings_help_software_clut_render),
+                                                onResetToDefault = { onSetSoftwareClutRender(globalDefaults.softwareClutRender) }
+                                            )
+                                        }
+
+                                        row("settings_gpu_target_clut", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_gpu_target_clut),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_hw_download_mode_disabled),
+                                                    1 to stringResource(R.string.settings_gpu_target_clut_exact),
+                                                    2 to stringResource(R.string.settings_gpu_target_clut_inside)
+                                                ),
+                                                currentValue = uiState.gpuTargetClutMode,
+                                                onValueChange = onSetGpuTargetClutMode,
+                                                helpText = stringResource(R.string.settings_help_gpu_target_clut),
+                                                onResetToDefault = { onSetGpuTargetClutMode(globalDefaults.gpuTargetClutMode) }
+                                            )
+                                        }
+
+                                        row("settings_auto_flush_hardware", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_auto_flush_hardware),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_hw_download_mode_disabled),
+                                                    1 to stringResource(R.string.settings_auto_flush_sprites),
+                                                    2 to stringResource(R.string.settings_auto_flush_all)
+                                                ),
+                                                currentValue = uiState.autoFlushHardware,
+                                                onValueChange = onSetAutoFlushHardware,
+                                                helpText = stringResource(R.string.settings_help_auto_flush_hardware),
+                                                onResetToDefault = { onSetAutoFlushHardware(globalDefaults.autoFlushHardware) }
+                                            )
+                                        }
+
+                                        row("settings_skip_draw_start", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_skip_draw_start),
+                                                valueLabelForValue = { it.toString() },
+                                                value = uiState.skipDrawStart.toFloat(),
+                                                range = 0f..100f,
+                                                steps = 99,
+                                                onValueChange = { onSetSkipDrawStart(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_skip_draw_start),
+                                                onResetToDefault = { onSetSkipDrawStart(globalDefaults.skipDrawStart) }
+                                            )
+                                        }
+
+                                        row("settings_skip_draw_end", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_skip_draw_end),
+                                                valueLabelForValue = { it.toString() },
+                                                value = uiState.skipDrawEnd.toFloat(),
+                                                range = 0f..100f,
+                                                steps = 99,
+                                                onValueChange = { onSetSkipDrawEnd(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_skip_draw_end),
+                                                onResetToDefault = { onSetSkipDrawEnd(globalDefaults.skipDrawEnd) }
+                                            )
+                                        }
+
+                                        row("settings_cpu_framebuffer_conversion", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_cpu_framebuffer_conversion),
+                                                checked = uiState.cpuFramebufferConversion,
+                                                onCheckedChange = onSetCpuFramebufferConversion,
+                                                helpText = stringResource(R.string.settings_help_cpu_framebuffer_conversion),
+                                                onResetToDefault = { onSetCpuFramebufferConversion(globalDefaults.cpuFramebufferConversion) }
+                                            )
+                                        }
+
+                                        row("settings_disable_depth_conversion", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_disable_depth_conversion),
+                                                checked = uiState.disableDepthConversion,
+                                                onCheckedChange = onSetDisableDepthConversion,
+                                                helpText = stringResource(R.string.settings_help_disable_depth_conversion),
+                                                onResetToDefault = { onSetDisableDepthConversion(globalDefaults.disableDepthConversion) }
+                                            )
+                                        }
+
+                                        row("settings_disable_safe_features", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_disable_safe_features),
+                                                checked = uiState.disableSafeFeatures,
+                                                onCheckedChange = onSetDisableSafeFeatures,
+                                                helpText = stringResource(R.string.settings_help_disable_safe_features),
+                                                onResetToDefault = { onSetDisableSafeFeatures(globalDefaults.disableSafeFeatures) }
+                                            )
+                                        }
+
+                                        row("settings_disable_render_fixes", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_disable_render_fixes),
+                                                checked = uiState.disableRenderFixes,
+                                                onCheckedChange = onSetDisableRenderFixes,
+                                                helpText = stringResource(R.string.settings_help_disable_render_fixes),
+                                                onResetToDefault = { onSetDisableRenderFixes(globalDefaults.disableRenderFixes) }
+                                            )
+                                        }
+
+                                        row("settings_preload_frame_data", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_preload_frame_data),
+                                                checked = uiState.preloadFrameData,
+                                                onCheckedChange = onSetPreloadFrameData,
+                                                helpText = stringResource(R.string.settings_help_preload_frame_data),
+                                                onResetToDefault = { onSetPreloadFrameData(globalDefaults.preloadFrameData) }
+                                            )
+                                        }
+
+                                        row("settings_disable_partial_invalidation", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_disable_partial_invalidation),
+                                                checked = uiState.disablePartialInvalidation,
+                                                onCheckedChange = onSetDisablePartialInvalidation,
+                                                helpText = stringResource(R.string.settings_help_disable_partial_invalidation),
+                                                onResetToDefault = { onSetDisablePartialInvalidation(globalDefaults.disablePartialInvalidation) }
+                                            )
+                                        }
+
+                                        row("settings_texture_inside_rt", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_texture_inside_rt),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_hw_download_mode_disabled),
+                                                    1 to stringResource(R.string.settings_texture_inside_rt_inside),
+                                                    2 to stringResource(R.string.settings_texture_inside_rt_merge)
+                                                ),
+                                                currentValue = uiState.textureInsideRt,
+                                                onValueChange = onSetTextureInsideRt,
+                                                helpText = stringResource(R.string.settings_help_texture_inside_rt),
+                                                onResetToDefault = { onSetTextureInsideRt(globalDefaults.textureInsideRt) }
+                                            )
+                                        }
+
+                                        row("settings_read_targets_on_close", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_read_targets_on_close),
+                                                checked = uiState.readTargetsOnClose,
+                                                onCheckedChange = onSetReadTargetsOnClose,
+                                                helpText = stringResource(R.string.settings_help_read_targets_on_close),
+                                                onResetToDefault = { onSetReadTargetsOnClose(globalDefaults.readTargetsOnClose) }
+                                            )
+                                        }
+
+                                        row("settings_estimate_texture_region", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_estimate_texture_region),
+                                                checked = uiState.estimateTextureRegion,
+                                                onCheckedChange = onSetEstimateTextureRegion,
+                                                helpText = stringResource(R.string.settings_help_estimate_texture_region),
+                                                onResetToDefault = { onSetEstimateTextureRegion(globalDefaults.estimateTextureRegion) }
+                                            )
+                                        }
+
+                                        row("settings_gpu_palette_conversion", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_gpu_palette_conversion),
+                                                checked = uiState.gpuPaletteConversion,
+                                                onCheckedChange = onSetGpuPaletteConversion,
+                                                helpText = stringResource(R.string.settings_help_gpu_palette_conversion),
+                                                onResetToDefault = { onSetGpuPaletteConversion(globalDefaults.gpuPaletteConversion) }
+                                            )
+                                        }
+                                    }
+
+                                    GameMenuSectionId.FIXES_UPSCALING -> {
+                                        row("settings_upscaling_fixes", "SidebarSectionTitle") {
+                                            SidebarSectionTitle(
+                                                text = stringResource(R.string.settings_upscaling_fixes).uppercase(),
+                                                color = sectionTitleColor,
+                                                topPadding = sectionLabelTopPadding,
+                                                horizontalInset = sectionLabelInset
+                                            )
+                                        }
+
+                                        row("settings_half_pixel_offset", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_half_pixel_offset),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_half_pixel_off),
+                                                    1 to stringResource(R.string.settings_half_pixel_normal),
+                                                    2 to stringResource(R.string.settings_half_pixel_special),
+                                                    3 to stringResource(R.string.settings_half_pixel_special_aggressive),
+                                                    4 to stringResource(R.string.settings_half_pixel_native),
+                                                    5 to stringResource(R.string.settings_half_pixel_native_tex)
+                                                ),
+                                                currentValue = uiState.halfPixelOffset,
+                                                onValueChange = onSetHalfPixelOffset,
+                                                helpText = stringResource(R.string.settings_help_half_pixel_offset),
+                                                onResetToDefault = { onSetHalfPixelOffset(globalDefaults.halfPixelOffset) }
+                                            )
+                                        }
+
+                                        row("settings_native_scaling", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_native_scaling),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_native_scaling_off),
+                                                    1 to stringResource(R.string.settings_native_scaling_normal),
+                                                    2 to stringResource(R.string.settings_native_scaling_aggressive),
+                                                    3 to stringResource(R.string.settings_native_scaling_normal_maintain_upscale),
+                                                    4 to stringResource(R.string.settings_native_scaling_aggressive_maintain_upscale)
+                                                ),
+                                                currentValue = uiState.nativeScaling,
+                                                onValueChange = onSetNativeScaling,
+                                                helpText = stringResource(R.string.settings_help_native_scaling),
+                                                onResetToDefault = { onSetNativeScaling(globalDefaults.nativeScaling) }
+                                            )
+                                        }
+
+                                        row("settings_round_sprite", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_round_sprite),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_half_pixel_off),
+                                                    1 to stringResource(R.string.settings_round_sprite_half),
+                                                    2 to stringResource(R.string.settings_round_sprite_full)
+                                                ),
+                                                currentValue = uiState.roundSprite,
+                                                onValueChange = onSetRoundSprite,
+                                                helpText = stringResource(R.string.settings_help_round_sprite),
+                                                onResetToDefault = { onSetRoundSprite(globalDefaults.roundSprite) }
+                                            )
+                                        }
+
+                                        row("settings_bilinear_upscale", "LiveChipsSelectionRow") {
+                                            LiveChipsSelectionRow(
+                                                title = stringResource(R.string.settings_bilinear_upscale),
+                                                options = listOf(
+                                                    0 to stringResource(R.string.settings_trilinear_filtering_auto),
+                                                    1 to stringResource(R.string.settings_bilinear_upscale_force_bilinear),
+                                                    2 to stringResource(R.string.settings_bilinear_upscale_force_nearest)
+                                                ),
+                                                currentValue = uiState.bilinearUpscale,
+                                                onValueChange = onSetBilinearUpscale,
+                                                helpText = stringResource(R.string.settings_help_bilinear_upscale),
+                                                onResetToDefault = { onSetBilinearUpscale(globalDefaults.bilinearUpscale) }
+                                            )
+                                        }
+
+                                        row("settings_texture_offset_x", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_texture_offset_x),
+                                                valueLabelForValue = { it.toString() },
+                                                value = uiState.textureOffsetX.toFloat(),
+                                                range = -512f..512f,
+                                                steps = 1023,
+                                                onValueChange = { onSetTextureOffsetX(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_texture_offset_x),
+                                                onResetToDefault = { onSetTextureOffsetX(globalDefaults.textureOffsetX) }
+                                            )
+                                        }
+
+                                        row("settings_texture_offset_y", "LiveSliderRow") {
+                                            LiveSliderRow(
+                                                title = stringResource(R.string.settings_texture_offset_y),
+                                                valueLabelForValue = { it.toString() },
+                                                value = uiState.textureOffsetY.toFloat(),
+                                                range = -512f..512f,
+                                                steps = 1023,
+                                                onValueChange = { onSetTextureOffsetY(it.toInt()) },
+                                                helpText = stringResource(R.string.settings_help_texture_offset_y),
+                                                onResetToDefault = { onSetTextureOffsetY(globalDefaults.textureOffsetY) }
+                                            )
+                                        }
+
+                                        row("settings_align_sprite", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_align_sprite),
+                                                checked = uiState.alignSprite,
+                                                onCheckedChange = onSetAlignSprite,
+                                                helpText = stringResource(R.string.settings_help_align_sprite),
+                                                onResetToDefault = { onSetAlignSprite(globalDefaults.alignSprite) }
+                                            )
+                                        }
+
+                                        row("settings_merge_sprite", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_merge_sprite),
+                                                checked = uiState.mergeSprite,
+                                                onCheckedChange = onSetMergeSprite,
+                                                helpText = stringResource(R.string.settings_help_merge_sprite),
+                                                onResetToDefault = { onSetMergeSprite(globalDefaults.mergeSprite) }
+                                            )
+                                        }
+
+                                        row("settings_force_even_sprite_position", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_force_even_sprite_position),
+                                                checked = uiState.forceEvenSpritePosition,
+                                                onCheckedChange = onSetForceEvenSpritePosition,
+                                                helpText = stringResource(R.string.settings_help_force_even_sprite_position),
+                                                onResetToDefault = { onSetForceEvenSpritePosition(globalDefaults.forceEvenSpritePosition) }
+                                            )
+                                        }
+
+                                        row("settings_native_palette_draw", "SettingsToggle") {
+                                            SettingsToggle(
+                                                title = stringResource(R.string.settings_native_palette_draw),
+                                                checked = uiState.nativePaletteDraw,
+                                                onCheckedChange = onSetNativePaletteDraw,
+                                                helpText = stringResource(R.string.settings_help_native_palette_draw),
+                                                onResetToDefault = { onSetNativePaletteDraw(globalDefaults.nativePaletteDraw) }
+                                            )
+                                        }
+                                    }
+
+                                    else -> Unit
+                                }
+                            }
+                    }
+
+                    EmulationMenuTab.Achievements -> {
+                        item {
+                        if (GameMenuSectionId.ACHIEVEMENTS_PROGRESS !in uiState.hiddenGameMenuSections) {
+                            OverlayAchievementsPane(
+                                gamePath = currentGamePath,
+                                currentGameTitle = uiState.currentGameTitle,
+                                retroState = retroState
+                            )
+                        }
+                        }
+                    }
+                }
+    }
+
+    GameMenuLayoutHost(
+        style = uiState.gameMenuLayoutStyle,
+        modifier = modifier,
+        menuTabs = menuTabs,
+        selectedMenuTab = selectedMenuTab,
+        selectedTabListState = selectedTabListState,
+        railFocusRequesters = railFocusRequesters,
+        contentBottomPadding = drawerBottomPadding + animatedBottomInset,
+        rightInset = animatedRightInset,
+        sectionSpacing = sectionSpacing,
+        onSelectTab = { selectedMenuTabName = it.name },
+        onClose = onClose,
+        content = menuContent
+    )
+}
+
+@Composable
+private fun GameMenuLayoutHost(
+    style: GameMenuLayoutStyle,
+    modifier: Modifier,
+    menuTabs: List<EmulationMenuTab>,
+    selectedMenuTab: EmulationMenuTab,
+    selectedTabListState: LazyListState,
+    railFocusRequesters: Map<EmulationMenuTab, FocusRequester>,
+    contentBottomPadding: Dp,
+    rightInset: Dp,
+    sectionSpacing: Dp,
+    onSelectTab: (EmulationMenuTab) -> Unit,
+    onClose: () -> Unit,
+    content: LazyListScope.() -> Unit
+) {
+    val safeModifier = modifier
+        .padding(WindowInsets.displayCutout.asPaddingValues())
+        .padding(WindowInsets.statusBars.asPaddingValues())
+
+    when (style) {
+        GameMenuLayoutStyle.SIDEBAR -> {
+            Row(
+                modifier = safeModifier.padding(end = 16.dp + rightInset, top = 16.dp, bottom = 16.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.Top
+            ) {
+                GameMenuContentSurface(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .widthIn(min = 300.dp, max = 420.dp),
+                    shape = neonShape(28.dp),
+                    listState = selectedTabListState,
+                    bottomPadding = contentBottomPadding,
+                    sectionSpacing = sectionSpacing,
+                    content = content
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                GameMenuVerticalNavigation(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(74.dp),
+                    menuTabs = menuTabs,
+                    selectedMenuTab = selectedMenuTab,
+                    railFocusRequesters = railFocusRequesters,
+                    showLabels = false,
+                    onSelectTab = onSelectTab,
+                    onClose = onClose
+                )
+            }
+        }
+
+        GameMenuLayoutStyle.DASHBOARD -> {
+            Box(
+                modifier = safeModifier
+                    .fillMaxSize()
+                    .padding(end = rightInset, top = 16.dp, bottom = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.94f)
+                        .fillMaxHeight(),
+                    shape = neonShape(24.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+                    shadowElevation = 12.dp
+                ) {
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        GameMenuVerticalNavigation(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .width(196.dp),
+                            menuTabs = menuTabs,
+                            selectedMenuTab = selectedMenuTab,
+                            railFocusRequesters = railFocusRequesters,
+                            showLabels = true,
+                            onSelectTab = onSelectTab,
+                            onClose = onClose
+                        )
+                        GameMenuContentColumn(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            listState = selectedTabListState,
+                            bottomPadding = 18.dp,
+                            sectionSpacing = sectionSpacing,
+                            content = content
+                        )
+                    }
+                }
+            }
+        }
+
+        GameMenuLayoutStyle.COMMAND_CENTER -> {
+            Box(
+                modifier = safeModifier
+                    .fillMaxSize()
+                    .padding(end = rightInset, top = 16.dp, bottom = 16.dp),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.96f)
+                        .fillMaxHeight(),
+                    shape = neonShapeCorners(topStart = 30.dp, topEnd = 30.dp, bottomStart = 18.dp, bottomEnd = 18.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.50f)),
+                    shadowElevation = 14.dp
+                ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        GameMenuHorizontalNavigation(
+                            menuTabs = menuTabs,
+                            selectedMenuTab = selectedMenuTab,
+                            railFocusRequesters = railFocusRequesters,
+                            iconOnly = false,
+                            onSelectTab = onSelectTab,
+                            onClose = onClose
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                        GameMenuContentColumn(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            listState = selectedTabListState,
+                            bottomPadding = 18.dp,
+                            sectionSpacing = sectionSpacing,
+                            content = content
+                        )
+                    }
+                }
+            }
+        }
+
+        GameMenuLayoutStyle.COMPACT -> {
+            Box(
+                modifier = safeModifier
+                    .fillMaxSize()
+                    .padding(end = 12.dp + rightInset, top = 16.dp, bottom = 16.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .widthIn(min = 300.dp, max = 352.dp),
+                    shape = neonShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
+                    shadowElevation = 10.dp
+                ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        GameMenuHorizontalNavigation(
+                            menuTabs = menuTabs,
+                            selectedMenuTab = selectedMenuTab,
+                            railFocusRequesters = railFocusRequesters,
+                            iconOnly = true,
+                            pinClose = true,
+                            onSelectTab = onSelectTab,
+                            onClose = onClose
+                        )
+                        GameMenuContentColumn(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            listState = selectedTabListState,
+                            bottomPadding = contentBottomPadding,
+                            sectionSpacing = 10.dp,
+                            horizontalPadding = 12.dp,
+                            verticalPadding = 12.dp,
+                            content = content
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GameMenuContentSurface(
+    modifier: Modifier,
+    shape: Shape,
+    listState: LazyListState,
+    bottomPadding: Dp,
+    sectionSpacing: Dp,
+    content: LazyListScope.() -> Unit
+) {
+    Surface(
+        modifier = modifier,
+        shape = shape,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+    ) {
+        GameMenuContentColumn(
+            listState = listState,
+            bottomPadding = bottomPadding,
+            sectionSpacing = sectionSpacing,
+            content = content
+        )
+    }
+}
+
+@Composable
+private fun GameMenuContentColumn(
+    modifier: Modifier = Modifier,
+    listState: LazyListState,
+    bottomPadding: Dp,
+    sectionSpacing: Dp,
+    horizontalPadding: Dp = 18.dp,
+    verticalPadding: Dp = 18.dp,
+    content: LazyListScope.() -> Unit
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        state = listState,
+        contentPadding = PaddingValues(
+            start = horizontalPadding,
+            top = verticalPadding,
+            end = horizontalPadding,
+            bottom = verticalPadding + bottomPadding
+        ),
+        verticalArrangement = Arrangement.spacedBy(sectionSpacing),
+        content = content
+    )
+}
+
+/** Each setting is its own lazy item; a long section never becomes a single expensive scroll item. */
+private class GameMenuSectionScope(
+    private val list: LazyListScope,
+    private val section: GameMenuSectionId
+) {
+    fun row(key: String, contentType: String, content: @Composable androidx.compose.foundation.lazy.LazyItemScope.() -> Unit) {
+        list.item(key = "${section.name}:$key", contentType = contentType, content = content)
+    }
+}
+
+private fun LazyListScope.menuRows(
+    sections: List<GameMenuSectionId>,
+    content: GameMenuSectionScope.(GameMenuSectionId) -> Unit
+) {
+    sections.forEach { section -> GameMenuSectionScope(this, section).content(section) }
+}
+
+/**
+ * Emits a cohesive browser section as one item. Individual settings use [menuRows].
+ *
+ * The [Column] around each section reproduces the spacing the former single scrolling column
+ * applied between every row, so the rendered layout is unchanged.
+ */
+private fun LazyListScope.menuSection(
+    sections: List<GameMenuSectionId>,
+    spacing: Dp,
+    content: @Composable (GameMenuSectionId) -> Unit
+) {
+    items(sections, key = { it.name }, contentType = { "menu-section" }) { section ->
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(spacing)
+        ) {
+            content(section)
+        }
+    }
+}
+
+/** [menuSection] for the tab that merges neighbouring sections and needs the section index. */
+private fun LazyListScope.menuSectionIndexed(
+    sections: List<GameMenuSectionId>,
+    spacing: Dp,
+    content: @Composable (Int, GameMenuSectionId) -> Unit
+) {
+    itemsIndexed(sections, key = { _, section -> section.name }, contentType = { _, _ -> "menu-section" }) { index, section ->
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(spacing)
+        ) {
+            content(index, section)
+        }
+    }
+}
+
+@Composable
+private fun GameMenuVerticalNavigation(
+    modifier: Modifier,
+    menuTabs: List<EmulationMenuTab>,
+    selectedMenuTab: EmulationMenuTab,
+    railFocusRequesters: Map<EmulationMenuTab, FocusRequester>,
+    showLabels: Boolean,
+    onSelectTab: (EmulationMenuTab) -> Unit,
+    onClose: () -> Unit
+) {
+    Surface(
+        modifier = modifier,
+            shape = if (showLabels) neonShapeCorners(topStart = 24.dp, bottomStart = 24.dp) else neonShape(24.dp),
+        color = if (showLabels) {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        } else {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+        },
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f))
+    ) {
+        val railScrollState = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(railScrollState)
+                .padding(vertical = 16.dp, horizontal = if (showLabels) 12.dp else 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            menuTabs.forEach { tab ->
+                if (showLabels) {
+                    GameMenuNavigationTile(
+                        modifier = Modifier.focusRequester(railFocusRequesters.getValue(tab)),
+                        tab = tab,
+                        selected = selectedMenuTab == tab,
+                        iconOnly = false,
+                        onClick = { onSelectTab(tab) }
+                    )
+                } else {
+                    EmulationMenuRailButton(
+                        modifier = Modifier.focusRequester(railFocusRequesters.getValue(tab)),
+                        icon = gameMenuTabIcon(tab),
+                        contentDescription = gameMenuTabLabel(tab),
+                        selected = selectedMenuTab == tab,
+                        onClick = { onSelectTab(tab) }
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            if (showLabels) {
+                GameMenuNavigationTile(
+                    icon = Icons.AutoMirrored.Rounded.ExitToApp,
+                    label = stringResource(R.string.emulation_close_menu),
+                    selected = false,
+                    destructive = true,
+                    iconOnly = false,
+                    onClick = onClose
+                )
+            } else {
+                EmulationMenuRailButton(
+                    icon = Icons.AutoMirrored.Rounded.ExitToApp,
+                    contentDescription = stringResource(R.string.emulation_close_menu),
+                    selected = false,
+                    onClick = onClose,
+                    isDestructive = true
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GameMenuHorizontalNavigation(
+    menuTabs: List<EmulationMenuTab>,
+    selectedMenuTab: EmulationMenuTab,
+    railFocusRequesters: Map<EmulationMenuTab, FocusRequester>,
+    iconOnly: Boolean,
+    pinClose: Boolean = false,
+    onSelectTab: (EmulationMenuTab) -> Unit,
+    onClose: () -> Unit
+) {
+    if (pinClose) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            LazyRow(
+                modifier = Modifier
+                    .weight(1f)
+                    .tvFocusGroup(),
+                contentPadding = PaddingValues(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                items(menuTabs, key = { it.name }) { tab ->
+                    GameMenuNavigationTile(
+                        modifier = Modifier.focusRequester(railFocusRequesters.getValue(tab)),
+                        tab = tab,
+                        selected = selectedMenuTab == tab,
+                        iconOnly = iconOnly,
+                        fillWidth = false,
+                        onClick = { onSelectTab(tab) }
+                    )
+                }
+            }
+            GameMenuNavigationTile(
+                modifier = Modifier.padding(end = 12.dp),
+                icon = Icons.AutoMirrored.Rounded.ExitToApp,
+                label = stringResource(R.string.emulation_close_menu),
+                selected = false,
+                destructive = true,
+                iconOnly = iconOnly,
+                fillWidth = false,
+                onClick = onClose
+            )
+        }
+        return
+    }
+
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .tvFocusGroup(),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        items(menuTabs, key = { it.name }) { tab ->
+            GameMenuNavigationTile(
+                modifier = Modifier.focusRequester(railFocusRequesters.getValue(tab)),
+                tab = tab,
+                selected = selectedMenuTab == tab,
+                iconOnly = iconOnly,
+                fillWidth = false,
+                onClick = { onSelectTab(tab) }
+            )
+        }
+        item(key = "close") {
+            GameMenuNavigationTile(
+                icon = Icons.AutoMirrored.Rounded.ExitToApp,
+                label = stringResource(R.string.emulation_close_menu),
+                selected = false,
+                destructive = true,
+                iconOnly = iconOnly,
+                fillWidth = false,
+                onClick = onClose
+            )
+        }
+    }
+}
+
+@Composable
+private fun GameMenuNavigationTile(
+    modifier: Modifier = Modifier,
+    tab: EmulationMenuTab? = null,
+    icon: ImageVector? = null,
+    label: String? = null,
+    selected: Boolean,
+    destructive: Boolean = false,
+    iconOnly: Boolean,
+    fillWidth: Boolean = !iconOnly,
+    onClick: () -> Unit
+) {
+    val resolvedIcon = icon ?: tab?.let(::gameMenuTabIcon) ?: Icons.Rounded.Menu
+    val resolvedLabel = label ?: tab?.let { gameMenuTabLabel(it) }.orEmpty()
+            val shape = neonShape(if (iconOnly) 14.dp else 16.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    Surface(
+        modifier = modifier
+            .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .focusable(interactionSource = interactionSource),
+        shape = shape,
+        color = when {
+            destructive -> MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+            selected -> MaterialTheme.colorScheme.primaryContainer
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.26f)
+        },
+        border = BorderStroke(
+            if (isFocused) 2.dp else 1.dp,
+            when {
+                isFocused -> MaterialTheme.colorScheme.primary
+                destructive -> MaterialTheme.colorScheme.error.copy(alpha = 0.24f)
+                selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
+                else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+            }
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                horizontal = if (iconOnly) 13.dp else 14.dp,
+                vertical = if (iconOnly) 12.dp else 13.dp
+            ),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = resolvedIcon,
+                contentDescription = resolvedLabel,
+                tint = when {
+                    destructive -> MaterialTheme.colorScheme.error
+                    selected -> MaterialTheme.colorScheme.onPrimaryContainer
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.size(21.dp)
+            )
+            if (!iconOnly) {
+                Text(
+                    text = resolvedLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = when {
+                        destructive -> MaterialTheme.colorScheme.error
+                        selected -> MaterialTheme.colorScheme.onPrimaryContainer
+                        else -> MaterialTheme.colorScheme.onSurface
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+private fun gameMenuTabIcon(tab: EmulationMenuTab): ImageVector = when (tab) {
+    EmulationMenuTab.Session -> Icons.Rounded.Menu
+    EmulationMenuTab.Controls -> Icons.Rounded.Gamepad
+    EmulationMenuTab.Emulation -> Icons.Rounded.SettingsSuggest
+    EmulationMenuTab.Cheats -> Icons.Rounded.AutoFixHigh
+    EmulationMenuTab.Shaders -> Icons.Rounded.Gradient
+    EmulationMenuTab.Graphics -> Icons.Rounded.Fullscreen
+    EmulationMenuTab.Fixes -> Icons.Rounded.Star
+    EmulationMenuTab.Achievements -> Icons.Rounded.LockOpen
+}
+
+@Composable
+private fun gameMenuTabLabel(tab: EmulationMenuTab): String = when (tab) {
+    EmulationMenuTab.Session -> stringResource(R.string.emulation_session_tab)
+    EmulationMenuTab.Controls -> stringResource(R.string.settings_controls_tab)
+    EmulationMenuTab.Emulation -> stringResource(R.string.settings_emulation_tab)
+    EmulationMenuTab.Cheats -> stringResource(R.string.emulation_cheats_title)
+    EmulationMenuTab.Shaders -> stringResource(R.string.emulation_shaders_tab)
+    EmulationMenuTab.Graphics -> stringResource(R.string.settings_graphics_tab)
+    EmulationMenuTab.Fixes -> stringResource(R.string.settings_fixes_tab)
+    EmulationMenuTab.Achievements -> stringResource(R.string.emulation_achievements_tab)
+}
+
+@Composable
+private fun OverlayAchievementsPane(
+    gamePath: String?,
+    currentGameTitle: String,
+    retroState: com.sbro.emucorex.core.utils.RetroAchievementsLiveUiState
+) {
+    val context = LocalContext.current
+    val repository = remember(context) { RetroAchievementsRepository(context) }
+    val cachedActiveGameData = remember(
+        gamePath,
+        currentGameTitle,
+        retroState.enabled,
+        retroState.user?.username,
+        retroState.game?.gameId
+    ) {
+        repository.peekCachedOverlayGameData(
+            gamePath = gamePath,
+            gameTitle = retroState.game?.title ?: currentGameTitle,
+            gameId = retroState.game?.gameId
+        )
+    }
+    val contentState by produceState(
+        initialValue = OverlayAchievementsContentState(
+            isLoading = cachedActiveGameData == null && gamePath != null && retroState.enabled && retroState.user != null,
+            gameData = cachedActiveGameData
+        ),
+        gamePath,
+        currentGameTitle,
+        retroState.enabled,
+        retroState.user?.username,
+        retroState.game?.gameId
+    ) {
+        if (gamePath.isNullOrBlank() || !retroState.enabled || retroState.user == null) {
+            value = OverlayAchievementsContentState(isLoading = false, gameData = null)
+            return@produceState
+        }
+        val cachedData = repository.peekCachedOverlayGameData(
+            gamePath = gamePath,
+            gameTitle = retroState.game?.title ?: currentGameTitle,
+            gameId = retroState.game?.gameId
+        )
+        value = if (cachedData != null) {
+            OverlayAchievementsContentState(isLoading = false, gameData = cachedData)
+        } else {
+            OverlayAchievementsContentState(isLoading = true, gameData = null)
+        }
+        value = withContext(Dispatchers.IO) {
+            val loadedData = loadOverlayRetroAchievementsGameDataWithFallback(
+                repository = repository,
+                gamePath = gamePath,
+                gameTitle = currentGameTitle,
+                allowRetry = cachedData == null
+            )
+                ?: cachedData
+            repository.cacheOverlayGameData(
+                gamePath = gamePath,
+                gameTitle = retroState.game?.title ?: currentGameTitle,
+                data = loadedData
+            )
+            OverlayAchievementsContentState(
+                isLoading = false,
+                gameData = loadedData
+            )
+        }
+    }
+
+    SidebarSectionTitle(
+        text = stringResource(R.string.emulation_achievements_tab).uppercase(),
+        color = MaterialTheme.colorScheme.primary,
+        topPadding = 8.dp,
+        horizontalInset = 4.dp
+    )
+
+    when {
+        gamePath.isNullOrBlank() -> {
+            OverlayAchievementsNotice(stringResource(R.string.emulation_achievements_bios_unavailable))
+        }
+
+        !retroState.isSupported -> {
+            OverlayAchievementsNotice(stringResource(R.string.emulation_achievements_not_supported))
+        }
+
+        !retroState.enabled -> {
+            OverlayAchievementsNotice(stringResource(R.string.settings_ra_empty_disabled))
+        }
+
+        retroState.user == null -> {
+            OverlayAchievementsNotice(stringResource(R.string.achievements_login_to_sync))
+        }
+
+        contentState.isLoading -> {
+            OverlayAchievementsNotice(stringResource(R.string.achievements_loading))
+        }
+
+        contentState.gameData == null && retroState.game == null -> {
+            OverlayAchievementsNotice(stringResource(R.string.emulation_achievements_unavailable))
+        }
+
+        else -> {
+            val gameData = contentState.gameData
+            val liveGame = retroState.game
+            val subtitle = liveGame?.richPresence?.takeIf { it.isNotBlank() }
+                ?: gameData?.title
+                ?: currentGameTitle
+            var showAllAchievements by remember(gameData?.gameId) { mutableStateOf(false) }
+            val sortedAchievements = remember(gameData) {
+                gameData?.achievements
+                    ?.sortedWith(
+                        compareByDescending<RetroAchievementEntry> { it.isEarned }
+                            .thenBy { it.title.lowercase() }
+                    )
+                    .orEmpty()
+            }
+            val visibleAchievements = remember(sortedAchievements, showAllAchievements) {
+                if (showAllAchievements) sortedAchievements else sortedAchievements.take(8)
+            }
+            val headerTitle = liveGame?.title?.ifBlank { null }
+                ?: gameData?.title?.ifBlank { null }
+                ?: currentGameTitle.ifBlank { stringResource(R.string.emulation_achievements_tab) }
+            val earnedCount = liveGame?.earnedAchievements ?: gameData?.earnedCount ?: 0
+            val totalCount = liveGame?.totalAchievements ?: gameData?.totalCount ?: 0
+            val earnedPoints = liveGame?.earnedPoints ?: gameData?.earnedPoints ?: 0
+            val totalPoints = liveGame?.totalPoints ?: gameData?.totalPoints ?: 0
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = neonShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = headerTitle,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    subtitle.takeIf { it.isNotBlank() && it != headerTitle }?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OverlayAchievementsMetricCard(
+                            modifier = Modifier.weight(1f),
+                            value = "$earnedCount/$totalCount",
+                            label = stringResource(R.string.settings_ra_achievements_label)
+                        )
+                        OverlayAchievementsMetricCard(
+                            modifier = Modifier.weight(1f),
+                            value = "$earnedPoints/$totalPoints",
+                            label = stringResource(R.string.settings_ra_points_label)
+                        )
+                    }
+                    if (visibleAchievements.isEmpty()) {
+                        OverlayAchievementsNotice(stringResource(R.string.achievements_game_empty))
+                    } else {
+                        visibleAchievements.forEach { achievement ->
+                            OverlayAchievementRow(achievement = achievement)
+                        }
+                        val hiddenCount = sortedAchievements.size - visibleAchievements.size
+                        if (hiddenCount > 0) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.emulation_achievements_more, hiddenCount),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = { showAllAchievements = true }) {
+                                    Text(text = stringResource(R.string.emulation_achievements_show_all))
+                                }
+                            }
+                        } else if (showAllAchievements && sortedAchievements.size > 8) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(onClick = { showAllAchievements = false }) {
+                                    Text(text = stringResource(R.string.emulation_achievements_show_less))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private suspend fun loadActiveRetroAchievementsGameDataWithRetry(
+    repository: RetroAchievementsRepository,
+    allowRetry: Boolean
+): RetroAchievementGameData? {
+    val attempts = if (allowRetry) 8 else 1
+    repeat(attempts) { attempt ->
+        val data = runCatching { repository.loadActiveGameData() }.getOrNull()
+        if (data != null && (data.achievements.isNotEmpty() || data.totalCount > 0)) {
+            return data
+        }
+        if (attempt < attempts - 1) {
+            delay(500.milliseconds)
+            RetroAchievementsLiveStateManager.refreshFromNative()
+        }
+    }
+    return null
+}
+
+private suspend fun loadOverlayRetroAchievementsGameDataWithFallback(
+    repository: RetroAchievementsRepository,
+    gamePath: String,
+    gameTitle: String,
+    allowRetry: Boolean
+): RetroAchievementGameData? {
+    val activeData = loadActiveRetroAchievementsGameDataWithRetry(repository, allowRetry)
+    if (activeData != null && (activeData.achievements.isNotEmpty() || activeData.totalCount > 0)) {
+        return activeData
+    }
+
+    return runCatching { repository.loadGameData(gamePath) }.getOrNull()
+        ?: gameTitle.takeIf { it.isNotBlank() }?.let { title ->
+            runCatching { repository.loadGameData(title) }.getOrNull()
+        }
+}
+
+@Composable
+private fun OverlayAchievementsMetricCard(
+    modifier: Modifier = Modifier,
+    value: String,
+    label: String
+) {
+    Surface(
+        modifier = modifier,
+        shape = neonShape(16.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverlayAchievementsNotice(text: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = neonShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun OverlayAchievementRow(achievement: RetroAchievementEntry) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = neonShape(16.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.80f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BitmapPathImage(
+                imagePath = if (achievement.isEarned) {
+                    achievement.badgeUrl ?: achievement.badgeLockedUrl
+                } else {
+                    achievement.badgeLockedUrl ?: achievement.badgeUrl
+                },
+                contentDescription = achievement.title,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(neonShape(12.dp)),
+                fallback = {
+                    Icon(
+                        imageVector = Icons.Rounded.Star,
+                        contentDescription = null,
+                        tint = if (achievement.isEarned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = achievement.title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = achievement.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (achievement.hasMeasuredProgress) {
+                    Text(
+                        text = stringResource(
+                            R.string.achievements_measured_progress,
+                            achievement.measuredProgress.orEmpty()
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = achievement.points.toString(),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = stringResource(
+                        when {
+                            achievement.isPrimed -> R.string.achievements_status_primed
+                            achievement.isEarned -> R.string.achievements_status_earned
+                            else -> R.string.achievements_status_locked
+                        }
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (achievement.isEarned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmulationMenuRailButton(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    contentDescription: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    isDestructive: Boolean = false
+) {
+    val shape = neonShape(18.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected && !isDestructive) 1.08f else 1f,
+        animationSpec = tween(durationMillis = 220),
+        label = "emulation_menu_rail_icon_scale"
+    )
+    val border = BorderStroke(
+        if (isFocused) 2.dp else 1.dp,
+        when {
+            isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.95f)
+            isDestructive -> MaterialTheme.colorScheme.error.copy(alpha = 0.22f)
+            selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
+            else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.52f)
+        }
+    )
+    Surface(
+        modifier = modifier
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    UiSoundManager.onUiInteraction()
+                    onClick()
+                }
+            )
+            .focusable(interactionSource = interactionSource),
+        shape = shape,
+        color = when {
+            isDestructive -> MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+            selected -> MaterialTheme.colorScheme.primaryContainer
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)
+        },
+        border = border
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = when {
+                    isDestructive -> MaterialTheme.colorScheme.error
+                    selected -> MaterialTheme.colorScheme.onPrimaryContainer
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier
+                    .size(22.dp)
+                    .graphicsLayer(
+                        scaleX = iconScale,
+                        scaleY = iconScale
+                    )
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmulationGamepadBindingRow(
+    title: String,
+    value: String,
+    autoLabel: String?,
+    icon: ImageVector = Icons.Rounded.Gamepad,
+    valueColor: Color? = null,
+    onBindClick: () -> Unit,
+    onClearClick: (() -> Unit)?
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = neonShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f),
+        onClick = onBindClick
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(neonShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = valueColor ?: MaterialTheme.colorScheme.primary
+                    )
+                    autoLabel?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            onClearClick?.let {
+                TextButton(onClick = it) {
+                    Text(stringResource(R.string.settings_gamepad_mapping_clear))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun gamepadPlayerLabel(padIndex: Int): String {
+    return stringResource(
+        if (padIndex == 0) R.string.settings_gamepad_player_1 else R.string.settings_gamepad_player_2
+    )
+}
+
+@Composable
+private fun ConnectedInputBadge(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    active: Boolean
+) {
+    val accent = Color(0xFF50D9A0)
+    Box(
+        modifier = Modifier
+            .clip(neonShape(12.dp))
+            .background(accent.copy(alpha = if (active) 0.20f else 0.10f))
+            .padding(horizontal = 9.dp, vertical = 9.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (active) accent else accent.copy(alpha = 0.45f),
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+@Composable
+private fun SettingsToggle(
+    title: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit,
+    helpText: String? = null,
+    onResetToDefault: (() -> Unit)? = null
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val context = LocalContext.current
+    val resetToast = stringResource(R.string.settings_reset_to_default_toast)
+    val shape = neonShape(16.dp)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = { onCheckedChange(!checked) },
+                onLongClick = if (enabled) onResetToDefault?.let {
+                    {
+                        it()
+                        Toast.makeText(context, resetToast, Toast.LENGTH_SHORT).show()
+                    }
+                } else null
+            )
+            .gamepadFocusableCard(
+                shape = shape,
+                interactionSource = interactionSource,
+                addFocusTarget = false
+            ),
+        shape = shape,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    modifier = Modifier.weight(1f, fill = false),
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                helpText?.let {
+                    SettingHelpButton(title = title, description = it)
+                }
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = null,
+                enabled = enabled,
+                modifier = Modifier.scale(0.85f),
+                colors = androidx.compose.material3.SwitchDefaults.colors(
+                    checkedThumbColor = MaterialTheme.colorScheme.primary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun SidebarSectionTitle(
+    text: String,
+    color: Color,
+    topPadding: Dp,
+    horizontalInset: Dp
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 1.sp
+        ),
+        color = color,
+        modifier = Modifier.padding(top = topPadding, start = horizontalInset, end = horizontalInset)
+    )
+}
+
+@Composable
+private fun LiveSelectionRow(
+    title: String,
+    options: List<LiveSelectionOption>,
+    currentValue: Int,
+    onValueChange: (Int) -> Unit,
+    allowWrap: Boolean = true,
+    horizontalScrolling: Boolean = false,
+    helpText: String? = null,
+    onResetToDefault: (() -> Unit)? = null
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val context = LocalContext.current
+    val resetToast = stringResource(R.string.settings_reset_to_default_toast)
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 4.dp)
+                .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = {},
+                    onLongClick = onResetToDefault?.let {
+                        {
+                            it()
+                            Toast.makeText(context, resetToast, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            helpText?.let {
+                SettingHelpButton(title = title, description = it)
+            }
+        }
+        if (allowWrap) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                options.forEach { option ->
+                    LiveSelectionChip(
+                        option = option,
+                        selected = option.value == currentValue,
+                        onClick = { onValueChange(option.value) }
+                    )
+                }
+            }
+        } else if (horizontalScrolling) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalViewportBleed(18.dp),
+                contentPadding = PaddingValues(horizontal = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(options, key = { it.value }) { option ->
+                    LiveSelectionChip(
+                        option = option,
+                        selected = option.value == currentValue,
+                        onClick = { onValueChange(option.value) }
+                    )
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                options.forEach { option ->
+                    val selected = option.value == currentValue
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        onClick = { onValueChange(option.value) },
+                        shape = neonShape(12.dp),
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
+                        },
+                        border = BorderStroke(
+                            1.dp,
+                            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.38f)
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 6.dp, vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (option.icon != null) {
+                                Icon(
+                                    imageVector = option.icon,
+                                    contentDescription = option.contentDescription,
+                                    tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            } else {
+                                Text(
+                                    text = option.label.orEmpty(),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveSelectionChip(
+    option: LiveSelectionOption,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val iconOnly = option.icon != null && option.label.isNullOrBlank()
+    FilterChip(
+        shape = neonChipShape(),
+        modifier = modifier.then(if (iconOnly) Modifier.widthIn(min = 60.dp) else Modifier),
+        selected = selected,
+        onClick = onClick,
+        colors = premiumFilterChipColors(),
+        leadingIcon = option.icon?.takeUnless { iconOnly }?.let { icon ->
+            {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = option.contentDescription,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        },
+        label = {
+            if (iconOnly) {
+                Box(modifier = Modifier.width(28.dp), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = requireNotNull(option.icon),
+                        contentDescription = option.contentDescription,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            } else {
+                Text(
+                    text = option.label.orEmpty(),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun SimpleFpsCounter(
+    fps: String,
+    fontScale: Float
+) {
+    val safeScale = fontScale.coerceIn(0.75f, 2f)
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color.Black.copy(alpha = 0.42f))
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(999.dp)
+            )
+            .padding(horizontal = 10.dp * safeScale, vertical = 5.dp * safeScale)
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.emulation_hud_fps_label),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp * safeScale,
+                    lineHeight = 14.sp * safeScale,
+                    letterSpacing = 0.2.sp
+                ),
+                color = Color.White.copy(alpha = 0.72f)
+            )
+            Text(
+                text = fps,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 14.sp * safeScale,
+                    lineHeight = 18.sp * safeScale
+                ),
+                color = if (fps.toFloatOrNull()?.let { it >= 55f } == true) {
+                    Color(0xFF50D9A0)
+                } else {
+                    Color(0xFFFFB85C)
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SystemPerformanceHud(
+    speedPercent: Float,
+    text: String,
+    fixedHeaderLine: String,
+    isRightCorner: Boolean = false,
+    fontScale: Float,
+    metricsMask: Int
+) {
+    val safeScale = fontScale.coerceIn(0.75f, 2f)
+    val lines = remember(text, metricsMask, fixedHeaderLine) {
+        buildPerformanceOverlayLayout(text, metricsMask, fixedHeaderLine)
+    }
+    val mainLines = lines.mainLines
+    val bottomLines = lines.bottomLines
+    val textAlign = if (isRightCorner) TextAlign.End else TextAlign.Start
+    Column(
+        modifier = Modifier
+            .widthIn(min = 190.dp, max = 330.dp * safeScale.coerceAtMost(1.75f))
+            .padding(horizontal = 6.dp * safeScale, vertical = 4.dp * safeScale),
+        verticalArrangement = Arrangement.spacedBy(1.dp * safeScale)
+    ) {
+        mainLines.forEach { line ->
+            Text(
+                text = buildPerformanceAnnotatedText(line, speedPercent),
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp * safeScale,
+                    lineHeight = 13.sp * safeScale,
+                    letterSpacing = 0.sp,
+                    shadow = Shadow(
+                        color = Color.Black.copy(alpha = 1f),
+                        offset = Offset(0f, 0f),
+                        blurRadius = 6f * safeScale
+                    )
+                ),
+                color = Color.White.copy(alpha = 0.97f),
+                textAlign = textAlign,
+                softWrap = true
+            )
+        }
+        if (bottomLines.isNotEmpty()) {
+            if (mainLines.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp * safeScale))
+            }
+            bottomLines.forEach { line ->
+                Text(
+                    text = buildPerformanceAnnotatedText(line, speedPercent),
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 8.5.sp * safeScale,
+                        lineHeight = 11.sp * safeScale,
+                        letterSpacing = 0.sp,
+                        shadow = Shadow(
+                            color = Color.Black.copy(alpha = 1f),
+                            offset = Offset(0f, 0f),
+                            blurRadius = 5f * safeScale
+                        )
+                    ),
+                    color = Color.White.copy(alpha = 0.97f),
+                    textAlign = textAlign,
+                    softWrap = true
+                )
+            }
+        }
+    }
+}
+
+private fun buildPerformanceAnnotatedText(text: String, speedPercent: Float): AnnotatedString {
+    val speedColor = when {
+        speedPercent < 90f -> Color(0xFFFF5A5A)
+        speedPercent < 99f -> Color(0xFFFFC04D)
+        speedPercent <= 101f -> Color(0xFF7CFF7C)
+        speedPercent <= 110f -> Color(0xFF9BE870)
+        else -> Color(0xFF59D2FF)
+    }
+    return buildAnnotatedString {
+        append(text)
+        addRepeatedStyle(
+            text,
+            listOf(
+                "EmuCoreX", "FPS:", "VPS:", "LSFG:", "Speed:", "Target:",
+                "Frame:", "GS Queue:", "Res:", "CPU:", "GPU:",
+                "Audio:", "EE:", "GS:", "VU:", "IOP:", "SW-", "VRAM:"
+            ),
+            SpanStyle(color = Color(0xFF9DD7FF))
+        )
+        addRepeatedStyle(
+            text,
+            listOf("Vulkan", "OpenGL", "Software", "Null"),
+            SpanStyle(color = Color(0xFF9DD7FF))
+        )
+        addLineValueStyle(text, "Speed:", speedColor)
+        addLineValueStyle(text, "FPS:", Color(0xFFB9F7CF), stopAt = " | ")
+        addLineValueStyle(text, "VPS:", Color(0xFFB9F7CF), stopAt = " | ")
+        addLineValueStyle(text, "LSFG:", Color(0xFFB9F7CF))
+        addLineValueStyle(text, "Target:", Color(0xFFB9F7CF), stopAt = " | ")
+    }
+}
+
+private fun AnnotatedString.Builder.addRepeatedStyle(
+    text: String,
+    tokens: List<String>,
+    style: SpanStyle
+) {
+    tokens.forEach { token ->
+        var start = text.indexOf(token)
+        while (start >= 0) {
+            addStyle(style, start, start + token.length)
+            start = text.indexOf(token, startIndex = start + token.length)
+        }
+    }
+}
+
+private fun AnnotatedString.Builder.addLineValueStyle(
+    text: String,
+    label: String,
+    color: Color,
+    stopAt: String? = null
+) {
+    val labelStart = text.indexOf(label)
+    if (labelStart < 0) return
+    val valueStart = labelStart + label.length
+    val lineEnd = text.indexOf('\n', startIndex = valueStart).let { if (it == -1) text.length else it }
+    val valueEnd = stopAt
+        ?.let { separator -> text.indexOf(separator, startIndex = valueStart).takeIf { it in 0..<lineEnd } }
+        ?: lineEnd
+    if (valueStart < valueEnd)
+        addStyle(SpanStyle(color = color), valueStart, valueEnd)
+}
+
+@Composable
+private fun LiveChipsSelectionRow(
+    title: String,
+    options: List<Pair<Int, String>>,
+    currentValue: Int,
+    onValueChange: (Int) -> Unit,
+    helpText: String? = null,
+    onResetToDefault: (() -> Unit)? = null
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val context = LocalContext.current
+    val resetToast = stringResource(R.string.settings_reset_to_default_toast)
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 4.dp)
+                .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = {},
+                    onLongClick = onResetToDefault?.let {
+                        {
+                            it()
+                            Toast.makeText(context, resetToast, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            helpText?.let {
+                SettingHelpButton(title = title, description = it)
+            }
+        }
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalViewportBleed(18.dp),
+            contentPadding = PaddingValues(horizontal = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(options, key = { it.first }) { (value, label) ->
+                FilterChip(
+                    shape = neonChipShape(),
+                    selected = currentValue == value,
+                    onClick = { onValueChange(value) },
+                    colors = premiumFilterChipColors(),
+                    label = { Text(text = label) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveBitmaskChoiceRow(
+    title: String,
+    options: List<Pair<Int, String>>,
+    selectedMask: Int,
+    onToggle: (Int) -> Unit,
+    helpText: String? = null,
+    onResetToDefault: (() -> Unit)? = null
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val context = LocalContext.current
+    val resetToast = stringResource(R.string.settings_reset_to_default_toast)
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 4.dp)
+                .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = {},
+                    onLongClick = onResetToDefault?.let {
+                        {
+                            it()
+                            Toast.makeText(context, resetToast, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            helpText?.let {
+                SettingHelpButton(title = title, description = it)
+            }
+        }
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalViewportBleed(18.dp),
+            contentPadding = PaddingValues(horizontal = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(options, key = { it.first }) { (metric, label) ->
+                FilterChip(
+                    shape = neonChipShape(),
+                    selected = PerformanceOverlayMetrics.isEnabled(selectedMask, metric),
+                    onClick = { onToggle(metric) },
+                    colors = premiumFilterChipColors(),
+                    label = { Text(text = label) }
+                )
+            }
+        }
+    }
+}
+
+private fun Modifier.horizontalViewportBleed(inset: Dp): Modifier = layout { measurable, constraints ->
+    val insetPx = inset.roundToPx()
+    val expandedMaxWidth = if (constraints.hasBoundedWidth) {
+        constraints.maxWidth + (insetPx * 2)
+    } else {
+        constraints.maxWidth
+    }
+    val placeable = measurable.measure(constraints.copy(maxWidth = expandedMaxWidth))
+    layout(constraints.maxWidth, placeable.height) {
+        placeable.placeRelative(-insetPx, 0)
+    }
+}
+
+@Composable
+private fun OverlaySubsectionLabel(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier.padding(top = 4.dp)
+    )
+}
+
+@Composable
+private fun LiveSliderRow(
+    title: String,
+    @androidx.annotation.StringRes valueLabelResId: Int? = null,
+    valueLabelForValue: (Int) -> String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    enabled: Boolean = true,
+    onValueChange: (Float) -> Unit,
+    helpText: String? = null,
+    onResetToDefault: (() -> Unit)? = null
+) {
+    var sliderValue by remember { mutableFloatStateOf(value) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val context = LocalContext.current
+    val resetToast = stringResource(R.string.settings_reset_to_default_toast)
+
+    LaunchedEffect(value) {
+        sliderValue = value
+    }
+
+    val displayValue = sliderValue.roundToInt()
+    // Long-pressing the row or the slider itself restores the default value, so the
+    // reset gesture also works on the controls users actually drag.
+    val resetModifier = if (enabled && onResetToDefault != null) {
+        Modifier.combinedClickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = {},
+            onLongClick = {
+                onResetToDefault.invoke()
+                Toast.makeText(context, resetToast, Toast.LENGTH_SHORT).show()
+            }
+        )
+    } else {
+        Modifier
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(resetModifier),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    color = if (enabled) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f)
+                    },
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                helpText?.let {
+                    SettingHelpButton(title = title, description = it)
+                }
+            }
+            Text(
+                text = valueLabelResId?.let { stringResource(it, displayValue) }
+                    ?: valueLabelForValue(displayValue),
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                color = if (enabled) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f)
+                }
+            )
+        }
+        Box(modifier = Modifier.then(resetModifier)) {
+            Slider(
+                value = sliderValue,
+                onValueChange = { sliderValue = it },
+                onValueChangeFinished = {
+                    if (enabled) {
+                        onValueChange(sliderValue)
+                    }
+                },
+                valueRange = range,
+                steps = steps,
+                enabled = enabled,
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun MenuButton(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    text: String,
+    onClick: () -> Unit,
+    isDestructive: Boolean = false,
+    gradientColors: List<Color>? = null,
+    enabled: Boolean = true,
+    showProgress: Boolean = false,
+    containerColor: Color? = null
+) {
+    val shape = neonShape(16.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .gamepadFocusableCard(
+                enabled = enabled,
+                shape = shape,
+                interactionSource = interactionSource,
+                addFocusTarget = false
+            ),
+        shape = shape,
+        color = when {
+            gradientColors != null -> Color.Transparent
+            containerColor != null -> containerColor
+            isDestructive -> MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        },
+        border = if (gradientColors == null) BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)) else null
+    ) {
+        Row(
+            modifier = Modifier
+                .then(
+                    if (gradientColors != null) {
+                        Modifier.background(
+                            Brush.horizontalGradient(gradientColors.map { it.copy(alpha = 0.22f) }),
+                            neonShape(16.dp)
+                        ).border(1.dp, gradientColors.first().copy(alpha = 0.3f), neonShape(16.dp))
+                    } else Modifier
+                )
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = when {
+                    gradientColors != null -> gradientColors.first()
+                    isDestructive -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.primary
+                },
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.ExtraBold),
+                    color = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
+            }
+            if (showProgress) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SaveSlotPreview(
+    slot: Int,
+    previewPath: String?,
+    lastModified: Long,
+    isSaving: Boolean,
+    gameTitle: String,
+    modifier: Modifier = Modifier
+) {
+    val shape = neonShape(14.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 9f)
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f),
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+                    )
+                )
+            )
+    ) {
+        if (previewPath != null) {
+            GameCoverArt(
+                coverPath = previewPath,
+                fallbackTitle = gameTitle,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                showTitleWhileLoading = false,
+                shimmerWhileLoading = false,
+                decodeWidth = 720,
+                decodeHeight = 405
+            )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Save,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.26f),
+                    modifier = Modifier.size(42.dp)
+                )
+            }
+        }
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(10.dp),
+            shape = RoundedCornerShape(999.dp),
+            color = Color.Black.copy(alpha = 0.58f)
+        ) {
+            Text(
+                text = stringResource(R.string.detail_slot, slot),
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f))
+                    )
+                )
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text = if (lastModified > 0L) {
+                    stringResource(
+                        R.string.emulation_save_slot_saved_at,
+                        formatSaveTimestamp(lastModified)
+                    )
+                } else {
+                    stringResource(R.string.emulation_save_slot_empty)
+                },
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White.copy(alpha = 0.94f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        if (isSaving) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.35f)),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(26.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SaveSlotThumbnail(
+    previewPath: String?,
+    lastModified: Long,
+    contentDescription: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(neonShape(10.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.32f)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (previewPath != null) {
+            GameCoverArt(
+                coverPath = previewPath,
+                fallbackTitle = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                showTitleWhileLoading = false,
+                shimmerWhileLoading = false,
+                decodeWidth = 240,
+                decodeHeight = 135
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Rounded.Save,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary.copy(
+                    alpha = if (lastModified > 0L) 0.8f else 0.35f
+                ),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickIconActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    showProgress: Boolean,
+    containerColor: Color
+) {
+    val shape = neonShape(18.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .gamepadFocusableCard(
+                enabled = enabled,
+                shape = shape,
+                interactionSource = interactionSource,
+                addFocusTarget = false
+            ),
+        shape = shape,
+        color = containerColor,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (showProgress) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+    }
+}
+
+private const val FLOATING_QUICK_ACTION_SIZE_DP = 54
+
+@Composable
+private fun FloatingQuickActionsLayer(
+    savePosition: Offset,
+    loadPosition: Offset,
+    saveEnabled: Boolean,
+    loadEnabled: Boolean,
+    saveInProgress: Boolean,
+    loadInProgress: Boolean,
+    onSavePositionChange: (Offset) -> Unit,
+    onLoadPositionChange: (Offset) -> Unit,
+    onSavePositionCommit: () -> Unit,
+    onLoadPositionCommit: () -> Unit,
+    onSave: () -> Unit,
+    onLoad: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    BoxWithConstraints(modifier = modifier) {
+        val density = LocalDensity.current
+        val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
+        val heightPx = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
+        val sizePx = with(density) { FLOATING_QUICK_ACTION_SIZE_DP.dp.toPx() }
+
+        FloatingQuickActionButton(
+            icon = Icons.Rounded.Save,
+            contentDescription = stringResource(R.string.emulation_quick_save_desc),
+            position = savePosition,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            sizePx = sizePx,
+            enabled = saveEnabled,
+            showProgress = saveInProgress,
+            onDrag = { dragAmount ->
+                onSavePositionChange(
+                    clampFloatingQuickActionPosition(
+                        savePosition + Offset(dragAmount.x / widthPx, dragAmount.y / heightPx)
+                    )
+                )
+            },
+            onDragEnd = onSavePositionCommit,
+            onClick = onSave
+        )
+        FloatingQuickActionButton(
+            icon = Icons.Rounded.Restore,
+            contentDescription = stringResource(R.string.emulation_quick_load_desc),
+            position = loadPosition,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            sizePx = sizePx,
+            enabled = loadEnabled,
+            showProgress = loadInProgress,
+            onDrag = { dragAmount ->
+                onLoadPositionChange(
+                    clampFloatingQuickActionPosition(
+                        loadPosition + Offset(dragAmount.x / widthPx, dragAmount.y / heightPx)
+                    )
+                )
+            },
+            onDragEnd = onLoadPositionCommit,
+            onClick = onLoad
+        )
+    }
+}
+
+@Composable
+private fun FloatingQuickActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    position: Offset,
+    widthPx: Float,
+    heightPx: Float,
+    sizePx: Float,
+    enabled: Boolean,
+    showProgress: Boolean,
+    onDrag: (Offset) -> Unit,
+    onDragEnd: () -> Unit,
+    onClick: () -> Unit
+) {
+    val currentPosition by rememberUpdatedState(position)
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+    val currentOnClick by rememberUpdatedState(onClick)
+    val shape = neonShape(18.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+    Surface(
+        modifier = Modifier
+            .offset {
+                IntOffset(
+                    x = (currentPosition.x * widthPx - sizePx / 2f).roundToInt(),
+                    y = (currentPosition.y * heightPx - sizePx / 2f).roundToInt()
+                )
+            }
+            .size(FLOATING_QUICK_ACTION_SIZE_DP.dp)
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null
+            ) {
+                currentOnClick()
+            }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragEnd = { currentOnDragEnd() },
+                    onDragCancel = { currentOnDragEnd() },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        currentOnDrag(dragAmount)
+                    }
+                )
+            },
+        shape = shape,
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+        shadowElevation = 6.dp
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (showProgress) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun clampFloatingQuickActionPosition(position: Offset): Offset {
+    return Offset(
+        position.x.coerceIn(
+            AppPreferences.FLOATING_QUICK_ACTION_MIN,
+            AppPreferences.FLOATING_QUICK_ACTION_MAX
+        ),
+        position.y.coerceIn(
+            AppPreferences.FLOATING_QUICK_ACTION_MIN,
+            AppPreferences.FLOATING_QUICK_ACTION_MAX
+        )
+    )
+}
+
+@Composable
+private fun CompactIconActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    showProgress: Boolean
+) {
+    val shape = neonShape(16.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+    Surface(
+        modifier = Modifier
+            .size(52.dp)
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .gamepadFocusableCard(
+                enabled = enabled,
+                shape = shape,
+                interactionSource = interactionSource,
+                addFocusTarget = false
+            ),
+        shape = shape,
+        color = if (enabled) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        },
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (showProgress) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    tint = if (enabled) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    },
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+    }
+}
