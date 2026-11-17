@@ -19,6 +19,8 @@ const LEGACY_STORAGE_KEY = 'emucorex_unified_settings_v1';
 export interface TelemetryEstimate {
   score: number;
   fps: number;
+  onePercentLowFps: number;
+  frameTimeMs: number;
   latencyMs: number;
   wattage: number;
   thermalRisk: 'Excelente' | 'Moderado' | 'Alto (Throttling)';
@@ -212,6 +214,8 @@ export function useEmulatorSettings() {
       ? '0x40 ; Perf Core #2 (GS)'
       : '0x40 ; Big Core #1 (GS)';
 
+    const isLowPowerMidrange = activeDevice.id === 'galaxy-m23-5g' || activeDevice.bandwidthGbps <= 25;
+
     return `[EmuStation.${activeDevice.id}]
 DeviceProfile = ${activeDevice.name}
 SoC = ${activeDevice.soc}
@@ -227,6 +231,8 @@ Renderer = ${settings.renderer.toUpperCase()}
 UpscaleMultiplier = ${settings.upscale}
 HWDownloadMode = ${settings.hwDownloadMode}
 BilinearFiltering = ${settings.bilinearFiltering ? '2' : '0'}
+TexturePreloading = ${isLowPowerMidrange ? '1 ; Partial (LPDDR4X Safe)' : '2 ; Full'}
+AccurateBlendingUnit = 1
 VsyncQueueSize = ${settings.vsyncQueue}
 FXAA = ${settings.fxaa ? 'true' : 'false'}
 
@@ -234,6 +240,7 @@ FXAA = ${settings.fxaa ? 'true' : 'false'}
 MTVU_MultiThreadedVU1 = ${settings.mtvu ? 'true' : 'false'}
 EECycleRate = ${settings.eeCycleRate}
 EECycleSkip = ${settings.eeCycleSkip}
+FPU_CorrectAddSub = ${isLowPowerMidrange ? 'false' : 'true'}
 CPU_AffinityMask_EE = ${eeMask}
 CPU_AffinityMask_GS = ${gsMask}
 FastmemAlloc = ${settings.fastmemMode}
@@ -302,12 +309,22 @@ SyncMode = ${settings.audioSync}
       }
     }
 
+    if (settings.bilinearFiltering) {
+      baseScore -= isHighBandwidth ? 1 : 3;
+      thermalWattage += 0.08;
+    }
+
     if (settings.hwDownloadMode === 1) {
       baseScore += isHighBandwidth ? 10 : 22;
       thermalWattage -= 0.2;
     } else if (settings.hwDownloadMode === 2) {
       baseScore += isHighBandwidth ? 18 : 12;
       thermalWattage += 0.1;
+    } else {
+      // Synchronous HWDownloadMode = 0 triggers Adreno GMEM / Mali tile flushes
+      baseScore -= isHighBandwidth ? 12 : 24;
+      thermalWattage += 0.45;
+      inputLatencyMs += 8;
     }
 
     if (settings.eeCycleRate < 0) {
@@ -318,7 +335,15 @@ SyncMode = ${settings.audioSync}
       thermalWattage += 0.5;
     }
 
-    const estimatedFps = Math.min(60.0, Math.max(24.0, (baseScore / 100) * 46.5));
+    const estimatedFps = Math.min(60.0, Math.max(20.0, (baseScore / 100) * 46.5));
+    // Pacing stability (1% low drops when readbacks=0, wrong MTVU topology, or thermal throttling)
+    let stabilityRatio = 0.88;
+    if (!isDynamIQ && settings.mtvu) stabilityRatio -= 0.14;
+    if (settings.hwDownloadMode === 0) stabilityRatio -= 0.12;
+    if (thermalWattage > activeDevice.thermalBudgetW) stabilityRatio -= 0.08;
+    const onePercentLowFps = Math.max(12.0, Math.min(estimatedFps - 1.5, estimatedFps * stabilityRatio));
+    const frameTimeMs = 1000 / estimatedFps;
+
     const maxSafeWatt = activeDevice.thermalBudgetW;
     const thermalRisk: TelemetryEstimate['thermalRisk'] =
       thermalWattage > maxSafeWatt + 0.7
@@ -330,6 +355,8 @@ SyncMode = ${settings.audioSync}
     return {
       score: Math.round(baseScore),
       fps: Number(estimatedFps.toFixed(1)),
+      onePercentLowFps: Number(onePercentLowFps.toFixed(1)),
+      frameTimeMs: Number(frameTimeMs.toFixed(1)),
       latencyMs: inputLatencyMs,
       wattage: Number(thermalWattage.toFixed(1)),
       thermalRisk

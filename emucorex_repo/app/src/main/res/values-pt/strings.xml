@@ -891,6 +891,7 @@
     <string name="onboarding_profile_safe_title">Ideal / Seguro</string>
     <string name="onboarding_profile_safe_desc">O melhor equilíbrio para a maioria dos dispositivos intermediários e de ponta. Mantém uma maior compatibilidade com os jogos.</string>
     <string name="onboarding_profile_fast_title">Rápido / Inseguro</string>
+    <string name="onboarding_profile_m23_title">Galaxy M23 5G (Adreno 619 · 120Hz)</string>
     <string name="onboarding_profile_fast_desc">Para dispositivos mais fracos que precisam de velocidade extra. Alguns jogos podem apresentar mais falhas ou se tornarem menos estáveis.</string>
     <string name="memory_card_manager_title">Gerenciador de cartões de memória</string>
     <string name="memory_card_manager_subtitle">Gerencie cartões de memória do PS2, slots, backups, restaurações e armazenamento.</string>

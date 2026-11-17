@@ -3067,7 +3067,8 @@ private fun SettingsContent(
                             title = stringResource(R.string.onboarding_profile_title),
                             options = listOf(
                                 PerformanceProfiles.SAFE to stringResource(R.string.onboarding_profile_safe_title),
-                                PerformanceProfiles.FAST to stringResource(R.string.onboarding_profile_fast_title)
+                                PerformanceProfiles.FAST to stringResource(R.string.onboarding_profile_fast_title),
+                                PerformanceProfiles.GALAXY_M23 to stringResource(R.string.onboarding_profile_m23_title)
                             ),
                             selectedValue = uiState.performanceProfile,
                             onSelect = viewModel::setPerformanceProfile,

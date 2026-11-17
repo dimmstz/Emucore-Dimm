@@ -23,7 +23,7 @@ interface PS2RuntimeCanvasProps {
   onNotify?: (msg: string) => void;
 }
 
-export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
+export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = React.memo(({
   game,
   isPaused,
   isTurbo,
@@ -38,6 +38,7 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const [currentFps, setCurrentFps] = useState<number>(60.0);
+  const [onePercentLowFps, setOnePercentLowFps] = useState<number>(59.0);
   const [vulkanFrameTime, setVulkanFrameTime] = useState<number>(16.6);
 
   const isMuted = externalMuted;
@@ -140,29 +141,95 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx =
+      canvas.getContext('2d', { alpha: false, desynchronized: true }) ||
+      canvas.getContext('2d');
     if (!ctx) return;
 
     let animationFrameId: number;
     let frameCount = 0;
-    let lastFpsUpdate = performance.now();
+    let lastFrameTime = performance.now();
+    let lastFpsUpdate = lastFrameTime;
+    const frameTimesBuffer: number[] = [];
+
+    // Cached gradients recreated ONLY when canvas dimensions change
+    let cachedW = -1;
+    let cachedH = -1;
+    let cachedBgGrad: CanvasGradient | null = null;
+    let cachedSkyGrad: CanvasGradient | null = null;
+    let cachedGroundGrad: CanvasGradient | null = null;
+    let cachedArenaGrad: CanvasGradient | null = null;
+
+    const ensureCachedGradients = (w: number, h: number) => {
+      if (w === cachedW && h === cachedH && cachedBgGrad && cachedSkyGrad && cachedGroundGrad && cachedArenaGrad) {
+        return;
+      }
+      cachedW = w;
+      cachedH = h;
+
+      const bgGrad = ctx.createRadialGradient(w / 2, h / 2, 20, w / 2, h / 2, Math.max(w, h));
+      bgGrad.addColorStop(0, '#041433');
+      bgGrad.addColorStop(0.6, '#020b1c');
+      bgGrad.addColorStop(1, '#000208');
+      cachedBgGrad = bgGrad;
+
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, h * 0.55);
+      skyGrad.addColorStop(0, '#090d16');
+      skyGrad.addColorStop(0.7, '#1b2238');
+      skyGrad.addColorStop(1, '#ff6b35');
+      cachedSkyGrad = skyGrad;
+
+      const horizonY = h * 0.55;
+      const groundGrad = ctx.createLinearGradient(0, horizonY, 0, h);
+      groundGrad.addColorStop(0, '#111827');
+      groundGrad.addColorStop(1, '#05070a');
+      cachedGroundGrad = groundGrad;
+
+      const arenaGrad = ctx.createRadialGradient(w / 2, h / 2, 30, w / 2, h / 2, w);
+      arenaGrad.addColorStop(0, '#1c1917');
+      arenaGrad.addColorStop(1, '#0c0a09');
+      cachedArenaGrad = arenaGrad;
+    };
 
     const render = (time: number) => {
+      const dtMs = Math.max(1, time - lastFrameTime);
+      lastFrameTime = time;
+      // Delta-time normalization against 60Hz baseline (prevents 2x speed on 120Hz panels like Galaxy M23)
+      const dtScale = Math.min(2.5, Math.max(0.25, dtMs / 16.6667));
+      frameTimesBuffer.push(dtMs);
+
       frameCount++;
       if (time - lastFpsUpdate >= 450) {
-        const computedFps = (frameCount * 1000) / (time - lastFpsUpdate);
+        const elapsed = time - lastFpsUpdate;
+        const computedFps = (frameCount * 1000) / elapsed;
+        const avgFrameMs = elapsed / Math.max(frameCount, 1);
+
+        // Compute 1% low from worst frame times in the sample window
+        let lowFps = computedFps;
+        if (frameTimesBuffer.length > 0) {
+          const sortedDesc = [...frameTimesBuffer].sort((a, b) => b - a);
+          const worstSliceCount = Math.max(1, Math.ceil(sortedDesc.length * 0.05));
+          let worstSum = 0;
+          for (let i = 0; i < worstSliceCount; i++) worstSum += sortedDesc[i];
+          lowFps = 1000 / Math.max(worstSum / worstSliceCount, 1);
+          frameTimesBuffer.length = 0;
+        }
+
         setCurrentFps(isPaused ? 0 : Number(computedFps.toFixed(1)));
-        setVulkanFrameTime(Number((1000 / Math.max(computedFps, 1)).toFixed(2)));
+        setOnePercentLowFps(isPaused ? 0 : Number(Math.min(computedFps, lowFps).toFixed(1)));
+        setVulkanFrameTime(Number(avgFrameMs.toFixed(2)));
         frameCount = 0;
         lastFpsUpdate = time;
       }
 
       const w = canvas.width;
       const h = canvas.height;
+      ensureCachedGradients(w, h);
       const state = gameStateRef.current;
       const input = liveInputRef?.current;
 
       if (!isPaused) {
+        const simStep = dtScale * (isTurbo ? 1.85 : 1.0);
         // Apply unified Touch / Keyboard / Gamepad controls
         if (input) {
           const steer =
@@ -171,10 +238,10 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
             (Math.abs(input.leftStick.x) > 0.15 ? input.leftStick.x : 0);
 
           if (Math.abs(steer) > 0.05) {
-            state.carX = Math.max(-180, Math.min(180, state.carX + steer * 4.5));
+            state.carX = Math.max(-180, Math.min(180, state.carX + steer * 4.5 * simStep));
             state.turnAngle = Math.max(-0.35, Math.min(0.35, steer * 0.25));
           } else {
-            state.turnAngle *= 0.85;
+            state.turnAngle *= Math.pow(0.85, dtScale);
           }
 
           const accel =
@@ -189,15 +256,18 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
             input.leftStick.y > 0.25;
 
           if (accel) {
-            state.speed = Math.min(state.speed + 2.8, isTurbo ? state.maxSpeed * 1.45 : state.maxSpeed);
+            state.speed = Math.min(
+              state.speed + 2.8 * simStep,
+              isTurbo ? state.maxSpeed * 1.45 : state.maxSpeed
+            );
             state.isBoosting = Boolean(input.buttons.r2 || input.buttons.circle || isTurbo);
           } else if (brake) {
-            state.speed = Math.max(state.speed - 4.2, 0);
+            state.speed = Math.max(state.speed - 4.2 * simStep, 0);
             state.isBoosting = false;
           } else {
             state.isBoosting = false;
-            if (state.speed > 55) state.speed *= 0.992;
-            else if (state.speed < 55) state.speed = Math.min(55, state.speed + 0.8);
+            if (state.speed > 55) state.speed *= Math.pow(0.992, dtScale);
+            else if (state.speed < 55) state.speed = Math.min(55, state.speed + 0.8 * dtScale);
           }
 
           // Combat action edge detection (tap ✕, ○, □, or △)
@@ -214,19 +284,15 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
           state.prevActionPressed = actionPressed;
         }
 
-        state.introProgress += isTurbo ? 0.02 : 0.01;
-        state.distance += (state.speed / 60) * (isTurbo ? 2 : 1);
+        state.introProgress += 0.01 * simStep;
+        state.distance += (state.speed / 60) * simStep;
       }
 
       // =========================================================================
       // SCENE 1: SONY PLAYSTATION 2 SYSTEM BIOS
       // =========================================================================
       if (isBios) {
-        const bgGrad = ctx.createRadialGradient(w / 2, h / 2, 20, w / 2, h / 2, Math.max(w, h));
-        bgGrad.addColorStop(0, '#041433');
-        bgGrad.addColorStop(0.6, '#020b1c');
-        bgGrad.addColorStop(1, '#000208');
-        ctx.fillStyle = bgGrad;
+        ctx.fillStyle = cachedBgGrad!;
         ctx.fillRect(0, 0, w, h);
 
         const cx = w / 2;
@@ -257,8 +323,8 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
 
         state.orbs.forEach((orb) => {
           if (!isPaused) {
-            orb.y += Math.sin(time * 0.002 * orb.speed) * 0.5;
-            orb.z -= orb.speed * (isTurbo ? 2.5 : 1.2);
+            orb.y += Math.sin(time * 0.002 * orb.speed) * 0.5 * dtScale;
+            orb.z -= orb.speed * (isTurbo ? 2.5 : 1.2) * dtScale;
             if (orb.z < 20) orb.z = 450;
           }
           const scale = 220 / Math.max(orb.z, 20);
@@ -266,12 +332,15 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
           const oy = cy + orb.y * scale;
           const or = orb.radius * scale;
 
-          const orbGrad = ctx.createRadialGradient(ox, oy, 1, ox, oy, or * 2);
-          orbGrad.addColorStop(0, `hsla(${orb.hue}, 90%, 75%, 0.95)`);
-          orbGrad.addColorStop(1, `hsla(${orb.hue}, 90%, 50%, 0)`);
-          ctx.fillStyle = orbGrad;
+          // Zero-allocation dual-pass orb glow (avoids creating 14 CanvasGradients/frame)
+          ctx.fillStyle = `hsla(${orb.hue}, 90%, 55%, 0.22)`;
           ctx.beginPath();
-          ctx.arc(ox, oy, or * 2, 0, Math.PI * 2);
+          ctx.arc(ox, oy, or * 2.1, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = `hsla(${orb.hue}, 95%, 78%, 0.92)`;
+          ctx.beginPath();
+          ctx.arc(ox, oy, or * 0.85, 0, Math.PI * 2);
           ctx.fill();
         });
 
@@ -318,11 +387,7 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
       // SCENE 2: PS2 3D RACING SIMULATION
       // =========================================================================
       else if (isRacing) {
-        const skyGrad = ctx.createLinearGradient(0, 0, 0, h * 0.55);
-        skyGrad.addColorStop(0, '#090d16');
-        skyGrad.addColorStop(0.7, '#1b2238');
-        skyGrad.addColorStop(1, '#ff6b35');
-        ctx.fillStyle = skyGrad;
+        ctx.fillStyle = cachedSkyGrad!;
         ctx.fillRect(0, 0, w, h * 0.55);
 
         ctx.fillStyle = '#0f1422';
@@ -332,10 +397,7 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
         }
 
         const horizonY = h * 0.55;
-        const groundGrad = ctx.createLinearGradient(0, horizonY, 0, h);
-        groundGrad.addColorStop(0, '#111827');
-        groundGrad.addColorStop(1, '#05070a');
-        ctx.fillStyle = groundGrad;
+        ctx.fillStyle = cachedGroundGrad!;
         ctx.fillRect(0, horizonY, w, h - horizonY);
 
         const roadWBottom = w * 0.82;
@@ -370,14 +432,12 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
         ctx.ellipse(carCenterX, carY + 28, 54, 14, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        const carGrad = ctx.createLinearGradient(carCenterX - 45, carY, carCenterX + 45, carY);
-        carGrad.addColorStop(0, '#1e3a8a');
-        carGrad.addColorStop(0.5, '#3b82f6');
-        carGrad.addColorStop(1, '#1e3a8a');
-        ctx.fillStyle = carGrad;
+        ctx.fillStyle = '#2563eb';
         ctx.beginPath();
         ctx.roundRect(carCenterX - 46, carY - 8, 92, 34, [6, 6, 2, 2]);
         ctx.fill();
+        ctx.fillStyle = '#1e3a8a';
+        ctx.fillRect(carCenterX - 44, carY + 8, 88, 16);
 
         ctx.fillStyle = '#0f172a';
         ctx.beginPath();
@@ -393,12 +453,13 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
         ctx.fillRect(carCenterX - 28, carY - 22, 5, 14);
         ctx.fillRect(carCenterX + 23, carY - 22, 5, 14);
 
+        // Fast GPU-friendly glow halo (replaces expensive per-frame ctx.shadowBlur Gaussian pass)
+        ctx.fillStyle = 'rgba(220, 38, 38, 0.34)';
+        ctx.fillRect(carCenterX - 46, carY - 1, 30, 12);
+        ctx.fillRect(carCenterX + 16, carY - 1, 30, 12);
         ctx.fillStyle = '#ef4444';
-        ctx.shadowColor = '#dc2626';
-        ctx.shadowBlur = 12;
         ctx.fillRect(carCenterX - 42, carY + 2, 22, 6);
         ctx.fillRect(carCenterX + 20, carY + 2, 22, 6);
-        ctx.shadowBlur = 0;
 
         if (state.isBoosting || isTurbo) {
           ctx.fillStyle = '#38bdf8';
@@ -426,10 +487,7 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
       // SCENE 3: PS2 ACTION / COMBAT
       // =========================================================================
       else {
-        const arenaGrad = ctx.createRadialGradient(w / 2, h / 2, 30, w / 2, h / 2, w);
-        arenaGrad.addColorStop(0, '#1c1917');
-        arenaGrad.addColorStop(1, '#0c0a09');
-        ctx.fillStyle = arenaGrad;
+        ctx.fillStyle = cachedArenaGrad!;
         ctx.fillRect(0, 0, w, h);
 
         ctx.strokeStyle = '#44403c';
@@ -534,9 +592,13 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
 
         {showFpsHud && (
           <div className="absolute top-2 left-2 flex flex-wrap items-center gap-2 pointer-events-none z-20">
-            <div className="px-2.5 py-1 rounded-md bg-black/80 backdrop-blur-md border border-white/20 text-[11px] font-mono tabular-nums flex items-center gap-2">
+            <div className="px-2.5 py-1 rounded-md bg-black/80 border border-white/20 text-[11px] font-mono tabular-nums flex items-center gap-2">
               <span className={`font-bold ${isTurbo ? 'text-amber-400' : 'text-emerald-400'}`}>
                 {currentFps.toFixed(1)} FPS
+              </span>
+              <span className="text-slate-500">·</span>
+              <span className="text-emerald-300/90 hidden sm:inline">
+                1% {onePercentLowFps.toFixed(0)}
               </span>
               <span className="text-slate-400">|</span>
               <span className="text-cyan-300">{vulkanFrameTime} ms</span>
@@ -555,4 +617,6 @@ export const PS2RuntimeCanvas: React.FC<PS2RuntimeCanvasProps> = ({
       </div>
     </div>
   );
-};
+});
+
+PS2RuntimeCanvas.displayName = 'PS2RuntimeCanvas';

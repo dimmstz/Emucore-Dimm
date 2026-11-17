@@ -62,6 +62,7 @@ object MobileSocNameMapper {
         put("SM7350", "Snapdragon 780G")
         put("SM7325", "Snapdragon 778G series")
         put("SM7225", "Snapdragon 750G")
+        put("LAGOON", "Snapdragon 750G")
         put("SM7125", "Snapdragon 720G")
         put("SM7250", "Snapdragon 765 series")
         put("SM7150", "Snapdragon 730 series")
@@ -434,6 +435,9 @@ object MobileSocNameMapper {
         val handheldNames = listOfNotNull(model, device, product).map(::normalize)
         if (handheldNames.any { it == "TG5050" || it == "TRIMUISMARTPROS" }) {
             return "Allwinner A523"
+        }
+        if (handheldNames.any { it.startsWith("SMM236") || it.contains("M23XQ") }) {
+            return "Snapdragon 750G"
         }
         candidates.forEach { candidate ->
             resolvePlatformFamily(candidate)?.let { return it }

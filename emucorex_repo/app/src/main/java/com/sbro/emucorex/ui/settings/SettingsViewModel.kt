@@ -94,7 +94,7 @@ internal fun settingsGsOverrideFlags(hwDownloadMode: Boolean, blendingAccuracy: 
         (if (blendingAccuracy) GS_SETTING_OVERRIDE_BLENDING_ACCURACY else 0)
 
 data class WorkerOptimizationUiState(
-    val enableMtvu: Boolean = true,
+    val enableMtvu: Boolean = PerformanceProfiles.defaultMtvuForHardware(),
     val enableIopThread: Boolean = true,
     val enableVUAot: Boolean = true
 )
@@ -192,7 +192,7 @@ data class SettingsUiState(
     val biosValid: Boolean = false,
     val setupComplete: Boolean = false,
     val appVersion: String = "1.0.0",
-    val performanceProfile: Int = PerformanceProfiles.SAFE,
+    val performanceProfile: Int = PerformanceProfiles.defaultForDevice(),
     // Extended settings
     val eeCycleRate: Int = 0,
     val eeCycleSkip: Int = 0,

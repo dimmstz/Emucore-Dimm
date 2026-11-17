@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
   Menu,
   SlidersHorizontal,
@@ -119,6 +119,15 @@ export const EmuCoreXApp: React.FC = () => {
   const [isGamePaused, setIsGamePaused] = useState<boolean>(false);
   const [isTurbo, setIsTurbo] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   // Shared real-time input state (Touch Controls + Keyboard + Gamepad API -> PS2RuntimeCanvas)
   const liveInputRef = useRef<LiveInputState>({
@@ -141,8 +150,14 @@ export const EmuCoreXApp: React.FC = () => {
   }, []);
 
   const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 3500);
   }, []);
 
   // Combined games library
@@ -196,7 +211,7 @@ export const EmuCoreXApp: React.FC = () => {
     return mapped.length > 0 ? mapped : allGames.filter((g) => g.isRecent);
   }, [allGames, recentIds]);
 
-  const handleLaunchGame = (game: PS2Game) => {
+  const handleLaunchGame = useCallback((game: PS2Game) => {
     // Reset input state cleanly on launch
     liveInputRef.current = { buttons: {}, leftStick: { x: 0, y: 0 }, rightStick: { x: 0, y: 0 } };
     setRunningGame(game);
@@ -215,9 +230,9 @@ export const EmuCoreXApp: React.FC = () => {
         return next;
       });
     }
-  };
+  }, []);
 
-  const handleAddGameToLibrary = (newGame: PS2Game) => {
+  const handleAddGameToLibrary = useCallback((newGame: PS2Game) => {
     const exists = allGames.some(
       (g) => g.id === newGame.id || g.serial.toLowerCase() === newGame.serial.toLowerCase()
     );
@@ -225,18 +240,20 @@ export const EmuCoreXApp: React.FC = () => {
       showToast(`"${newGame.title}" já está na sua biblioteca.`);
       return;
     }
-    const updated = [newGame, ...customGames];
-    setCustomGames(updated);
-    try {
-      localStorage.setItem('emucorex_custom_games', JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
+    setCustomGames((prev) => {
+      const updated = [newGame, ...prev];
+      try {
+        localStorage.setItem('emucorex_custom_games', JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
     showToast(`"${newGame.title}" adicionado à biblioteca.`);
-  };
+  }, [allGames, showToast]);
 
   // Real ISO / CHD / ELF File Selection
-  const handleImportIsoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportIsoFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -261,19 +278,21 @@ export const EmuCoreXApp: React.FC = () => {
 
     handleAddGameToLibrary(newGame);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  }, [handleAddGameToLibrary]);
 
-  const handleDeleteCustomGame = (id: string, title: string, e: React.MouseEvent) => {
+  const handleDeleteCustomGame = useCallback((id: string, title: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const filtered = customGames.filter((g) => g.id !== id);
-    setCustomGames(filtered);
-    try {
-      localStorage.setItem('emucorex_custom_games', JSON.stringify(filtered));
-    } catch {
-      // ignore
-    }
+    setCustomGames((prev) => {
+      const filtered = prev.filter((g) => g.id !== id);
+      try {
+        localStorage.setItem('emucorex_custom_games', JSON.stringify(filtered));
+      } catch {
+        // ignore
+      }
+      return filtered;
+    });
     showToast(`"${title}" removido da biblioteca.`);
-  };
+  }, [showToast]);
 
   // Technical Diagnostics & Hardware Tuning View
   if (isDiagnosticsOpen) {
@@ -323,7 +342,7 @@ export const EmuCoreXApp: React.FC = () => {
       {/* =========================================================================
           TOP ACTION BAR (Clean One UI Header — Responsive Width)
          ========================================================================= */}
-      <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-slate-200/80 px-4 py-3 shadow-xs">
+      <header className="bg-white sticky top-0 z-40 border-b border-slate-200/80 px-4 py-3 shadow-xs">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
           {/* Hamburger Menu Button */}
           <button

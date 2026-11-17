@@ -87,7 +87,7 @@ interface VectorTouchControlsProps {
   onUpdateConfig?: (newConfig: Partial<ControlsConfig>) => void;
 }
 
-export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
+export const VectorTouchControls: React.FC<VectorTouchControlsProps> = React.memo(({
   onButtonPress,
   onButtonRelease,
   onAnalogMove,
@@ -150,6 +150,10 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
 
   const leftStickRef = useRef<HTMLDivElement | null>(null);
   const rightStickRef = useRef<HTMLDivElement | null>(null);
+  const stickRectCacheRef = useRef<{ left: DOMRect | null; right: DOMRect | null }>({
+    left: null,
+    right: null
+  });
 
   // Sync viewport size and listen for external layout reset
   useEffect(() => {
@@ -180,7 +184,7 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
 
   const handlePress = useCallback(
     (btn: string) => {
-      setPressedButtons((prev) => ({ ...prev, [btn]: true }));
+      setPressedButtons((prev) => (prev[btn] ? prev : { ...prev, [btn]: true }));
       triggerHaptic();
       onButtonPress?.(btn);
     },
@@ -189,7 +193,7 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
 
   const handleRelease = useCallback(
     (btn: string) => {
-      setPressedButtons((prev) => ({ ...prev, [btn]: false }));
+      setPressedButtons((prev) => (!prev[btn] ? prev : { ...prev, [btn]: false }));
       onButtonRelease?.(btn);
     },
     [onButtonRelease]
@@ -292,48 +296,67 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
     };
   }, [isEditMode, activeDragging, isPortrait, responsiveDefaults, viewport.height, viewport.width]);
 
-  // Analog Stick Pointer Move Logic
-  const handleStickMove = (
-    stick: 'left' | 'right',
-    container: HTMLDivElement | null,
-    clientX: number,
-    clientY: number
-  ) => {
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const maxRadius = Math.max(18, rect.width / 2 - 14);
+  // Analog Stick Pointer Move Logic (uses cached DOMRect to eliminate layout thrashing)
+  const handleStickMove = useCallback(
+    (
+      stick: 'left' | 'right',
+      container: HTMLDivElement | null,
+      clientX: number,
+      clientY: number,
+      forceRefreshRect = false
+    ) => {
+      if (!container) return;
+      let rect = stickRectCacheRef.current[stick];
+      if (!rect || forceRefreshRect) {
+        rect = container.getBoundingClientRect();
+        stickRectCacheRef.current[stick] = rect;
+      }
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const maxRadius = Math.max(18, rect.width / 2 - 14);
 
-    const deltaX = clientX - centerX;
-    const deltaY = clientY - centerY;
-    const distance = Math.hypot(deltaX, deltaY);
-    const angle = Math.atan2(deltaY, deltaX);
+      const deltaX = clientX - centerX;
+      const deltaY = clientY - centerY;
+      const distance = Math.hypot(deltaX, deltaY);
+      const angle = Math.atan2(deltaY, deltaX);
 
-    const clampedRadius = Math.min(distance, maxRadius);
-    const normX = Math.cos(angle) * (clampedRadius / maxRadius);
-    const normY = Math.sin(angle) * (clampedRadius / maxRadius);
+      const clampedRadius = Math.min(distance, maxRadius);
+      const normX = Math.cos(angle) * (clampedRadius / maxRadius);
+      const normY = Math.sin(angle) * (clampedRadius / maxRadius);
 
-    if (stick === 'left') {
-      setLeftStickPos({ x: normX * maxRadius, y: normY * maxRadius });
-      onAnalogMove?.('left', normX, normY);
-    } else {
-      setRightStickPos({ x: normX * maxRadius, y: normY * maxRadius });
-      onAnalogMove?.('right', normX, normY);
-    }
-  };
+      const px = Math.round(normX * maxRadius * 10) / 10;
+      const py = Math.round(normY * maxRadius * 10) / 10;
 
-  const resetStick = (stick: 'left' | 'right') => {
-    if (stick === 'left') {
-      setLeftStickPos({ x: 0, y: 0 });
-      setLeftStickActive(false);
-      onAnalogMove?.('left', 0, 0);
-    } else {
-      setRightStickPos({ x: 0, y: 0 });
-      setRightStickActive(false);
-      onAnalogMove?.('right', 0, 0);
-    }
-  };
+      if (stick === 'left') {
+        setLeftStickPos((prev) =>
+          Math.abs(prev.x - px) < 0.4 && Math.abs(prev.y - py) < 0.4 ? prev : { x: px, y: py }
+        );
+        onAnalogMove?.('left', normX, normY);
+      } else {
+        setRightStickPos((prev) =>
+          Math.abs(prev.x - px) < 0.4 && Math.abs(prev.y - py) < 0.4 ? prev : { x: px, y: py }
+        );
+        onAnalogMove?.('right', normX, normY);
+      }
+    },
+    [onAnalogMove]
+  );
+
+  const resetStick = useCallback(
+    (stick: 'left' | 'right') => {
+      stickRectCacheRef.current[stick] = null;
+      if (stick === 'left') {
+        setLeftStickPos((prev) => (prev.x === 0 && prev.y === 0 ? prev : { x: 0, y: 0 }));
+        setLeftStickActive(false);
+        onAnalogMove?.('left', 0, 0);
+      } else {
+        setRightStickPos((prev) => (prev.x === 0 && prev.y === 0 ? prev : { x: 0, y: 0 }));
+        setRightStickActive(false);
+        onAnalogMove?.('right', 0, 0);
+      }
+    },
+    [onAnalogMove]
+  );
 
   // Keyboard Event Listeners
   useEffect(() => {
@@ -386,94 +409,153 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
     };
   }, [handlePress, handleRelease, toggleTurbo]);
 
-  // Physical Gamepad API polling
+  // Event-driven Physical Gamepad API polling (only runs RAF when a gamepad is active; dirty-checks state)
   useEffect(() => {
-    let animId: number;
+    if (typeof navigator === 'undefined' || !('getGamepads' in navigator)) return;
+
+    let animId: number | null = null;
+    const lastGpButtons: Record<string, boolean> = {};
+    let lastGpName: string | null = null;
+    let lastLx = 0;
+    let lastLy = 0;
+    let lastRx = 0;
+    let lastRy = 0;
+
+    const mapping = [
+      'cross',
+      'circle',
+      'square',
+      'triangle',
+      'l1',
+      'r1',
+      'l2',
+      'r2',
+      'select',
+      'start',
+      'l3',
+      'r3',
+      'up',
+      'down',
+      'left',
+      'right'
+    ];
+
+    const hasActiveGamepad = () => {
+      const gps = navigator.getGamepads();
+      return Boolean(gps[0] || gps[1]);
+    };
+
     const pollGamepad = () => {
-      if (typeof navigator !== 'undefined' && 'getGamepads' in navigator) {
-        const gamepads = navigator.getGamepads();
-        const gp = gamepads[0] || gamepads[1];
-        if (gp) {
-          setConnectedGamepadName(gp.id || 'Controle USB/Bluetooth');
-
-          const mapping = [
-            'cross',
-            'circle',
-            'square',
-            'triangle',
-            'l1',
-            'r1',
-            'l2',
-            'r2',
-            'select',
-            'start',
-            'l3',
-            'r3',
-            'up',
-            'down',
-            'left',
-            'right'
-          ];
-
-          setPressedButtons((prev) => {
-            const next = { ...prev };
-            mapping.forEach((btn, idx) => {
-              if (gp.buttons[idx]) {
-                const pressed = gp.buttons[idx].pressed;
-                if (pressed && !prev[btn]) onButtonPress?.(btn);
-                else if (!pressed && prev[btn]) onButtonRelease?.(btn);
-                next[btn] = pressed;
-              }
-            });
-            return next;
-          });
-
-          if (gp.axes.length >= 2) {
-            const lx = gp.axes[0];
-            const ly = gp.axes[1];
-            if (Math.abs(lx) > config.deadzone || Math.abs(ly) > config.deadzone) {
-              setLeftStickPos({ x: lx * 26, y: ly * 26 });
-              onAnalogMove?.('left', lx, ly);
-            }
-          }
-
-          if (gp.axes.length >= 4) {
-            const rx = gp.axes[2];
-            const ry = gp.axes[3];
-            if (Math.abs(rx) > config.deadzone || Math.abs(ry) > config.deadzone) {
-              setRightStickPos({ x: rx * 26, y: ry * 26 });
-              onAnalogMove?.('right', rx, ry);
-            }
-          }
-        } else {
+      const gamepads = navigator.getGamepads();
+      const gp = gamepads[0] || gamepads[1];
+      if (!gp) {
+        if (lastGpName !== null) {
+          lastGpName = null;
           setConnectedGamepadName(null);
         }
+        animId = null;
+        return;
       }
+
+      const gpName = gp.id || 'Controle USB/Bluetooth';
+      if (gpName !== lastGpName) {
+        lastGpName = gpName;
+        setConnectedGamepadName(gpName);
+      }
+
+      let buttonsChanged = false;
+      const changedEntries: Record<string, boolean> = {};
+      for (let idx = 0; idx < mapping.length; idx++) {
+        const btn = mapping[idx];
+        const gpBtn = gp.buttons[idx];
+        if (!gpBtn) continue;
+        const pressed = gpBtn.pressed;
+        if (pressed !== Boolean(lastGpButtons[btn])) {
+          buttonsChanged = true;
+          lastGpButtons[btn] = pressed;
+          changedEntries[btn] = pressed;
+          if (pressed) onButtonPress?.(btn);
+          else onButtonRelease?.(btn);
+        }
+      }
+
+      if (buttonsChanged) {
+        setPressedButtons((prev) => ({ ...prev, ...changedEntries }));
+      }
+
+      if (gp.axes.length >= 2) {
+        const lx = Math.abs(gp.axes[0]) > config.deadzone ? gp.axes[0] : 0;
+        const ly = Math.abs(gp.axes[1]) > config.deadzone ? gp.axes[1] : 0;
+        if (Math.abs(lx - lastLx) > 0.015 || Math.abs(ly - lastLy) > 0.015) {
+          lastLx = lx;
+          lastLy = ly;
+          setLeftStickPos({ x: lx * 26, y: ly * 26 });
+          onAnalogMove?.('left', lx, ly);
+        }
+      }
+
+      if (gp.axes.length >= 4) {
+        const rx = Math.abs(gp.axes[2]) > config.deadzone ? gp.axes[2] : 0;
+        const ry = Math.abs(gp.axes[3]) > config.deadzone ? gp.axes[3] : 0;
+        if (Math.abs(rx - lastRx) > 0.015 || Math.abs(ry - lastRy) > 0.015) {
+          lastRx = rx;
+          lastRy = ry;
+          setRightStickPos({ x: rx * 26, y: ry * 26 });
+          onAnalogMove?.('right', rx, ry);
+        }
+      }
+
       animId = requestAnimationFrame(pollGamepad);
     };
 
-    animId = requestAnimationFrame(pollGamepad);
-    return () => cancelAnimationFrame(animId);
+    const startPollingIfNeeded = () => {
+      if (animId === null && hasActiveGamepad()) {
+        animId = requestAnimationFrame(pollGamepad);
+      }
+    };
+
+    const handleDisconnect = () => {
+      if (!hasActiveGamepad()) {
+        if (animId !== null) {
+          cancelAnimationFrame(animId);
+          animId = null;
+        }
+        if (lastGpName !== null) {
+          lastGpName = null;
+          setConnectedGamepadName(null);
+        }
+      }
+    };
+
+    window.addEventListener('gamepadconnected', startPollingIfNeeded);
+    window.addEventListener('gamepaddisconnected', handleDisconnect);
+    startPollingIfNeeded();
+
+    return () => {
+      window.removeEventListener('gamepadconnected', startPollingIfNeeded);
+      window.removeEventListener('gamepaddisconnected', handleDisconnect);
+      if (animId !== null) cancelAnimationFrame(animId);
+    };
   }, [config.deadzone, onAnalogMove, onButtonPress, onButtonRelease]);
 
-  const getStyleClasses = () => {
+  const styleClasses = useMemo(() => {
     switch (config.style) {
       case 'neon':
         return {
-          dpadBg: 'bg-black/60 border-2 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.4)]',
-          buttonBase: 'border-2 border-purple-400 bg-black/60 shadow-[0_0_12px_rgba(192,132,252,0.4)]',
+          dpadBg: 'bg-black/70 border-2 border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.35)]',
+          buttonBase: 'border-2 border-purple-400 bg-black/70 shadow-[0_0_10px_rgba(192,132,252,0.35)]',
           cross: 'text-cyan-400 border-cyan-400',
           circle: 'text-rose-400 border-rose-400',
           square: 'text-pink-400 border-pink-400',
           triangle: 'text-emerald-400 border-emerald-400',
-          stickBg: 'bg-slate-950/75 border-2 border-cyan-500 shadow-[0_0_12px_rgba(6,182,212,0.3)]',
+          stickBg: 'bg-slate-950/80 border-2 border-cyan-500',
           stickHead: 'bg-gradient-to-tr from-cyan-600 to-indigo-600 border border-cyan-300 shadow-md',
-          shoulder: 'bg-black/70 border border-cyan-400/80 text-cyan-200'
+          shoulder: 'bg-black/75 border border-cyan-400/80 text-cyan-200'
         };
       case 'classic':
         return {
-          dpadBg: 'bg-slate-900/90 border border-slate-700 shadow-xl',
-          buttonBase: 'bg-slate-800/95 border border-slate-600 shadow-lg',
+          dpadBg: 'bg-slate-900/90 border border-slate-700 shadow-lg',
+          buttonBase: 'bg-slate-800/95 border border-slate-600 shadow-md',
           cross: 'text-blue-400 border-blue-500',
           circle: 'text-red-500 border-red-500',
           square: 'text-pink-400 border-pink-500',
@@ -496,33 +578,31 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
         };
       case 'glass':
         return {
-          dpadBg: 'bg-white/10 backdrop-blur-md border border-white/30 shadow-xl',
-          buttonBase: 'bg-white/15 backdrop-blur-md border border-white/30 shadow-lg',
+          dpadBg: 'bg-white/12 backdrop-blur-xs border border-white/30 shadow-lg',
+          buttonBase: 'bg-white/15 backdrop-blur-xs border border-white/30 shadow-md',
           cross: 'text-blue-300 border-white/40',
           circle: 'text-red-300 border-white/40',
           square: 'text-pink-300 border-white/40',
           triangle: 'text-emerald-300 border-white/40',
-          stickBg: 'bg-white/10 backdrop-blur-md border border-white/25',
-          stickHead: 'bg-white/30 backdrop-blur-md border border-white/50 text-white',
-          shoulder: 'bg-white/15 backdrop-blur-md border border-white/30 text-white'
+          stickBg: 'bg-white/12 border border-white/25',
+          stickHead: 'bg-white/30 border border-white/50 text-white',
+          shoulder: 'bg-white/15 border border-white/30 text-white'
         };
       case 'vector':
       default:
         return {
-          dpadBg: 'bg-black/40 backdrop-blur-xs border-2 border-white/40 shadow-xl',
-          buttonBase: 'bg-black/45 backdrop-blur-xs border-2 border-white/40 shadow-md',
+          dpadBg: 'bg-black/50 border-2 border-white/40 shadow-lg',
+          buttonBase: 'bg-black/55 border-2 border-white/40 shadow-md',
           cross: 'text-blue-400 border-blue-400/80',
           circle: 'text-red-400 border-red-400/80',
           square: 'text-pink-400 border-pink-400/80',
           triangle: 'text-emerald-400 border-emerald-400/80',
-          stickBg: 'bg-black/40 backdrop-blur-xs border-2 border-white/40',
-          stickHead: 'bg-white/35 backdrop-blur-xs border border-white/70 text-white',
-          shoulder: 'bg-black/45 backdrop-blur-xs border border-white/40 text-white'
+          stickBg: 'bg-black/50 border-2 border-white/40',
+          stickHead: 'bg-white/35 border border-white/70 text-white',
+          shoulder: 'bg-black/55 border border-white/40 text-white'
         };
     }
-  };
-
-  const styleClasses = getStyleClasses();
+  }, [config.style]);
 
   return (
     <div
@@ -688,7 +768,7 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
               onPointerUp={() => !isEditMode && handleRelease('up')}
               onPointerCancel={() => !isEditMode && handleRelease('up')}
               onPointerLeave={() => !isEditMode && handleRelease('up')}
-              className={`absolute top-1 w-10 h-10 rounded-t-xl flex items-center justify-center text-white text-sm font-bold transition-all cursor-pointer ${
+              className={`absolute top-1 w-10 h-10 rounded-t-xl flex items-center justify-center text-white text-sm font-bold transition-transform duration-75 cursor-pointer ${
                 pressedButtons['up'] ? 'bg-white/40 scale-95' : 'hover:bg-white/10'
               }`}
             >
@@ -700,7 +780,7 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
               onPointerUp={() => !isEditMode && handleRelease('down')}
               onPointerCancel={() => !isEditMode && handleRelease('down')}
               onPointerLeave={() => !isEditMode && handleRelease('down')}
-              className={`absolute bottom-1 w-10 h-10 rounded-b-xl flex items-center justify-center text-white text-sm font-bold transition-all cursor-pointer ${
+              className={`absolute bottom-1 w-10 h-10 rounded-b-xl flex items-center justify-center text-white text-sm font-bold transition-transform duration-75 cursor-pointer ${
                 pressedButtons['down'] ? 'bg-white/40 scale-95' : 'hover:bg-white/10'
               }`}
             >
@@ -712,7 +792,7 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
               onPointerUp={() => !isEditMode && handleRelease('left')}
               onPointerCancel={() => !isEditMode && handleRelease('left')}
               onPointerLeave={() => !isEditMode && handleRelease('left')}
-              className={`absolute left-1 w-10 h-10 rounded-l-xl flex items-center justify-center text-white text-sm font-bold transition-all cursor-pointer ${
+              className={`absolute left-1 w-10 h-10 rounded-l-xl flex items-center justify-center text-white text-sm font-bold transition-transform duration-75 cursor-pointer ${
                 pressedButtons['left'] ? 'bg-white/40 scale-95' : 'hover:bg-white/10'
               }`}
             >
@@ -724,7 +804,7 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
               onPointerUp={() => !isEditMode && handleRelease('right')}
               onPointerCancel={() => !isEditMode && handleRelease('right')}
               onPointerLeave={() => !isEditMode && handleRelease('right')}
-              className={`absolute right-1 w-10 h-10 rounded-r-xl flex items-center justify-center text-white text-sm font-bold transition-all cursor-pointer ${
+              className={`absolute right-1 w-10 h-10 rounded-r-xl flex items-center justify-center text-white text-sm font-bold transition-transform duration-75 cursor-pointer ${
                 pressedButtons['right'] ? 'bg-white/40 scale-95' : 'hover:bg-white/10'
               }`}
             >
@@ -754,7 +834,7 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
                 e.currentTarget.setPointerCapture(e.pointerId);
                 setLeftStickActive(true);
                 triggerHaptic();
-                handleStickMove('left', leftStickRef.current, e.clientX, e.clientY);
+                handleStickMove('left', leftStickRef.current, e.clientX, e.clientY, true);
               }}
               onPointerMove={(e) => {
                 if (!isEditMode && leftStickActive) {
@@ -767,9 +847,9 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
             >
               <div className="w-10 h-10 rounded-full border border-white/10 pointer-events-none" />
               <div
-                className={`w-12 h-12 rounded-full flex items-center justify-center absolute shadow-xl pointer-events-none ${styleClasses.stickHead}`}
+                className={`w-12 h-12 rounded-full flex items-center justify-center absolute shadow-lg pointer-events-none will-change-transform ${styleClasses.stickHead}`}
                 style={{
-                  transform: `translate(${leftStickPos.x}px, ${leftStickPos.y}px)`
+                  transform: `translate3d(${leftStickPos.x}px, ${leftStickPos.y}px, 0)`
                 }}
               >
                 <span className="text-[10px] font-mono font-bold text-white/85">L3</span>
@@ -780,7 +860,7 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
 
         {/* CENTER STRIP: SELECT · MODE · START + COMPACT TOOLS */}
         <div
-          className={`absolute left-1/2 flex items-center gap-1.5 sm:gap-2 px-2.5 py-1.5 rounded-full bg-black/55 backdrop-blur-xs border border-white/15 touch-none ${
+          className={`absolute left-1/2 flex items-center gap-1.5 sm:gap-2 px-2.5 py-1.5 rounded-full bg-black/65 border border-white/15 touch-none ${
             isEditMode ? 'ring-2 ring-blue-400 cursor-move' : ''
           }`}
           style={{
@@ -913,7 +993,7 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
                 e.currentTarget.setPointerCapture(e.pointerId);
                 setRightStickActive(true);
                 triggerHaptic();
-                handleStickMove('right', rightStickRef.current, e.clientX, e.clientY);
+                handleStickMove('right', rightStickRef.current, e.clientX, e.clientY, true);
               }}
               onPointerMove={(e) => {
                 if (!isEditMode && rightStickActive) {
@@ -926,9 +1006,9 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
             >
               <div className="w-10 h-10 rounded-full border border-white/10 pointer-events-none" />
               <div
-                className={`w-12 h-12 rounded-full flex items-center justify-center absolute shadow-xl pointer-events-none ${styleClasses.stickHead}`}
+                className={`w-12 h-12 rounded-full flex items-center justify-center absolute shadow-lg pointer-events-none will-change-transform ${styleClasses.stickHead}`}
                 style={{
-                  transform: `translate(${rightStickPos.x}px, ${rightStickPos.y}px)`
+                  transform: `translate3d(${rightStickPos.x}px, ${rightStickPos.y}px, 0)`
                 }}
               >
                 <span className="text-[10px] font-mono font-bold text-white/85">R3</span>
@@ -961,9 +1041,9 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
               onPointerUp={() => !isEditMode && handleRelease('triangle')}
               onPointerCancel={() => !isEditMode && handleRelease('triangle')}
               onPointerLeave={() => !isEditMode && handleRelease('triangle')}
-              className={`absolute top-1 w-10 h-10 rounded-full flex items-center justify-center text-base font-black transition-all cursor-pointer ${
+              className={`absolute top-1 w-10 h-10 rounded-full flex items-center justify-center text-base font-black transition-transform duration-75 cursor-pointer ${
                 styleClasses.triangle
-              } ${pressedButtons['triangle'] ? 'bg-emerald-500/60 scale-90 shadow-[0_0_15px_rgba(52,211,153,0.8)]' : 'border'}`}
+              } ${pressedButtons['triangle'] ? 'bg-emerald-500/60 scale-90 shadow-[0_0_10px_rgba(52,211,153,0.7)]' : 'border'}`}
             >
               △
             </button>
@@ -974,9 +1054,9 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
               onPointerUp={() => !isEditMode && handleRelease('circle')}
               onPointerCancel={() => !isEditMode && handleRelease('circle')}
               onPointerLeave={() => !isEditMode && handleRelease('circle')}
-              className={`absolute right-1 w-10 h-10 rounded-full flex items-center justify-center text-base font-black transition-all cursor-pointer ${
+              className={`absolute right-1 w-10 h-10 rounded-full flex items-center justify-center text-base font-black transition-transform duration-75 cursor-pointer ${
                 styleClasses.circle
-              } ${pressedButtons['circle'] ? 'bg-rose-500/60 scale-90 shadow-[0_0_15px_rgba(244,63,94,0.8)]' : 'border'}`}
+              } ${pressedButtons['circle'] ? 'bg-rose-500/60 scale-90 shadow-[0_0_10px_rgba(244,63,94,0.7)]' : 'border'}`}
             >
               ○
             </button>
@@ -987,9 +1067,9 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
               onPointerUp={() => !isEditMode && handleRelease('cross')}
               onPointerCancel={() => !isEditMode && handleRelease('cross')}
               onPointerLeave={() => !isEditMode && handleRelease('cross')}
-              className={`absolute bottom-1 w-10 h-10 rounded-full flex items-center justify-center text-base font-black transition-all cursor-pointer ${
+              className={`absolute bottom-1 w-10 h-10 rounded-full flex items-center justify-center text-base font-black transition-transform duration-75 cursor-pointer ${
                 styleClasses.cross
-              } ${pressedButtons['cross'] ? 'bg-blue-500/60 scale-90 shadow-[0_0_15px_rgba(59,130,246,0.8)]' : 'border'}`}
+              } ${pressedButtons['cross'] ? 'bg-blue-500/60 scale-90 shadow-[0_0_10px_rgba(59,130,246,0.7)]' : 'border'}`}
             >
               ✕
             </button>
@@ -1000,9 +1080,9 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
               onPointerUp={() => !isEditMode && handleRelease('square')}
               onPointerCancel={() => !isEditMode && handleRelease('square')}
               onPointerLeave={() => !isEditMode && handleRelease('square')}
-              className={`absolute left-1 w-10 h-10 rounded-full flex items-center justify-center text-base font-black transition-all cursor-pointer ${
+              className={`absolute left-1 w-10 h-10 rounded-full flex items-center justify-center text-base font-black transition-transform duration-75 cursor-pointer ${
                 styleClasses.square
-              } ${pressedButtons['square'] ? 'bg-pink-500/60 scale-90 shadow-[0_0_15px_rgba(236,72,153,0.8)]' : 'border'}`}
+              } ${pressedButtons['square'] ? 'bg-pink-500/60 scale-90 shadow-[0_0_10px_rgba(236,72,153,0.7)]' : 'border'}`}
             >
               □
             </button>
@@ -1011,4 +1091,6 @@ export const VectorTouchControls: React.FC<VectorTouchControlsProps> = ({
       </div>
     </div>
   );
-};
+});
+
+VectorTouchControls.displayName = 'VectorTouchControls';

@@ -1348,6 +1348,7 @@
     <string name="onboarding_profile_safe_title">Optimal / Safe</string>
     <string name="onboarding_profile_safe_desc">Best balance for most mid-range and high-end devices. Keeps stronger compatibility with games.</string>
     <string name="onboarding_profile_fast_title">Fast / Unsafe</string>
+    <string name="onboarding_profile_m23_title">Galaxy M23 5G (Adreno 619 · 120Hz)</string>
     <string name="onboarding_profile_fast_desc">For weaker devices that need extra speed. Some games may show more glitches or become less stable.</string>
     <string name="onboarding_gpu_profile_title">Choose your GPU profile</string>
     <string name="onboarding_gpu_profile_subtitle">Pick the chipset family first, then the video accelerator branch used by the renderer.</string>

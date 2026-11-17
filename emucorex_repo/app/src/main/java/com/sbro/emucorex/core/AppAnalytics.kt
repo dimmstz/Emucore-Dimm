@@ -144,6 +144,7 @@ internal object AnalyticsDimensions {
 
     fun performanceProfile(value: Int): String = when (PerformanceProfiles.normalize(value)) {
         PerformanceProfiles.FAST -> "fast"
+        PerformanceProfiles.GALAXY_M23 -> "galaxy_m23"
         else -> "safe"
     }
 

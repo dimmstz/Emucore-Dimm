@@ -88,7 +88,7 @@ data class SettingsSnapshot(
     val proUnlocked: Boolean = false,
     val languageTag: String? = null,
     val tvInterfaceMode: TvInterfaceMode = TvInterfaceMode.AUTO,
-    val performanceProfile: Int = PerformanceProfiles.SAFE,
+    val performanceProfile: Int = PerformanceProfiles.defaultForDevice(),
     val gpuHardwareProfile: Int = GpuHardwareProfiles.ADRENO,
     val renderer: Int = RendererDefaults.defaultForHardware(),
     val upscaleMultiplier: Float = 1f,
@@ -159,17 +159,17 @@ data class SettingsSnapshot(
     val enableIntcStatSpeedhack: Boolean = true,
     val enableVuFlagHack: Boolean = true,
     val enableInstantVu1: Boolean = true,
-    val enableMtvu: Boolean = true,
+    val enableMtvu: Boolean = PerformanceProfiles.defaultMtvuForHardware(),
     val enableIopThread: Boolean = true,
     val enableVUAot: Boolean = true,
     val enableThreadPinning: Boolean = AppPreferences.DEFAULT_THREAD_PINNING,
     val enableFastCdvd: Boolean = false,
     val enableCheats: Boolean = false,
-    val hwDownloadMode: Int = PerformanceProfiles.safeConfig.hwDownloadMode,
+    val hwDownloadMode: Int = PerformanceProfiles.configFor(performanceProfile).hwDownloadMode,
     val hwDownloadModeUserOverride: Boolean = false,
     val frameSkip: Int = 0,
     val skipDuplicateFrames: Boolean = true,
-    val lowLatencyMode: Boolean = false,
+    val lowLatencyMode: Boolean = PerformanceProfiles.configFor(performanceProfile).vsyncQueueSize == 0,
     val textureFiltering: Int = GsHackDefaults.BILINEAR_FILTERING_DEFAULT,
     val trilinearFiltering: Int = GsHackDefaults.TRILINEAR_FILTERING_DEFAULT,
     val blendingAccuracy: Int = GsHackDefaults.BLENDING_ACCURACY_DEFAULT,
@@ -1505,7 +1505,7 @@ class AppPreferences(private val context: Context) {
     }
 
     val performanceProfile: Flow<Int> = context.dataStore.data.map { prefs ->
-        PerformanceProfiles.normalize(prefs[PERFORMANCE_PROFILE] ?: PerformanceProfiles.SAFE)
+        PerformanceProfiles.normalize(prefs[PERFORMANCE_PROFILE] ?: PerformanceProfiles.defaultForDevice())
     }
 
     val gpuDriverType: Flow<Int> = context.dataStore.data.map { prefs ->
@@ -1534,10 +1534,15 @@ class AppPreferences(private val context: Context) {
         val config = PerformanceProfiles.configFor(normalized)
         context.dataStore.edit {
             it[PERFORMANCE_PROFILE] = normalized
-            // A profile is a full preset: its speedhacks must win over earlier manual values,
-            // otherwise switching to Fast would keep the old EE cycle settings.
+            // A profile is a full preset: its speedhacks, GPU download mode, VSync queue
+            // and MTVU topology rules must win cleanly when switching profiles.
             it[EE_CYCLE_RATE] = config.eeCycleRate
             it[EE_CYCLE_SKIP] = config.eeCycleSkip
+            if (it[HW_DOWNLOAD_MODE_USER_OVERRIDE] != true) {
+                it.remove(HW_DOWNLOAD_MODE)
+            }
+            it[LOW_LATENCY_MODE] = config.vsyncQueueSize == 0
+            it[ENABLE_MTVU] = config.enableMtvuDefault ?: PerformanceProfiles.defaultMtvuForHardware()
         }
     }
 
@@ -1546,7 +1551,7 @@ class AppPreferences(private val context: Context) {
     }
 
     private fun resolvePerformanceProfile(prefs: Preferences): Int {
-        return PerformanceProfiles.normalize(prefs[PERFORMANCE_PROFILE] ?: PerformanceProfiles.SAFE)
+        return PerformanceProfiles.normalize(prefs[PERFORMANCE_PROFILE] ?: PerformanceProfiles.defaultForDevice())
     }
 
     private fun resolvePerformanceProfileConfig(prefs: Preferences) =
@@ -1722,7 +1727,7 @@ class AppPreferences(private val context: Context) {
     }
 
     val lowLatencyMode: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[LOW_LATENCY_MODE] ?: false
+        prefs[LOW_LATENCY_MODE] ?: (resolvePerformanceProfileConfig(prefs).vsyncQueueSize == 0)
     }
 
     suspend fun setLowLatencyMode(enabled: Boolean) {
@@ -2109,7 +2114,7 @@ class AppPreferences(private val context: Context) {
                 enableIntcStatSpeedhack = prefs[ENABLE_INTC_STAT_SPEEDHACK] ?: true,
                 enableVuFlagHack = prefs[ENABLE_VU_FLAG_HACK] ?: true,
                 enableInstantVu1 = prefs[ENABLE_INSTANT_VU1] ?: true,
-                enableMtvu = prefs[ENABLE_MTVU] ?: true,
+                enableMtvu = prefs[ENABLE_MTVU] ?: (profileConfig.enableMtvuDefault ?: PerformanceProfiles.defaultMtvuForHardware()),
                 enableIopThread = prefs[ENABLE_IOP_THREAD] ?: true,
                 enableVUAot = prefs[ENABLE_VU_AOT] ?: true,
                 enableThreadPinning = prefs[ENABLE_THREAD_PINNING] ?: DEFAULT_THREAD_PINNING,
@@ -2124,7 +2129,7 @@ class AppPreferences(private val context: Context) {
                     prefs[FRAME_SKIP] ?: GsHackDefaults.FRAME_SKIP_DEFAULT
                 ),
                 skipDuplicateFrames = prefs[SKIP_DUPLICATE_FRAMES] ?: true,
-                lowLatencyMode = prefs[LOW_LATENCY_MODE] ?: false,
+                lowLatencyMode = prefs[LOW_LATENCY_MODE] ?: (profileConfig.vsyncQueueSize == 0),
                 textureFiltering = GsHackDefaults.coerceBilinearFiltering(
                     prefs[TEXTURE_FILTERING] ?: GsHackDefaults.BILINEAR_FILTERING_DEFAULT
                 ),
@@ -3387,7 +3392,7 @@ class AppPreferences(private val context: Context) {
 
     // MTVU (Multi-Threaded VU1)
     val enableMtvu: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[ENABLE_MTVU] ?: true
+        prefs[ENABLE_MTVU] ?: (resolvePerformanceProfileConfig(prefs).enableMtvuDefault ?: PerformanceProfiles.defaultMtvuForHardware())
     }
 
     suspend fun setEnableMtvu(enabled: Boolean) {

@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import {
   TEST_BENCHMARK_MATRIX,
+  GALAXY_M23_BENCHMARK_SUITE,
+  GALAXY_M23_DEVICE_SPEC,
   AUDIT_SUMMARY,
   BOTTLENECK_ANALYSIS,
   RELEVANT_FILES
@@ -202,16 +204,19 @@ export const TechnicalDiagnosticsView: React.FC<TechnicalDiagnosticsViewProps> =
                   </h2>
                 </div>
                 <div className="flex items-center gap-3 tabular-nums">
-                  <div className="bg-black/30 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20 text-center">
-                    <span className="text-[11px] text-blue-200 font-mono block">FPS Alvo</span>
+                  <div className="bg-black/30 px-4 py-2 rounded-2xl border border-white/20 text-center">
+                    <span className="text-[11px] text-blue-200 font-mono block">FPS / 1% Low</span>
                     <span className="text-2xl font-black text-emerald-300 font-mono">
                       {telemetry.fps}
                     </span>
+                    <span className="text-[11px] text-blue-200 font-mono ml-1.5">
+                      ({telemetry.onePercentLowFps})
+                    </span>
                   </div>
-                  <div className="bg-black/30 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20 text-center">
-                    <span className="text-[11px] text-blue-200 font-mono block">Consumo</span>
-                    <span className="text-2xl font-black text-cyan-200 font-mono">
-                      {telemetry.wattage}W
+                  <div className="bg-black/30 px-4 py-2 rounded-2xl border border-white/20 text-center">
+                    <span className="text-[11px] text-blue-200 font-mono block">Frame Time / Consumo</span>
+                    <span className="text-xl font-black text-cyan-200 font-mono">
+                      {telemetry.frameTimeMs}ms · {telemetry.wattage}W
                     </span>
                   </div>
                 </div>
@@ -407,46 +412,121 @@ export const TechnicalDiagnosticsView: React.FC<TechnicalDiagnosticsViewProps> =
         )}
 
         {activeTab === 'benchmarks' && (
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
-                Matriz Comparativa Adreno &amp; Mali
-              </h3>
-              <p className="text-xs text-slate-500">
-                Comparativo entre Intermediários (Adreno 619 / Mali-G57), Motorola Edge 60 Pro (Mali-G615) e Flagships
-              </p>
+          <div className="space-y-6">
+            {/* Dedicated Galaxy M23 5G Test Suite (Antes vs Depois) */}
+            <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <span className="text-[11px] font-mono font-bold text-blue-600 uppercase tracking-wider block">
+                    Valores de Teste Calibrados · Antes vs Depois
+                  </span>
+                  <h3 className="text-base font-bold text-slate-900 mt-0.5">
+                    Suíte de Testes — {GALAXY_M23_DEVICE_SPEC.model}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {GALAXY_M23_DEVICE_SPEC.soc} · {GALAXY_M23_DEVICE_SPEC.gpu} · {GALAXY_M23_DEVICE_SPEC.memory}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => onSelectDeviceProfile('galaxy-m23-5g', true)}
+                  className={`min-h-[44px] px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                    activeDevice.id === 'galaxy-m23-5g'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
+                  }`}
+                >
+                  {activeDevice.id === 'galaxy-m23-5g'
+                    ? 'Perfil Galaxy M23 5G Ativo'
+                    : 'Aplicar Perfil Testado Galaxy M23 5G'}
+                </button>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/70 text-[11px] font-mono text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
+                <span><strong>CPU:</strong> {GALAXY_M23_DEVICE_SPEC.cpu}</span>
+                <span><strong>Display:</strong> {GALAXY_M23_DEVICE_SPEC.display}</span>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {GALAXY_M23_BENCHMARK_SUITE.map((row) => (
+                  <div key={row.serial} className="py-3.5 grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                    <div className="md:col-span-4">
+                      <h4 className="text-sm font-bold text-slate-900">{row.game}</h4>
+                      <span className="text-[11px] font-mono text-slate-500 block">{row.serial} · {row.settingsUsed}</span>
+                    </div>
+                    <div className="md:col-span-3 p-2.5 rounded-xl bg-rose-50/60 border border-rose-200/70 tabular-nums">
+                      <span className="text-[10px] text-rose-700 block font-semibold">
+                        Stock Safe (MTVU ON · HWMode 0)
+                      </span>
+                      <span className="text-xs font-mono font-bold text-rose-900">
+                        {row.stockSafeFps} FPS · 1% Low: {row.stockOnePercentLow}
+                      </span>
+                      <span className="text-[10px] font-mono text-rose-700 block">
+                        {row.stockFrameMs}ms · {row.stockWattW}W
+                      </span>
+                    </div>
+                    <div className="md:col-span-3 p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80 tabular-nums">
+                      <span className="text-[10px] text-emerald-700 block font-semibold">
+                        EmuStation M23 (MTVU OFF · HWMode 1)
+                      </span>
+                      <span className="text-xs font-mono font-bold text-emerald-950">
+                        {row.calibratedFps} FPS · 1% Low: {row.calibratedOnePercentLow}
+                      </span>
+                      <span className="text-[10px] font-mono text-emerald-800 block">
+                        {row.calibratedFrameMs}ms · {row.calibratedWattW}W
+                      </span>
+                    </div>
+                    <div className="md:col-span-2 p-2.5 rounded-xl bg-blue-50 border border-blue-200/70 text-center tabular-nums">
+                      <span className="text-[10px] text-blue-700 block font-semibold">Ganho Real</span>
+                      <span className="text-sm font-mono font-black text-blue-800">+{row.fpsGainPercent}% FPS</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="divide-y divide-slate-100">
-              {TEST_BENCHMARK_MATRIX.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="py-3.5 grid grid-cols-1 md:grid-cols-4 gap-3 items-center"
-                >
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-900">{item.game}</h4>
-                    <span className="text-xs text-slate-500">{item.genre}</span>
+            {/* General Multi-Device Matrix */}
+            <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Matriz Comparativa Adreno &amp; Mali
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Comparativo entre Intermediários (Galaxy M23 Adreno 619), Motorola Edge 60 Pro (Mali-G615) e Flagships
+                </p>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {TEST_BENCHMARK_MATRIX.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="py-3.5 grid grid-cols-1 md:grid-cols-4 gap-3 items-center"
+                  >
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900">{item.game}</h4>
+                      <span className="text-xs text-slate-500">{item.genre}</span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-[#F8FAFC] border border-slate-200/60">
+                      <span className="text-[10px] text-slate-500 block font-semibold">
+                        Galaxy M23 / Adreno 619
+                      </span>
+                      <span className="text-xs font-mono font-bold text-slate-800">{item.adrenoMid}</span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200/70">
+                      <span className="text-[10px] text-blue-700 block font-semibold">
+                        Motorola Edge 60 Pro
+                      </span>
+                      <span className="text-xs font-mono font-bold text-blue-900">{item.edge60Pro}</span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200/70">
+                      <span className="text-[10px] text-emerald-700 block font-semibold">
+                        Flagships (8 Gen 3 / D9400)
+                      </span>
+                      <span className="text-xs font-mono font-bold text-emerald-900">{item.flagship}</span>
+                    </div>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-[#F8FAFC] border border-slate-200/60">
-                    <span className="text-[10px] text-slate-500 block font-semibold">
-                      Adreno 619 / Mali Mid
-                    </span>
-                    <span className="text-xs font-mono font-bold text-slate-800">{item.adrenoMid}</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200/70">
-                    <span className="text-[10px] text-blue-700 block font-semibold">
-                      Motorola Edge 60 Pro
-                    </span>
-                    <span className="text-xs font-mono font-bold text-blue-900">{item.edge60Pro}</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200/70">
-                    <span className="text-[10px] text-emerald-700 block font-semibold">
-                      Flagships (8 Gen 3 / D9400)
-                    </span>
-                    <span className="text-xs font-mono font-bold text-emerald-900">{item.flagship}</span>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         )}

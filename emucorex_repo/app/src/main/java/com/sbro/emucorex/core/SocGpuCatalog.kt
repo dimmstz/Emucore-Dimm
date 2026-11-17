@@ -75,6 +75,7 @@ object SocGpuCatalog {
         entry("Snapdragon 778G", adreno(642, "L")),
         entry("Snapdragon 765", adreno(620)),
         entry("Snapdragon 750G", adreno(619)),
+        entry("SM7225", adreno(619)),
         entry("Snapdragon 730", adreno(618)),
         entry("Snapdragon 720G", adreno(618)),
         entry("Snapdragon 712", adreno(616)),
